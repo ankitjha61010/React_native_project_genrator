@@ -1,0 +1,96 @@
+import React from 'react';
+import { I18nManager, Text, type TextProps, type TextStyle } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { useTheme, type ColorName } from '{{IMPORT:hooks.useTheme}}';
+import { translate, type IntlProps } from '{{IMPORT:i18n.index}}';
+import type { Typography } from '{{IMPORT:theme.index}}';
+
+export type FontFamily = keyof Typography['fontFamily'];
+export type FontSize = keyof Typography['fontSize'];
+
+/**
+ * `intlType` – the JSON file in `i18n/locales/<language>/` ("home", "auth", "common"…).
+ * `value` – the key inside that file (autocompleted from the file you chose).
+ * `value1`, `value2`, `value3` – dynamic values, used in the JSON as `{{value1}}`, `{{value2}}`,
+ * `{{value3}}`. `count` selects plural forms.
+ *
+ *   <AppText intlType="auth" value="login" />                                 -> "Login"
+ *   <AppText intlType="product" value="price" value1="₹499" />                -> "Price: ₹499"
+ *   <AppText intlType="home" value="imageSelected" value1={600} value2={400} /> -> "Image selected (600×400)"
+ *   <AppText intlType="product" value="productCount" count={3} />             -> productCount_one / _other
+ *
+ * Weight comes from the font family (GolosText-Medium, -Bold…), never from `fontWeight`:
+ *
+ *   <AppText fontFamily="bold" fontSize="size24" color="primary" intlType="home" value="home" />
+ */
+/**
+ * RTL: React Native treats `textAlign: 'left'` as "start" and flips it to the right in RTL
+ * layouts, but leaves the default `'auto'` untouched – so without this, Arabic text stays
+ * left-aligned. `writingDirection` keeps mixed text ("السمة: light") in the right order (iOS).
+ */
+const TEXT_DIRECTION: TextStyle = {
+  textAlign: 'left',
+  writingDirection: I18nManager.isRTL ? 'rtl' : 'ltr',
+};
+
+interface AppTextOwnProps {
+  /** Plain, non-translated text. Prefer `intlType` + `value` for anything user facing. */
+  text?: string;
+  /** `theme.typography.fontFamily` key. Default: regular. */
+  fontFamily?: FontFamily;
+  /** `theme.typography.fontSize` key. Default: size14. */
+  fontSize?: FontSize;
+  /** `theme.colors` key. Default: text (follows light / dark mode). */
+  color?: ColorName;
+  /** Default: start – `'left'` in LTR, mirrored to the right in RTL. Use `'center'` / `'justify'` as needed. */
+  align?: TextStyle['textAlign'];
+  children?: React.ReactNode;
+}
+
+export type AppTextProps = TextProps & IntlProps & AppTextOwnProps;
+
+/**
+ * The only component that renders text. All translations are resolved here, so the
+ * whole UI re-renders in the new language as soon as `changeLanguage()` is called.
+ */
+export function AppText({
+  intlType,
+  value,
+  value1,
+  value2,
+  value3,
+  count,
+  text,
+  fontFamily = 'regular',
+  fontSize = 'size14',
+  color = 'text',
+  align,
+  style,
+  children,
+  ...rest
+}: AppTextProps): React.JSX.Element {
+  // Subscribes to language changes.
+  useTranslation();
+  const { theme } = useTheme();
+
+  const content: React.ReactNode =
+    intlType && value ? translate(intlType, value, { value1, value2, value3, count }) : (text ?? children);
+
+  return (
+    <Text
+      allowFontScaling={false}
+      style={[
+        TEXT_DIRECTION,
+        {
+          fontFamily: theme.typography.fontFamily[fontFamily],
+          fontSize: theme.typography.fontSize[fontSize],
+          color: theme.colors[color],
+          ...(align ? { textAlign: align } : null),
+        },
+        style,
+      ]}
+      {...rest}>
+      {content}
+    </Text>
+  );
+}

@@ -1,0 +1,18 @@
+{
+  "appName": "{{DISPLAY_NAME}}",
+  "ok": "OK",
+  "cancel": "Cancel",
+  "retry": "Retry",
+  "back": "Back",
+  "logout": "Log out",
+  "show": "Show",
+  "hide": "Hide",
+  "language": "Language",
+  "genericError": "Something went wrong. Please try again.",
+  "networkError": "No internet connection.",
+  "sessionExpired": "Your session has expired. Please log in again.",
+  "permissionDenied": "Permission denied. You can enable it in Settings.",
+  "newNotification": "New notification",
+  "loading": "Loading…",
+  "settings": "Settings"
+}

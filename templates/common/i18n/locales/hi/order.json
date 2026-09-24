@@ -1,0 +1,10 @@
+{
+  "myOrders": "मेरे ऑर्डर",
+  "orderNumber": "ऑर्डर #{{value1}}",
+  "placeOrder": "ऑर्डर करें",
+  "orderPending": "लंबित",
+  "orderShipped": "भेज दिया गया",
+  "orderDelivered": "पहुंचा दिया गया",
+  "orderCancelled": "रद्द",
+  "noOrders": "आपने अभी तक कोई ऑर्डर नहीं किया है।"
+}

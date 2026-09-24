@@ -1,0 +1,11 @@
+{
+  "products": "उत्पाद",
+  "addToCart": "कार्ट में डालें",
+  "buyNow": "अभी खरीदें",
+  "price": "कीमत: {{value1}}",
+  "outOfStock": "स्टॉक में नहीं है",
+  "productCount_one": "{{count}} उत्पाद",
+  "productCount_other": "{{count}} उत्पाद",
+  "description": "विवरण",
+  "reviews": "समीक्षाएं"
+}

@@ -1,0 +1,14 @@
+{
+  "home": "الرئيسية",
+  "welcomeUser": "مرحباً، {{value1}} 👋",
+  "starterReady": "مشروع {{value1}} الخاص بك جاهز.",
+  "switchLanguage": "تغيير اللغة",
+  "starterTools": "أدوات البداية",
+  "openWebView": "فتح WebView",
+  "pickImage": "اختيار صورة",
+  "enableNotifications": "تفعيل الإشعارات",
+  "toggleTheme": "السمة: {{value1}}",
+  "notificationsEnabled": "تم تفعيل الإشعارات",
+  "imageSelected": "تم اختيار الصورة ({{value1}}×{{value2}})",
+  "translationSamples": "أمثلة الترجمة"
+}

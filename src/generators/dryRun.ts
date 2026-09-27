@@ -38,6 +38,7 @@ export async function describeDryRun(options: ProjectOptions): Promise<string> {
     `API requests: ${options.apiEncryption ? 'encrypted (AES-256, crypto-js)' : 'plain JSON'}`,
     `RTL support: ${options.rtl ? 'yes (Arabic sample language)' : 'no'}`,
     `Theme context: ${options.themeContext ? 'yes (light / dark / system)' : 'no (static light theme)'}`,
+    `Push notifications: ${options.notifications ? 'yes (FCM + Notifee)' : 'no'}`,
     `Storage: ${STORAGE_LABELS[options.storage]}`,
     `Firebase Analytics: ${options.analytics ? 'yes (screen tracking + analyticsService)' : 'no'}`,
     `Vector icons: ${options.vectorIcons ? 'yes (MaterialDesignIcons, iOS UIAppFonts configured)' : 'no'}`,

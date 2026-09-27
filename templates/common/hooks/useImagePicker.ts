@@ -1,51 +1,81 @@
 import { useCallback, useState } from 'react';
-import { imagePicker, ImagePermissionError, type ImagePickOptions, type PickedImage } from '{{IMPORT:media.imagePicker}}';
+import {
+  mediaPickerService,
+  MediaPermissionError,
+  type ImagePickOptions,
+  type VideoPickOptions,
+  type PickedMedia,
+} from '{{IMPORT:media.imagePicker}}';
 import { permissionService } from '{{IMPORT:permissions.service}}';
 import { flash } from '{{IMPORT:utils.flashMessage}}';
 import { logger } from '{{IMPORT:utils.logger}}';
 
+export type MediaAction = 'gallery_photo' | 'camera_photo' | 'gallery_video' | 'camera_video';
+
 /**
- * React wrapper around `imagePicker` with loading state and user feedback.
- *
- *   const { image, pickFromGallery } = useImagePicker();
- *   <AppButton onPress={() => pickFromGallery({ maxWidth: 600, maxHeight: 600 })} />
+ * React hook wrapper around `mediaPickerService` with permission error handling and state.
  */
 export function useImagePicker() {
-  const [image, setImage] = useState<PickedImage | null>(null);
+  const [media, setMedia] = useState<PickedMedia | null>(null);
   const [picking, setPicking] = useState(false);
 
-  const pick = useCallback(async (source: 'gallery' | 'camera', options?: ImagePickOptions) => {
-    setPicking(true);
-    try {
-      const result =
-        source === 'camera' ? await imagePicker.pickFromCamera(options) : await imagePicker.pickFromGallery(options);
-      if (result) {
-        setImage(result);
+  const pick = useCallback(
+    async (
+      action: MediaAction,
+      options?: ImagePickOptions & VideoPickOptions
+    ): Promise<PickedMedia | null> => {
+      setPicking(true);
+      try {
+        let result: PickedMedia | null = null;
+        switch (action) {
+          case 'camera_photo':
+            result = await mediaPickerService.captureImageFromCamera(options);
+            break;
+          case 'gallery_photo':
+            result = await mediaPickerService.pickImageFromGallery(options);
+            break;
+          case 'camera_video':
+            result = await mediaPickerService.captureVideoFromCamera(options);
+            break;
+          case 'gallery_video':
+            result = await mediaPickerService.pickVideoFromGallery(options);
+            break;
+        }
+
+        if (result) {
+          setMedia(result);
+        }
+        return result;
+      } catch (error) {
+        if (error instanceof MediaPermissionError) {
+          flash.warning({
+            intlType: 'common',
+            value: 'permissionDenied',
+            onPress: () => {
+              permissionService.openSettings();
+            },
+          });
+        } else {
+          logger.error('Media picker failed', error);
+          flash.error({ intlType: 'common', value: 'genericError' });
+        }
+        return null;
+      } finally {
+        setPicking(false);
       }
-      return result;
-    } catch (error) {
-      if (error instanceof ImagePermissionError) {
-        flash.warning({
-          intlType: 'common', value: 'permissionDenied',
-          onPress: () => {
-            permissionService.openSettings();
-          },
-        });
-      } else {
-        logger.error('Image picker failed', error);
-        flash.error({ intlType: 'common', value: 'genericError' });
-      }
-      return null;
-    } finally {
-      setPicking(false);
-    }
-  }, []);
+    },
+    []
+  );
 
   return {
-    image,
+    image: media,
+    media,
     picking,
-    pickFromGallery: (options?: ImagePickOptions) => pick('gallery', options),
-    pickFromCamera: (options?: ImagePickOptions) => pick('camera', options),
-    clear: () => setImage(null),
+    pickFromGallery: (options?: ImagePickOptions) => pick('gallery_photo', options),
+    pickFromCamera: (options?: ImagePickOptions) => pick('camera_photo', options),
+    pickVideoFromGallery: (options?: VideoPickOptions) => pick('gallery_video', options),
+    recordVideoFromCamera: (options?: VideoPickOptions) => pick('camera_video', options),
+    pick,
+    clear: () => setMedia(null),
   };
 }

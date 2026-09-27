@@ -58,17 +58,31 @@ export function AppProviders({ children }: { children: React.ReactNode }): React
   const [i18nReady, setI18nReady] = useState(i18n.isInitialized);
 
   useEffect(() => {
+    let unmounted = false;
+    // Set a safety timeout so app never remains stuck on black screen
+    const timeout = setTimeout(() => {
+      if (!unmounted) setI18nReady(true);
+    }, 500);
+
     initI18n()
 {{#if RTL}}
       // Match the native layout direction to the saved / device language (restarts once if needed).
       .then(() => applyLayoutDirection(i18n.language))
 {{/if}}
       .catch(error => logger.error('i18n initialisation failed', error))
-      .finally(() => setI18nReady(true));
+      .finally(() => {
+        clearTimeout(timeout);
+        if (!unmounted) setI18nReady(true);
+      });
+
+    return () => {
+      unmounted = true;
+      clearTimeout(timeout);
+    };
   }, []);
 
   if (!i18nReady) {
-    return null; // a few milliseconds – the native launch screen is still visible
+    return null;
   }
 
   return (
@@ -92,3 +106,4 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+

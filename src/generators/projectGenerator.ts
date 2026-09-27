@@ -116,7 +116,9 @@ export async function generateProject(options: ProjectOptions, hooks: Generation
         : 'Firebase template generated (see firebase/README.md)',
     );
 
-    await step('Configuring notifications', () => generateNotifications(projectDir, files, options), 'Notification service generated');
+    if (options.notifications) {
+      await step('Configuring notifications', () => generateNotifications(projectDir, files, options), 'Notification service generated');
+    }
 
     const screens = await step('Creating screens', () => generateScreens(projectDir, files), 'Screens created');
     screens.forEach(name => log.success(`${name} screen`));

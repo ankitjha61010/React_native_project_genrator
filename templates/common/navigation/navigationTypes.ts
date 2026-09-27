@@ -3,17 +3,39 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 export type AuthStackParamList = {
   Login: undefined;
+{{#if AUTH_EMAIL}}
+  Register: undefined;
+  ForgotPassword: undefined;
+  ResetPassword: { email?: string } | undefined;
+{{/if}}
+{{#if AUTH_MOBILE}}
+  MobileLogin: undefined;
+  OtpVerify: { phone: string };
+{{/if}}
 };
 
 /** The tabs of the signed-in home (BottomTabNavigator). */
 export type BottomTabParamList = {
   HomeTab: undefined;
-  SettingsTab: undefined;
+{{#if CHAT}}
+  ChatTab: undefined;
+{{/if}}
+  ProfileTab: undefined;
 };
 
 export type MainStackParamList = {
   Tabs: NavigatorScreenParams<BottomTabParamList> | undefined;
   WebView: { url: string; title?: string };
+  EditProfile: undefined;
+{{#if CHAT}}
+  ChatRoom: {
+    conversationId: string;
+    title?: string;
+    avatar?: string;
+    isOnline?: boolean;
+    isGroup?: boolean;
+  };
+{{/if}}
 };
 
 export type RootStackParamList = {

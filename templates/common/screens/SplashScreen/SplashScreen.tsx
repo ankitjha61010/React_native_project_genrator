@@ -20,11 +20,21 @@ export function SplashScreen(): React.JSX.Element {
   useEffect(() => {
     let active = true;
     // DEMO: simulated initialisation. Load remote config, fonts, feature flags… here.
-    Promise.all([restore(), wait(appConfig.splashDelayMs)]).then(([signedIn]) => {
-      if (active) {
-        navigation.reset({ index: 0, routes: [{ name: signedIn ? 'Main' : 'Auth' }] });
-      }
-    });
+    Promise.all([
+      restore().catch(() => false),
+      wait(appConfig.splashDelayMs),
+    ])
+      .then(([signedIn]) => {
+        if (active) {
+          navigation.reset({ index: 0, routes: [{ name: signedIn ? 'Main' : 'Auth' }] });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          navigation.reset({ index: 0, routes: [{ name: 'Auth' }] });
+        }
+      });
+
     return () => {
       active = false;
     };

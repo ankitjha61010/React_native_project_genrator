@@ -18,11 +18,7 @@ export const DEPENDENCY_REGISTRY = {
     // Animation
     'react-native-reanimated',
     'react-native-worklets',
-    // Firebase / notifications (notifee displays foreground + data-only messages)
-    '@react-native-firebase/app',
-    '@react-native-firebase/messaging',
-    '@notifee/react-native',
-    // Networking & storage
+    // Networking
     'axios',
     // UI
     'react-native-flash-message',
@@ -68,7 +64,9 @@ export const DEPENDENCY_REGISTRY = {
   featureDependencies: {
     apiEncryption: { dependencies: ['crypto-js'], devDependencies: ['@types/crypto-js'] },
     vectorIcons: { dependencies: ['@react-native-vector-icons/material-design-icons'], devDependencies: [] },
-    analytics: { dependencies: ['@react-native-firebase/analytics'], devDependencies: [] },
+    notifications: { dependencies: ['@react-native-firebase/app', '@react-native-firebase/messaging', '@notifee/react-native'], devDependencies: [] },
+    analytics: { dependencies: ['@react-native-firebase/app', '@react-native-firebase/analytics'], devDependencies: [] },
+    socket: { dependencies: ['socket.io-client'], devDependencies: [] },
     // Switching the native layout direction needs an app restart (I18nManager is read at startup).
     rtl: { dependencies: ['react-native-restart'], devDependencies: [] },
   },

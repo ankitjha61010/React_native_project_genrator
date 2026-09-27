@@ -10,6 +10,8 @@ export async function generateNotifications(
   files: RenderedFile[],
   options: ProjectOptions,
 ): Promise<void> {
+  if (!options.notifications) return;
+
   await writeFiles(
     projectDir,
     files.filter(f => f.group === 'notification'),

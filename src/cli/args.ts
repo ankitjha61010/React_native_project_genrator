@@ -17,6 +17,12 @@ export interface CliFlags {
   themeContext?: boolean;
   vectorIcons?: boolean;
   analytics?: boolean;
+  notifications?: boolean;
+  authEmail?: boolean;
+  authMobile?: boolean;
+  socialAuth?: 'google' | 'facebook' | 'both' | 'none';
+  socket?: boolean;
+  chat?: boolean;
   storage?: string;
   install: boolean;
   pods: boolean;
@@ -47,6 +53,17 @@ export function parseArgs(argv: string[], version: string): CliFlags {
     .option('--no-theme-context', 'static light theme only')
     .option('--vector-icons', 'add @react-native-vector-icons/material-design-icons (iOS/Android configured)')
     .option('--no-vector-icons', 'no icon library')
+    .option('--notifications', 'add push notification support (FCM + Notifee)')
+    .option('--no-notifications', 'no push notifications')
+    .option('--auth-email', 'enable email authentication (Sign In, Sign Up, Forgot/Reset Password)')
+    .option('--no-auth-email', 'disable email authentication')
+    .option('--auth-mobile', 'enable mobile OTP authentication (Phone Login, OTP Verification)')
+    .option('--no-auth-mobile', 'disable mobile OTP authentication')
+    .addOption(new Option('--social-auth <type>', 'social login provider').choices(['google', 'facebook', 'both', 'none']))
+    .option('--socket', 'implement Socket.io client for real-time events')
+    .option('--no-socket', 'no socket client')
+    .option('--chat', 'implement real-time chat with media/audio/video/documents')
+    .option('--no-chat', 'no chat module')
     .option('--analytics', 'add Firebase Analytics (screen tracking + analyticsService)')
     .option('--no-analytics', 'no Firebase Analytics')
     .addOption(new Option('--storage <engine>', 'key-value storage').choices(STORAGE_IDS))

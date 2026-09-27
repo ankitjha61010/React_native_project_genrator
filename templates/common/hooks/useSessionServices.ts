@@ -1,8 +1,11 @@
 import { useEffect } from 'react';
 import { configureApiAuth } from '{{IMPORT:api.client}}';
 import { useAuthSession } from '{{IMPORT:hooks.useAuthSession}}';
-import { openUrlInApp, resetToAuth } from '{{IMPORT:navigation.ref}}';
+import { resetToAuth } from '{{IMPORT:navigation.ref}}';
+{{#if NOTIFICATIONS}}
+import { openUrlInApp } from '{{IMPORT:navigation.ref}}';
 import { notificationService } from '{{IMPORT:notification.service}}';
+{{/if}}
 import { flash } from '{{IMPORT:utils.flashMessage}}';
 
 /**
@@ -23,6 +26,7 @@ export function useSessionServices(): void {
     });
   }, [signOut]);
 
+{{#if NOTIFICATIONS}}
   useEffect(() => {
     let cleanup: (() => void) | undefined;
     let unmounted = false;
@@ -47,4 +51,5 @@ export function useSessionServices(): void {
       cleanup?.();
     };
   }, []);
+{{/if}}
 }

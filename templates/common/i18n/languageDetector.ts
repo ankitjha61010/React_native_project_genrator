@@ -10,14 +10,22 @@ export const languageDetector: LanguageDetectorAsyncModule = {
   async: true,
   init: () => {},
   detect: async () => {
-    const saved = await storageService.get<string>(StorageKeys.LANGUAGE);
-    if (isSupportedLanguage(saved)) {
-      return saved;
+    try {
+      const saved = await storageService.get<string>(StorageKeys.LANGUAGE);
+      if (isSupportedLanguage(saved)) {
+        return saved;
+      }
+      const deviceLanguage = getLocales()[0]?.languageCode;
+      return isSupportedLanguage(deviceLanguage) ? deviceLanguage : FALLBACK_LANGUAGE;
+    } catch {
+      return FALLBACK_LANGUAGE;
     }
-    const deviceLanguage = getLocales()[0]?.languageCode;
-    return isSupportedLanguage(deviceLanguage) ? deviceLanguage : FALLBACK_LANGUAGE;
   },
   cacheUserLanguage: async language => {
-    await storageService.set(StorageKeys.LANGUAGE, language);
+    try {
+      await storageService.set(StorageKeys.LANGUAGE, language);
+    } catch {
+      // Ignore cache failure
+    }
   },
 };

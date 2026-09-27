@@ -21,7 +21,8 @@
     "test:watch": "vitest",
     "prepublishOnly": "npm run build && npm test",
     "verify:projects": "node scripts/verify-generated-projects.mjs",
-    "generate": "node /Users/hyperlink/Desktop/Module/React_project_genrator/rn-architecture-generator/bin/cli.js"
+    "generate": "node bin/cli.js",
+    "generate_from_another_machine": "node /Users/hyperlink/Desktop/Module/React_project_genrator/rn-architecture-generator/bin/cli.js"
   },
   "keywords": [
     "react-native",

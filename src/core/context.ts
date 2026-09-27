@@ -56,9 +56,17 @@ export function prepareGeneration(options: ProjectOptions): PreparedGeneration {
     RTL: options.rtl,
     THEME_CONTEXT: options.themeContext,
     VECTOR_ICONS: options.vectorIcons,
+    NOTIFICATIONS: options.notifications,
     ANALYTICS: options.analytics,
     STORAGE_MMKV: options.storage === 'mmkv',
     STORAGE_ASYNC: options.storage === 'async-storage',
+    AUTH_EMAIL: options.authEmail,
+    AUTH_MOBILE: options.authMobile,
+    SOCIAL_GOOGLE: options.socialAuth === 'google' || options.socialAuth === 'both',
+    SOCIAL_FACEBOOK: options.socialAuth === 'facebook' || options.socialAuth === 'both',
+    HAS_SOCIAL_AUTH: options.socialAuth !== 'none',
+    SOCKET: options.socket,
+    CHAT: options.chat,
   };
   for (const a of ARCHITECTURES) {
     flags[`ARCH_${toVarName(a.id)}`] = a.id === architecture.id;

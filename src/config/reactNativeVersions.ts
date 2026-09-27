@@ -62,6 +62,7 @@ const ECOSYSTEM_2026_08: Record<string, string> = {
   'react-native-mmkv': '4.3.2',
   'react-native-nitro-modules': '0.37.1',
   'react-native-restart': '0.0.29',
+  'socket.io-client': '^4.8.1',
 };
 
 const SUPPORTED_2026_08: Record<string, string> = {

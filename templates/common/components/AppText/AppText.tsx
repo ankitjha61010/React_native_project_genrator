@@ -73,8 +73,19 @@ export function AppText({
   useTranslation();
   const { theme } = useTheme();
 
-  const content: React.ReactNode =
-    intlType && value ? translate(intlType, value, { value1, value2, value3, count }) : (text ?? children);
+  const intlContent = intlType && value ? translate(intlType, value, { value1, value2, value3, count }) : null;
+  const content = intlContent !== null ? (
+    children ? (
+      <>
+        {intlContent}
+        {children}
+      </>
+    ) : (
+      intlContent
+    )
+  ) : (
+    text ?? children
+  );
 
   return (
     <Text

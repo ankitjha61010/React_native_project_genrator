@@ -20,6 +20,8 @@ export interface FirebaseFiles {
   iosConfigPath?: string;
 }
 
+export type SocialLoginOption = 'none' | 'google' | 'facebook' | 'both';
+
 /** Everything the generators need to know, collected from prompts or CLI flags. */
 export interface ProjectOptions {
   appName: string;
@@ -41,6 +43,18 @@ export interface ProjectOptions {
   themeContext: boolean;
   /** @react-native-vector-icons/material-design-icons + native font registration. */
   vectorIcons: boolean;
+  /** Firebase Cloud Messaging + Notifee push notifications. */
+  notifications: boolean;
+  /** Email authentication (Sign In, Sign Up, Forgot Password, Reset Password). */
+  authEmail: boolean;
+  /** Mobile OTP authentication (Phone login, OTP verification, Forgot PIN). */
+  authMobile: boolean;
+  /** Social logins (Google, Facebook, Both, None). */
+  socialAuth: SocialLoginOption;
+  /** Socket.io client integration. */
+  socket: boolean;
+  /** Real-time WhatsApp-style chat module with media/audio/video/documents. */
+  chat: boolean;
   initGit: boolean;
   installDependencies: boolean;
   installPods: boolean;
@@ -86,6 +100,8 @@ export type GroupId =
   | 'permissions'
   | 'media'
   | 'firebase'
+  | 'socket'
+  | 'chat'
   | 'components'
   | 'navigation'
   | 'screens'

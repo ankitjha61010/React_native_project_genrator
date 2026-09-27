@@ -17,6 +17,8 @@ export const BASE_GROUPS: Record<GroupId, string> = {
   permissions: 'src/services/permissions',
   media: 'src/services/media',
   firebase: 'src/services/firebase',
+  socket: 'src/services/socket',
+  chat: 'src/features/chat',
   components: 'src/components',
   navigation: 'src/navigation',
   screens: 'src/screens',
@@ -35,4 +37,5 @@ export const DEFAULT_BARRELS: GroupId[] = [
   'permissions',
   'media',
   'firebase',
+  'socket',
 ];

@@ -9,15 +9,19 @@ import {
 } from 'react-native-image-picker';
 import { permissionService } from '{{IMPORT:permissions.service}}';
 
-export interface PickedImage {
+export interface PickedMedia {
   /** File URI, usable in <Image source={{ uri }} /> and for uploads. */
   path: string;
-  width: number;
-  height: number;
+  width?: number;
+  height?: number;
   mime: string;
-  size: number;
+  size?: number;
   filename?: string;
+  duration?: number;
+  type: 'image' | 'video';
 }
+
+export type PickedImage = PickedMedia;
 
 export interface ImagePickOptions {
   /** The image is resized to fit inside maxWidth × maxHeight. Default: 1000×1000. */
@@ -27,12 +31,21 @@ export interface ImagePickOptions {
   quality?: number;
 }
 
-export class ImagePermissionError extends Error {
+export interface VideoPickOptions {
+  /** Maximum recording limit in seconds. Default: 60. */
+  durationLimit?: number;
+  /** Video quality ('low' | 'medium' | 'high'). Default: 'high'. */
+  videoQuality?: 'low' | 'medium' | 'high';
+}
+
+export class MediaPermissionError extends Error {
   constructor(readonly permission: 'camera' | 'photoLibrary') {
     super(`${permission} permission not granted`);
-    this.name = 'ImagePermissionError';
+    this.name = 'MediaPermissionError';
   }
 }
+
+export const ImagePermissionError = MediaPermissionError;
 
 function toQuality(quality = 0.8): PhotoQuality {
   return (Math.round(Math.min(Math.max(quality, 0), 1) * 10) / 10) as PhotoQuality;
@@ -47,50 +60,94 @@ function toOptions(options: ImagePickOptions = {}): ImageLibraryOptions & Camera
   };
 }
 
-function toPickedImage(asset: Asset): PickedImage {
+function toPickedMedia(asset: Asset, defaultType: 'image' | 'video'): PickedMedia {
+  const isVideo = defaultType === 'video' || (asset.type?.startsWith('video') ?? false);
   return {
     path: asset.uri ?? '',
     width: asset.width ?? 0,
     height: asset.height ?? 0,
-    mime: asset.type ?? 'image/jpeg',
+    mime: asset.type ?? (isVideo ? 'video/mp4' : 'image/jpeg'),
     size: asset.fileSize ?? 0,
     filename: asset.fileName ?? undefined,
+    duration: asset.duration ? Math.round(asset.duration) : undefined,
+    type: isVideo ? 'video' : 'image',
   };
 }
 
 /** Returns null when the user cancels. */
-function handle(response: ImagePickerResponse, permission: 'camera' | 'photoLibrary'): PickedImage | null {
+function handle(
+  response: ImagePickerResponse,
+  permission: 'camera' | 'photoLibrary',
+  mediaType: 'image' | 'video' = 'image'
+): PickedMedia | null {
   if (response.didCancel) {
     return null;
   }
   if (response.errorCode === 'permission') {
-    throw new ImagePermissionError(permission);
+    throw new MediaPermissionError(permission);
   }
   if (response.errorCode) {
-    throw new Error(response.errorMessage ?? `Image picker failed (${response.errorCode})`);
+    throw new Error(response.errorMessage ?? `Media picker failed (${response.errorCode})`);
   }
   const asset = response.assets?.[0];
-  return asset?.uri ? toPickedImage(asset) : null;
+  return asset?.uri ? toPickedMedia(asset, mediaType) : null;
 }
 
 /**
- * Image picking (react-native-image-picker), usable from any screen or hook:
- *
- *   const image = await imagePicker.pickFromGallery({ maxWidth: 600, maxHeight: 600 });
- *   if (image) upload(image.path);
+ * Media picking (react-native-image-picker) for Photos & Videos:
  */
-export const imagePicker = {
-  async pickFromGallery(options?: ImagePickOptions): Promise<PickedImage | null> {
+export const mediaPickerService = {
+  async pickImageFromGallery(options?: ImagePickOptions): Promise<PickedMedia | null> {
     if (!(await permissionService.ensure('photoLibrary'))) {
-      throw new ImagePermissionError('photoLibrary');
+      throw new MediaPermissionError('photoLibrary');
     }
-    return handle(await launchImageLibrary({ ...toOptions(options), selectionLimit: 1 }), 'photoLibrary');
+    return handle(
+      await launchImageLibrary({ ...toOptions(options), mediaType: 'photo', selectionLimit: 1 }),
+      'photoLibrary',
+      'image'
+    );
   },
 
-  async pickFromCamera(options?: ImagePickOptions): Promise<PickedImage | null> {
+  async captureImageFromCamera(options?: ImagePickOptions): Promise<PickedMedia | null> {
     if (!(await permissionService.ensure('camera'))) {
-      throw new ImagePermissionError('camera');
+      throw new MediaPermissionError('camera');
     }
-    return handle(await launchCamera({ ...toOptions(options), saveToPhotos: false }), 'camera');
+    return handle(
+      await launchCamera({ ...toOptions(options), mediaType: 'photo', saveToPhotos: false }),
+      'camera',
+      'image'
+    );
   },
+
+  async pickVideoFromGallery(options?: VideoPickOptions): Promise<PickedMedia | null> {
+    if (!(await permissionService.ensure('photoLibrary'))) {
+      throw new MediaPermissionError('photoLibrary');
+    }
+    return handle(
+      await launchImageLibrary({ mediaType: 'video', selectionLimit: 1, videoQuality: options?.videoQuality ?? 'high' }),
+      'photoLibrary',
+      'video'
+    );
+  },
+
+  async captureVideoFromCamera(options?: VideoPickOptions): Promise<PickedMedia | null> {
+    if (!(await permissionService.ensure('camera'))) {
+      throw new MediaPermissionError('camera');
+    }
+    return handle(
+      await launchCamera({
+        mediaType: 'video',
+        durationLimit: options?.durationLimit ?? 60,
+        videoQuality: options?.videoQuality ?? 'high',
+        saveToPhotos: false,
+      }),
+      'camera',
+      'video'
+    );
+  },
+};
+
+export const imagePicker = {
+  pickFromGallery: mediaPickerService.pickImageFromGallery,
+  pickFromCamera: mediaPickerService.captureImageFromCamera,
 };

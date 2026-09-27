@@ -13,6 +13,7 @@ const rtl = (ctx: RenderContext) => ctx.options.rtl;
 const themeContext = (ctx: RenderContext) => ctx.options.themeContext;
 const vectorIcons = (ctx: RenderContext) => ctx.options.vectorIcons;
 const analytics = (ctx: RenderContext) => ctx.options.analytics;
+const notifications = (ctx: RenderContext) => ctx.options.notifications;
 
 /** GolosText – bundled in `assets/fonts` and registered natively (see native/fonts.ts). */
 export const APP_FONTS = ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'].map(w => `GolosText-${w}.ttf`);
@@ -32,6 +33,12 @@ function entries(group: GroupId, list: Array<[id: string, file: string, template
     template: template ?? `common/${group}/${file}`,
   }));
 }
+
+const socket = (ctx: RenderContext) => ctx.options.socket;
+const chat = (ctx: RenderContext) => ctx.options.chat;
+const authEmail = (ctx: RenderContext) => ctx.options.authEmail;
+const authMobile = (ctx: RenderContext) => ctx.options.authMobile;
+const hasSocialAuth = (ctx: RenderContext) => ctx.options.socialAuth !== 'none';
 
 export const COMMON_MANIFEST: ManifestEntry[] = [
   // Project root. Dot-files are stored without the dot so `npm publish` keeps them.
@@ -130,7 +137,7 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['notification.display', 'notificationDisplay.ts'],
     ['notification.handlers', 'notificationHandlers.ts'],
     ['notification.service', 'notificationService.ts'],
-  ]),
+  ]).map(e => ({ ...e, when: notifications })),
 
   ...entries('permissions', [['permissions.service', 'permissionService.ts']]),
 
@@ -149,6 +156,8 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['components.AppHeader', 'AppHeader/AppHeader.tsx'],
     ['components.AppWebView', 'AppWebView/AppWebView.tsx'],
     ['components.AppScreen', 'AppScreen/AppScreen.tsx'],
+    ['components.MediaPickerModal', 'MediaPickerModal/MediaPickerModal.tsx'],
+    ['components.MediaEditorModal', 'MediaEditorModal/MediaEditorModal.tsx'],
   ]),
   { ...entries('components', [['components.AppIcon', 'AppIcon/AppIcon.tsx']])[0]!, when: vectorIcons },
 
@@ -167,9 +176,26 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['screens.Splash', 'SplashScreen/SplashScreen.tsx'],
     ['screens.Login', 'LoginScreen/LoginScreen.tsx'],
     ['screens.Home', 'HomeScreen/HomeScreen.tsx'],
+    ['screens.Profile', 'ProfileScreen/ProfileScreen.tsx'],
+    ['screens.EditProfile', 'EditProfileScreen/EditProfileScreen.tsx'],
     ['screens.WebView', 'WebViewScreen/WebViewScreen.tsx'],
     ['screens.Settings', 'SettingsScreen/SettingsScreen.tsx'],
   ]),
+
+  // Additional Auth Screens
+  ...entries('auth', [
+    ['auth.RegisterScreen', 'screens/RegisterScreen/RegisterScreen.tsx'],
+    ['auth.ForgotPasswordScreen', 'screens/ForgotPasswordScreen/ForgotPasswordScreen.tsx'],
+    ['auth.ResetPasswordScreen', 'screens/ResetPasswordScreen/ResetPasswordScreen.tsx'],
+  ]).map(e => ({ ...e, when: authEmail })),
+
+  ...entries('auth', [
+    ['auth.MobileLoginScreen', 'screens/MobileLoginScreen/MobileLoginScreen.tsx'],
+    ['auth.OtpVerifyScreen', 'screens/OtpVerifyScreen/OtpVerifyScreen.tsx'],
+  ]).map(e => ({ ...e, when: authMobile })),
+
+  // Social Auth Service
+  { ...entries('auth', [['auth.socialAuth', 'services/socialAuthService.ts']])[0]!, when: hasSocialAuth },
 
   ...entries('auth', [
     ['auth.types', 'types/auth.ts'],
@@ -178,6 +204,24 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['auth.form', 'components/LoginForm/LoginForm.tsx'],
   ]),
   { id: 'auth.logic', group: 'auth', file: 'hooks/useLogin.ts', template: 'common/auth/hooks/useLogin.ts', symbol: 'useLogin' },
+
+  // Socket module
+  ...entries('socket', [
+    ['socket.service', 'socketService.ts'],
+    ['socket.events', 'socketEvents.ts'],
+  ]).map(e => ({ ...e, when: socket })),
+
+  // Chat module
+  ...entries('chat', [
+    ['chat.types', 'types/chat.ts'],
+    ['chat.endpoints', 'chatEndpoints.ts'],
+    ['chat.service', 'services/chatService.ts'],
+    ['chat.ChatListScreen', 'screens/ChatListScreen/ChatListScreen.tsx'],
+    ['chat.ChatRoomScreen', 'screens/ChatRoomScreen/ChatRoomScreen.tsx'],
+    ['chat.ChatBubble', 'components/ChatBubble/ChatBubble.tsx'],
+    ['chat.ChatInputBar', 'components/ChatInputBar/ChatInputBar.tsx'],
+    ['chat.ChatMediaPreview', 'components/ChatMediaPreview/ChatMediaPreview.tsx'],
+  ]).map(e => ({ ...e, when: chat })),
 
   // Session access is the only thing screens know about state; its implementation
   // depends on the selected state management.

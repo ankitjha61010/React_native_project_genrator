@@ -133,6 +133,12 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     rtl: false,
     themeContext: false,
     vectorIcons: true,
+    notifications: true,
+    authEmail: true,
+    authMobile: false,
+    socialAuth: 'none',
+    socket: false,
+    chat: false,
     initGit: flags.git,
     installDependencies: flags.install,
     installPods: flags.pods && process.platform === 'darwin',
@@ -246,6 +252,15 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     true,
   );
 
+  // Push Notifications (FCM + Notifee)
+  const notifications = await askYesNo(
+    flags.notifications,
+    interactive,
+    'Do you want to implement push notifications (Firebase Messaging + Notifee background handlers)?',
+    'Push notifications',
+    true,
+  );
+
   // Firebase
   const firebase: ProjectOptions['firebase'] = {};
   if (flags.firebaseAndroid) {
@@ -288,6 +303,62 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     false,
   );
 
+  // Authentication: Email Authentication (Sign In, Sign Up, Forgot Password, Reset Password)
+  const authEmail = await askYesNo(
+    flags.authEmail,
+    interactive,
+    'Do you want to enable Email Authentication (Sign In, Sign Up, Forgot & Reset Password)?',
+    'Email authentication',
+    true,
+  );
+
+  // Authentication: Mobile OTP Authentication (Phone Login, OTP Verification, Forgot PIN)
+  const authMobile = await askYesNo(
+    flags.authMobile,
+    interactive,
+    'Do you want to enable Mobile OTP Authentication (Sign In with Phone, OTP verification)?',
+    'Mobile OTP authentication',
+    false,
+  );
+
+  // Social Logins (Google / Facebook)
+  let socialAuth: 'google' | 'facebook' | 'both' | 'none';
+  if (flags.socialAuth !== undefined) {
+    socialAuth = flags.socialAuth;
+    log.success(`Social login: ${chalk.cyan(socialAuth)}`);
+  } else if (interactive) {
+    socialAuth = await select({
+      message: 'Do you want to add Social Login options (Google / Facebook)?',
+      choices: [
+        { name: 'None (No social login)', value: 'none' },
+        { name: 'Google Sign-In', value: 'google' },
+        { name: 'Facebook Login', value: 'facebook' },
+        { name: 'Both (Google + Facebook)', value: 'both' },
+      ],
+      default: 'none',
+    });
+  } else {
+    socialAuth = 'none';
+  }
+
+  // Socket.io Real-time Client
+  const socket = await askYesNo(
+    flags.socket,
+    interactive,
+    'Do you want to implement Socket.io client for real-time events & listeners?',
+    'Socket.io client',
+    false,
+  );
+
+  // Real-Time Chat (WhatsApp style with Media, Audio, Video, Docs)
+  const chat = await askYesNo(
+    flags.chat,
+    interactive,
+    'Do you want to implement a WhatsApp-style Real-Time Chat module (Chat list, Chat room, Audio/Video/Image/Doc messages)?',
+    'Real-time Chat module',
+    false,
+  );
+
   // Install / pods / git
   let { installDependencies, installPods, initGit } = base;
   if (interactive) {
@@ -326,5 +397,26 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     }
   }
 
-  return { ...base, architecture, stateManagement, storage, apiEncryption, rtl, themeContext, vectorIcons, firebase, analytics, installDependencies, installPods, initGit, overwrite };
+  return {
+    ...base,
+    architecture,
+    stateManagement,
+    storage,
+    apiEncryption,
+    rtl,
+    themeContext,
+    vectorIcons,
+    notifications,
+    authEmail,
+    authMobile,
+    socialAuth,
+    socket: socket || chat, // chat automatically enables socket client
+    chat,
+    firebase,
+    analytics,
+    installDependencies,
+    installPods,
+    initGit,
+    overwrite,
+  };
 }

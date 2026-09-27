@@ -7,7 +7,10 @@ import { AppIcon } from '{{IMPORT:components.AppIcon}}';
 import { useTheme } from '{{IMPORT:hooks.useTheme}}';
 import { translate } from '{{IMPORT:i18n.index}}';
 import { HomeScreen } from '{{IMPORT:screens.Home}}';
-import { SettingsScreen } from '{{IMPORT:screens.Settings}}';
+import { ProfileScreen } from '{{IMPORT:screens.Profile}}';
+{{#if CHAT}}
+import { ChatListScreen } from '{{IMPORT:chat.ChatListScreen}}';
+{{/if}}
 import type { BottomTabParamList } from './navigationTypes';
 
 {{#if VECTOR_ICONS}}
@@ -15,16 +18,23 @@ function HomeIcon({ color, size }: { color: string; size: number }) {
   return <AppIcon name="home-outline" size={size} tintColor={color} />;
 }
 
-function SettingsIcon({ color, size }: { color: string; size: number }) {
-  return <AppIcon name="cog-outline" size={size} tintColor={color} />;
+function ProfileIcon({ color, size }: { color: string; size: number }) {
+  return <AppIcon name="account-outline" size={size} tintColor={color} />;
 }
-
 {{/if}}
+
+{{#if CHAT}}
+{{#if VECTOR_ICONS}}
+function ChatIcon({ color, size }: { color: string; size: number }) {
+  return <AppIcon name="chat-outline" size={size} tintColor={color} />;
+}
+{{/if}}
+{{/if}}
+
 const Tab = createBottomTabNavigator<BottomTabParamList>();
 
 /**
  * The signed-in home: a bottom tab bar, each tab with its own header.
- * Add a tab: add the screen here and its route to BottomTabParamList.
  */
 export function BottomTabNavigator(): React.JSX.Element {
   const { theme } = useTheme();
@@ -48,13 +58,25 @@ export function BottomTabNavigator(): React.JSX.Element {
 {{/if}}
         }}
       />
+{{#if CHAT}}
       <Tab.Screen
-        name="SettingsTab"
-        component={SettingsScreen}
+        name="ChatTab"
+        component={ChatListScreen}
         options={{
-          title: translate('common', 'settings'),
+          title: 'Chats',
 {{#if VECTOR_ICONS}}
-          tabBarIcon: SettingsIcon,
+          tabBarIcon: ChatIcon,
+{{/if}}
+        }}
+      />
+{{/if}}
+      <Tab.Screen
+        name="ProfileTab"
+        component={ProfileScreen}
+        options={{
+          title: 'Profile',
+{{#if VECTOR_ICONS}}
+          tabBarIcon: ProfileIcon,
 {{/if}}
         }}
       />

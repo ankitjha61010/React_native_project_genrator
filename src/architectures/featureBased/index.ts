@@ -14,6 +14,7 @@ export const featureBased: ArchitectureDefinition = {
     'screens.Home': { path: `${f}/home/screens/HomeScreen/HomeScreen.tsx` },
     'screens.WebView': { path: `${f}/webview/screens/WebViewScreen/WebViewScreen.tsx` },
     'screens.Settings': { path: `${f}/settings/screens/SettingsScreen/SettingsScreen.tsx` },
+    'screens.Notifications': { path: `${f}/notifications/screens/NotificationsScreen/NotificationsScreen.tsx` },
   },
   keepDirs: [
     `${f}/authentication/constants`,
@@ -27,6 +28,7 @@ export const featureBased: ArchitectureDefinition = {
     [`${f}/authentication/index.ts`]: ['screens.Login', 'auth.logic', 'auth.types'],
     [`${f}/home/index.ts`]: ['screens.Home'],
     [`${f}/settings/index.ts`]: ['screens.Settings'],
+    [`${f}/notifications/index.ts`]: ['screens.Notifications'],
   },
   barrels: DEFAULT_BARRELS,
   docs: {

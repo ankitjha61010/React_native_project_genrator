@@ -1,4 +1,7 @@
 import type { AuthSession, LoginCredentials } from '{{IMPORT:auth.types}}';
+{{#if HAS_SOCIAL_AUTH}}
+import type { SocialAuthResult } from '{{IMPORT:auth.socialAuth}}';
+{{/if}}
 
 const DEMO_LATENCY_MS = 800;
 
@@ -18,4 +21,33 @@ export const authService = {
       user: { id: 'demo-user', email, name: email.split('@')[0] ?? email },
     };
   },
+{{#if HAS_SOCIAL_AUTH}}
+
+  /**
+   * DEMO implementation: trusts the provider result and returns a local session.
+   * In production send the provider token to your backend, verify it there
+   * (Google/Apple: JWT signature + audience, Facebook: debug_token) and return your
+   * own session, e.g.
+   *
+   *   return api.post<AuthSession>('/auth/social', {
+   *     provider: result.provider,
+   *     token: result.token,
+   *     tokenType: result.tokenType,
+   *     authorizationCode: result.authorizationCode,
+   *     nonce: result.nonce,
+   *   });
+   */
+  async socialLogin(result: SocialAuthResult): Promise<AuthSession> {
+    await new Promise<void>(resolve => setTimeout(() => resolve(), DEMO_LATENCY_MS));
+    return {
+      token: `demo-${result.provider}-token`,
+      user: {
+        id: result.user.id,
+        email: result.user.email ?? '',
+        name: result.user.name,
+        avatar: result.user.photoUrl,
+      },
+    };
+  },
+{{/if}}
 };

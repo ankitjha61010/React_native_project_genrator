@@ -1,0 +1,47 @@
+{
+  // ─────────────────────────────────────────────────────────────────────────
+  // SENTINEL – do NOT edit or delete this file.
+  //
+  // The files inside templates/ are CODE GENERATOR SOURCE FILES, not real
+  // TypeScript. They contain Handlebars-style placeholders such as:
+  //
+  //   {{IMPORT:components.AppText}}   – resolved at generation time
+  //   {{APP_NAME}}                    – string variable substitution
+  //   {{#if VECTOR_ICONS}} … {{/if}}  – conditional block
+  //
+  // VS Code's TypeScript language server walks UP the directory tree from any
+  // .ts / .tsx file until it finds a tsconfig.json. Without this sentinel it
+  // would reach the generator's root tsconfig and attempt to type-check the
+  // template files – producing hundreds of false-positive errors because
+  // import paths like '{{IMPORT:components.AppText}}' are not real modules.
+  //
+  // This sentinel tsconfig stops VS Code here with checkJs/strict disabled and
+  // an empty include list so NO files inside templates/ are type-checked.
+  // ─────────────────────────────────────────────────────────────────────────
+  "compilerOptions": {
+    // ── Suppress ALL diagnostics for template files ──────────────────────
+    // noCheck (TS ≥ 5.5) tells the language server to skip type-checking
+    // entirely for any file that falls under this tsconfig.
+    "noCheck": true,
+    "checkJs": false,
+    "noEmit": true,
+    "skipLibCheck": true,
+    // Disable every strict/module flag so even older TS versions stay quiet
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "jsx": "react-native",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true
+  },
+  // files: [] + exclude: ["**/*"] is the most aggressive way to tell VS Code
+  // "don't include ANY file in this tsconfig" while still letting it pick up
+  // the compiler options above for files that are open in the editor.
+  "files": [],
+  "include": [],
+  "exclude": ["**/*"]
+}

@@ -4,6 +4,7 @@ declare module 'xcode' {
     writeSync(): string;
     findPBXGroupKey(criteria: { name?: string; path?: string }): string | undefined;
     pbxFileReferenceSection(): Record<string, unknown>;
+    pbxXCBuildConfigurationSection(): Record<string, unknown>;
     getFirstTarget(): { uuid: string };
     addResourceFile(path: string, options: { target: string }, groupKey: string): unknown;
     pbxCreateGroup(name: string, pathName?: string): string;

@@ -1,6 +1,12 @@
 import { useCallback } from 'react';
 import type { AuthSession } from '{{IMPORT:auth.types}}';
 import { authSessionStorage } from '{{IMPORT:storage.session}}';
+{{#if NOTIFICATIONS}}
+import { notificationInbox } from '{{IMPORT:notification.inbox}}';
+{{/if}}
+{{#if HAS_SOCIAL_AUTH}}
+import { socialAuthService } from '{{IMPORT:auth.socialAuth}}';
+{{/if}}
 import {
   selectAuthToken,
   selectAuthUser,
@@ -26,6 +32,14 @@ export function useAuthSession() {
 
   const signOut = useCallback(async () => {
     await authSessionStorage.clear();
+{{#if NOTIFICATIONS}}
+    // The next user must not see this user's notifications.
+    await notificationInbox.clear();
+{{/if}}
+{{#if HAS_SOCIAL_AUTH}}
+    // Also end the Google / Facebook SDK session so the next login shows the account picker.
+    await socialAuthService.signOut();
+{{/if}}
     dispatch(sessionCleared());
   }, [dispatch]);
 

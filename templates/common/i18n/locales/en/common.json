@@ -14,5 +14,10 @@
   "permissionDenied": "Permission denied. You can enable it in Settings.",
   "newNotification": "New notification",
   "loading": "Loading…",
-  "settings": "Settings"
+  "settings": "Settings",
+  "termsAndConditions": "Terms & Conditions",
+  "privacyPolicy": "Privacy Policy",
+  "legal": "Legal",
+  "agreeToTerms": "By continuing you agree to our",
+  "and": "and"
 }

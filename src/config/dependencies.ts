@@ -30,6 +30,11 @@ export const DEPENDENCY_REGISTRY = {
     'react-native-localize',
     // Media & permissions (react-native-image-picker is a TurboModule – no patches needed on new RN versions)
     'react-native-image-picker',
+    // Native crop for MediaEditorModal (produces the actual cropped file)
+    '@react-native-community/image-editor',
+    // Full-resolution colour filters for MediaEditorModal (+ writing the result to a file)
+    '@shopify/react-native-skia',
+    'react-native-file-access',
     'react-native-permissions',
     // Forms
     'react-hook-form',
@@ -67,6 +72,9 @@ export const DEPENDENCY_REGISTRY = {
     notifications: { dependencies: ['@react-native-firebase/app', '@react-native-firebase/messaging', '@notifee/react-native'], devDependencies: [] },
     analytics: { dependencies: ['@react-native-firebase/app', '@react-native-firebase/analytics'], devDependencies: [] },
     socket: { dependencies: ['socket.io-client'], devDependencies: [] },
+    socialGoogle: { dependencies: ['@react-native-google-signin/google-signin'], devDependencies: [] },
+    socialFacebook: { dependencies: ['react-native-fbsdk-next'], devDependencies: [] },
+    socialApple: { dependencies: ['@invertase/react-native-apple-authentication'], devDependencies: [] },
     // Switching the native layout direction needs an app restart (I18nManager is read at startup).
     rtl: { dependencies: ['react-native-restart'], devDependencies: [] },
   },

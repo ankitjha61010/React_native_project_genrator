@@ -14,6 +14,8 @@ const themeContext = (ctx: RenderContext) => ctx.options.themeContext;
 const vectorIcons = (ctx: RenderContext) => ctx.options.vectorIcons;
 const analytics = (ctx: RenderContext) => ctx.options.analytics;
 const notifications = (ctx: RenderContext) => ctx.options.notifications;
+const drawer = (ctx: RenderContext) => ctx.options.drawer;
+const headerButtons = (ctx: RenderContext) => ctx.options.drawer || ctx.options.notifications;
 
 /** GolosText – bundled in `assets/fonts` and registered natively (see native/fonts.ts). */
 export const APP_FONTS = ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'].map(w => `GolosText-${w}.ttf`);
@@ -137,6 +139,11 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['notification.display', 'notificationDisplay.ts'],
     ['notification.handlers', 'notificationHandlers.ts'],
     ['notification.service', 'notificationService.ts'],
+    // Notification types + tap routing: the one place to change notification behaviour.
+    ['notification.types', 'notificationTypes.ts'],
+    ['notification.inbox', 'notificationInbox.ts'],
+    ['notification.router', 'notificationRouter.ts'],
+    ['notification.useNotifications', 'useNotifications.ts'],
   ]).map(e => ({ ...e, when: notifications })),
 
   ...entries('permissions', [['permissions.service', 'permissionService.ts']]),
@@ -158,6 +165,7 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['components.AppScreen', 'AppScreen/AppScreen.tsx'],
     ['components.MediaPickerModal', 'MediaPickerModal/MediaPickerModal.tsx'],
     ['components.MediaEditorModal', 'MediaEditorModal/MediaEditorModal.tsx'],
+    ['components.LegalLinks', 'LegalLinks/LegalLinks.tsx'],
   ]),
   { ...entries('components', [['components.AppIcon', 'AppIcon/AppIcon.tsx']])[0]!, when: vectorIcons },
 
@@ -168,9 +176,14 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['navigation.auth', 'AuthNavigator.tsx'],
     ['navigation.main', 'MainNavigator.tsx'],
     ['navigation.tabs', 'BottomTabNavigator.tsx'],
-    ['navigation.drawer', 'DrawerNavigator.tsx'],
+    ['navigation.homeStack', 'HomeStackNavigator.tsx'],
     ['navigation.app', 'AppNavigator.tsx'],
   ]),
+  { ...entries('navigation', [['navigation.headerButtons', 'HeaderButtons.tsx']])[0]!, when: headerButtons },
+  ...entries('navigation', [
+    ['navigation.drawer', 'DrawerNavigator.tsx'],
+    ['navigation.drawerContent', 'DrawerContent.tsx'],
+  ]).map(e => ({ ...e, when: drawer })),
 
   ...entries('screens', [
     ['screens.Splash', 'SplashScreen/SplashScreen.tsx'],
@@ -181,6 +194,7 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['screens.WebView', 'WebViewScreen/WebViewScreen.tsx'],
     ['screens.Settings', 'SettingsScreen/SettingsScreen.tsx'],
   ]),
+  { ...entries('screens', [['screens.Notifications', 'NotificationsScreen/NotificationsScreen.tsx']])[0]!, when: notifications },
 
   // Additional Auth Screens
   ...entries('auth', [
@@ -194,16 +208,18 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['auth.OtpVerifyScreen', 'screens/OtpVerifyScreen/OtpVerifyScreen.tsx'],
   ]).map(e => ({ ...e, when: authMobile })),
 
-  // Social Auth Service
+  // Social Auth Service + setup guide
   { ...entries('auth', [['auth.socialAuth', 'services/socialAuthService.ts']])[0]!, when: hasSocialAuth },
+  { ...entries('root', [['root.socialLoginDoc', 'docs/SOCIAL_LOGIN.md']])[0]!, when: hasSocialAuth },
 
   ...entries('auth', [
     ['auth.types', 'types/auth.ts'],
     ['auth.schema', 'schemas/loginSchema.ts'],
-    ['auth.service', 'services/authService.ts'],
     ['auth.form', 'components/LoginForm/LoginForm.tsx'],
   ]),
   { id: 'auth.logic', group: 'auth', file: 'hooks/useLogin.ts', template: 'common/auth/hooks/useLogin.ts', symbol: 'useLogin' },
+  // `symbol`: the export other files use (`{{SYMBOL:auth.service}}`) – clean architecture exports `authRepository`.
+  { id: 'auth.service', group: 'auth', file: 'services/authService.ts', template: 'common/auth/services/authService.ts', symbol: 'authService' },
 
   // Socket module
   ...entries('socket', [

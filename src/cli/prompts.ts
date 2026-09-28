@@ -5,7 +5,8 @@ import chalk from 'chalk';
 import { getArchitecture, isArchitectureId } from '../architectures/index.js';
 import { isStateManagement, isStorageEngine, STATE_MANAGEMENT_LABELS, STORAGE_LABELS } from '../config/constants.js';
 import { DEFAULT_REACT_NATIVE_VERSION } from '../config/reactNativeVersions.js';
-import type { ArchitectureId, ProjectOptions, StateManagement, StorageEngine } from '../core/types.js';
+import { SOCIAL_LOGIN_CHOICES } from '../config/socialAuth.js';
+import type { ArchitectureId, ProjectOptions, SocialLoginOption, StateManagement, StorageEngine } from '../core/types.js';
 import { GeneratorError } from '../utils/errors.js';
 import { validateGoogleServiceInfoPlist, validateGoogleServicesJson } from '../utils/firebaseFiles.js';
 import { resolveUserPath } from '../utils/paths.js';
@@ -139,6 +140,7 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     socialAuth: 'none',
     socket: false,
     chat: false,
+    drawer: false,
     initGit: flags.git,
     installDependencies: flags.install,
     installPods: flags.pods && process.platform === 'darwin',
@@ -321,20 +323,15 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     false,
   );
 
-  // Social Logins (Google / Facebook)
-  let socialAuth: 'google' | 'facebook' | 'both' | 'none';
+  // Social Logins (Google / Facebook / Apple)
+  let socialAuth: SocialLoginOption;
   if (flags.socialAuth !== undefined) {
     socialAuth = flags.socialAuth;
     log.success(`Social login: ${chalk.cyan(socialAuth)}`);
   } else if (interactive) {
     socialAuth = await select({
-      message: 'Do you want to add Social Login options (Google / Facebook)?',
-      choices: [
-        { name: 'None (No social login)', value: 'none' },
-        { name: 'Google Sign-In', value: 'google' },
-        { name: 'Facebook Login', value: 'facebook' },
-        { name: 'Both (Google + Facebook)', value: 'both' },
-      ],
+      message: 'Do you want to add Social Login (Google / Facebook / Apple)?',
+      choices: SOCIAL_LOGIN_CHOICES.map(c => ({ name: c.label, value: c.value, description: c.description })),
       default: 'none',
     });
   } else {
@@ -356,6 +353,15 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     interactive,
     'Do you want to implement a WhatsApp-style Real-Time Chat module (Chat list, Chat room, Audio/Video/Image/Doc messages)?',
     'Real-time Chat module',
+    false,
+  );
+
+  // Navigation: side drawer around the bottom tabs
+  const drawer = await askYesNo(
+    flags.drawer,
+    interactive,
+    'Do you want to display a side Drawer menu (drawer + bottom tabs)?',
+    'Drawer navigation',
     false,
   );
 
@@ -412,6 +418,7 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     socialAuth,
     socket: socket || chat, // chat automatically enables socket client
     chat,
+    drawer,
     firebase,
     analytics,
     installDependencies,

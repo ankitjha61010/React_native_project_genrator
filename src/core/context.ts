@@ -1,6 +1,7 @@
 import { ARCHITECTURES, getArchitecture } from '../architectures/index.js';
 import { STATE_MANAGEMENT_LABELS } from '../config/constants.js';
 import { getProfile } from '../config/compatibility.js';
+import { SOCIAL_PLACEHOLDERS, socialProviders } from '../config/socialAuth.js';
 import { allPlannedPaths, createPlan, importAliases } from './plan.js';
 import { renderTree } from './tree.js';
 import type { GenerationPlan, GroupId, ProjectOptions, RenderContext } from './types.js';
@@ -8,6 +9,11 @@ import type { GenerationPlan, GroupId, ProjectOptions, RenderContext } from './t
 export interface PreparedGeneration {
   ctx: RenderContext;
   plan: GenerationPlan;
+}
+
+/** "A", "A and B", "A, B and C". */
+function joinNames(names: string[]): string {
+  return names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
 
 function toVarName(id: string): string {
@@ -43,6 +49,7 @@ export function prepareGeneration(options: ProjectOptions): PreparedGeneration {
   const architecture = getArchitecture(options.architecture);
   const profile = getProfile(options.reactNativeVersion);
   const sm = options.stateManagement;
+  const social = socialProviders(options.socialAuth);
 
   const flags: Record<string, boolean> = {
     STATE_REDUX: sm === 'redux',
@@ -62,11 +69,14 @@ export function prepareGeneration(options: ProjectOptions): PreparedGeneration {
     STORAGE_ASYNC: options.storage === 'async-storage',
     AUTH_EMAIL: options.authEmail,
     AUTH_MOBILE: options.authMobile,
-    SOCIAL_GOOGLE: options.socialAuth === 'google' || options.socialAuth === 'both',
-    SOCIAL_FACEBOOK: options.socialAuth === 'facebook' || options.socialAuth === 'both',
+    SOCIAL_GOOGLE: social.google,
+    SOCIAL_FACEBOOK: social.facebook,
+    SOCIAL_APPLE: social.apple,
     HAS_SOCIAL_AUTH: options.socialAuth !== 'none',
     SOCKET: options.socket,
     CHAT: options.chat,
+    DRAWER: options.drawer,
+    HAS_HEADER_BUTTONS: options.drawer || options.notifications,
   };
   for (const a of ARCHITECTURES) {
     flags[`ARCH_${toVarName(a.id)}`] = a.id === architecture.id;
@@ -83,6 +93,16 @@ export function prepareGeneration(options: ProjectOptions): PreparedGeneration {
     STATE_MANAGEMENT_NAME: STATE_MANAGEMENT_LABELS[sm],
     RN_VERSION: profile.reactNative,
     REACT_VERSION: profile.react,
+    GOOGLE_WEB_CLIENT_ID_PLACEHOLDER: SOCIAL_PLACEHOLDERS.googleWebClientId,
+    GOOGLE_IOS_CLIENT_ID_PLACEHOLDER: SOCIAL_PLACEHOLDERS.googleIosClientId,
+    GOOGLE_IOS_URL_SCHEME_PLACEHOLDER: SOCIAL_PLACEHOLDERS.googleIosUrlScheme,
+    FACEBOOK_APP_ID_PLACEHOLDER: SOCIAL_PLACEHOLDERS.facebookAppId,
+    FACEBOOK_CLIENT_TOKEN_PLACEHOLDER: SOCIAL_PLACEHOLDERS.facebookClientToken,
+    SOCIAL_PROVIDER_NAMES: joinNames([
+      ...(social.google ? ['**Google**'] : []),
+      ...(social.facebook ? ['**Facebook**'] : []),
+      ...(social.apple ? ['**Apple** (iOS only)'] : []),
+    ]),
   };
 
   const ctx: RenderContext = { options, architecture, variables, flags };

@@ -14,5 +14,10 @@
   "permissionDenied": "تم رفض الإذن. يمكنك تفعيله من الإعدادات.",
   "newNotification": "إشعار جديد",
   "loading": "جارٍ التحميل…",
-  "settings": "الإعدادات"
+  "settings": "الإعدادات",
+  "termsAndConditions": "الشروط والأحكام",
+  "privacyPolicy": "سياسة الخصوصية",
+  "legal": "قانوني",
+  "agreeToTerms": "بالمتابعة فإنك توافق على",
+  "and": "و"
 }

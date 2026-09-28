@@ -34,6 +34,7 @@ export const modular: ArchitectureDefinition = {
     'screens.Home': { path: `${m}/home/screens/HomeScreen/HomeScreen.tsx` },
     'screens.WebView': { path: `${m}/webview/screens/WebViewScreen/WebViewScreen.tsx` },
     'screens.Settings': { path: `${m}/settings/screens/SettingsScreen/SettingsScreen.tsx` },
+    'screens.Notifications': { path: `${m}/notifications/screens/NotificationsScreen/NotificationsScreen.tsx` },
   },
   customBarrels: {
     [`${m}/auth/index.ts`]: ['screens.Login', 'auth.logic', 'auth.types'],
@@ -41,6 +42,7 @@ export const modular: ArchitectureDefinition = {
     [`${m}/home/index.ts`]: ['screens.Home'],
     [`${m}/webview/index.ts`]: ['screens.WebView'],
     [`${m}/settings/index.ts`]: ['screens.Settings'],
+    [`${m}/notifications/index.ts`]: ['screens.Notifications'],
   },
   barrels: ['theme', 'components', 'navigation', 'api', 'storage', 'notification', 'permissions', 'media', 'firebase'],
   docs: {

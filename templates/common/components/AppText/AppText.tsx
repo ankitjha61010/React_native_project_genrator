@@ -34,7 +34,10 @@ const TEXT_DIRECTION: TextStyle = {
 };
 
 interface AppTextOwnProps {
-  /** Plain, non-translated text. Prefer `intlType` + `value` for anything user facing. */
+  /**
+   * Plain, non-translated text. Prefer `intlType` + `value` for anything user facing.
+   * Can be combined with `children` – text is rendered first, then children.
+   */
   text?: string;
   /** `theme.typography.fontFamily` key. Default: regular. */
   fontFamily?: FontFamily;
@@ -44,6 +47,16 @@ interface AppTextOwnProps {
   color?: ColorName;
   /** Default: start – `'left'` in LTR, mirrored to the right in RTL. Use `'center'` / `'justify'` as needed. */
   align?: TextStyle['textAlign'];
+  /**
+   * Supports plain strings, JSX, and nested `<AppText>` components.
+   *
+   * @example
+   * // Nested AppText – works because React Native Text supports nesting:
+   * <AppText fontFamily="bold">
+   *   Hello{' '}
+   *   <AppText color="primary">world</AppText>
+   * </AppText>
+   */
   children?: React.ReactNode;
 }
 
@@ -73,19 +86,30 @@ export function AppText({
   useTranslation();
   const { theme } = useTheme();
 
-  const intlContent = intlType && value ? translate(intlType, value, { value1, value2, value3, count }) : null;
-  const content = intlContent !== null ? (
-    children ? (
-      <>
-        {intlContent}
-        {children}
-      </>
-    ) : (
-      intlContent
-    )
-  ) : (
-    text ?? children
-  );
+  // Resolve translated content if intl props are supplied.
+  const intlContent = intlType && value
+    ? translate(intlType, value, { value1, value2, value3, count })
+    : null;
+
+  /**
+   * Content resolution:
+   * 1. If intl props supplied  → intlContent (+ children appended if present).
+   * 2. Else if `text` prop     → `text` string (+ children appended if present).
+   * 3. Else                   → children only (supports nested <AppText>).
+   *
+   * React Native's <Text> natively supports nested <Text> children, so nested
+   * <AppText> works out of the box – the inner AppText renders its own <Text>
+   * and inherits parent font styles automatically.
+   */
+  const resolvedContent: React.ReactNode = (() => {
+    if (intlContent !== null) {
+      return children ? <>{intlContent}{children}</> : intlContent;
+    }
+    if (text !== undefined) {
+      return children ? <>{text}{children}</> : text;
+    }
+    return children;
+  })();
 
   return (
     <Text
@@ -101,7 +125,7 @@ export function AppText({
         style,
       ]}
       {...rest}>
-      {content}
+      {resolvedContent}
     </Text>
   );
 }

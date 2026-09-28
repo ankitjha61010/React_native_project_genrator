@@ -14,5 +14,10 @@
   "permissionDenied": "अनुमति नहीं मिली। आप इसे सेटिंग्स में चालू कर सकते हैं।",
   "newNotification": "नई सूचना",
   "loading": "लोड हो रहा है…",
-  "settings": "सेटिंग्स"
+  "settings": "सेटिंग्स",
+  "termsAndConditions": "नियम और शर्तें",
+  "privacyPolicy": "गोपनीयता नीति",
+  "legal": "कानूनी",
+  "agreeToTerms": "आगे बढ़कर आप हमारी इन शर्तों से सहमत हैं:",
+  "and": "और"
 }

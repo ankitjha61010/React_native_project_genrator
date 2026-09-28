@@ -9,6 +9,8 @@ import {
 } from '@react-native-firebase/messaging';
 import { isFirebaseConfigured } from '{{IMPORT:firebase.service}}';
 import { logger } from '{{IMPORT:utils.logger}}';
+import { notificationInbox } from './notificationInbox';
+import { toAppNotification } from './notificationTypes';
 import {
   displayNotification,
   handleBackgroundNotificationEvent,
@@ -17,6 +19,22 @@ import {
 } from './notificationDisplay';
 
 export type { NotificationTap, RemoteMessage };
+
+/** Stores a received message in the inbox (Notifications screen + unread badge). */
+async function saveToInbox(message: RemoteMessage): Promise<void> {
+  const notification = toAppNotification({
+    id: message.messageId,
+    title: message.notification?.title,
+    body: message.notification?.body,
+    data: message.data,
+  });
+  if (!notification.title && !notification.body) return; // silent data message
+  try {
+    await notificationInbox.add(notification);
+  } catch (error) {
+    logger.warn('Saving the notification failed', error);
+  }
+}
 
 /**
  * Everything that must be registered outside React, as early as possible – called from
@@ -38,6 +56,7 @@ export function registerNotificationHandlers(): void {
 
   setBackgroundMessageHandler(messaging, async message => {
     logger.info('Background message', message.messageId);
+    await saveToInbox(message);
     if (!message.notification) {
       await displayNotification(message);
     }
@@ -45,6 +64,7 @@ export function registerNotificationHandlers(): void {
 
   onMessage(messaging, async message => {
     logger.info('Foreground message', message.messageId);
+    await saveToInbox(message);
     await displayNotification(message);
   });
 }
@@ -68,14 +88,18 @@ export function subscribeToNotificationTaps(listener: (tap: NotificationTap) => 
   cleanups.push(
     notifee.onForegroundEvent(({ type, detail }) => {
       if ((type === EventType.PRESS || type === EventType.ACTION_PRESS) && detail.notification) {
-        emit({ id: detail.notification.id, data: detail.notification.data ?? {} });
+        const { id, title, body, data } = detail.notification;
+        emit({ id, title, body, data: data ?? {} });
       }
     }),
   );
   notifee
     .getInitialNotification()
     .then(initial => {
-      if (initial) emit({ id: initial.notification.id, data: initial.notification.data ?? {} });
+      if (initial) {
+        const { id, title, body, data } = initial.notification;
+        emit({ id, title, body, data: data ?? {} });
+      }
     })
     .catch(error => logger.warn('notifee.getInitialNotification failed', error));
   takePendingNotificationTap()
@@ -87,10 +111,16 @@ export function subscribeToNotificationTaps(listener: (tap: NotificationTap) => 
   // Notifications displayed by the OS (FCM notification messages in the background).
   if (isFirebaseConfigured()) {
     const messaging = getMessaging();
-    cleanups.push(onNotificationOpenedApp(messaging, message => emit({ id: message.messageId, data: message.data ?? {} })));
+    const fromMessage = (message: RemoteMessage): NotificationTap => ({
+      id: message.messageId,
+      title: message.notification?.title,
+      body: message.notification?.body,
+      data: message.data ?? {},
+    });
+    cleanups.push(onNotificationOpenedApp(messaging, message => emit(fromMessage(message))));
     getInitialNotification(messaging)
       .then(message => {
-        if (message) emit({ id: message.messageId, data: message.data ?? {} });
+        if (message) emit(fromMessage(message));
       })
       .catch(error => logger.warn('getInitialNotification failed', error));
   }

@@ -18,6 +18,7 @@ export const atomic: ArchitectureDefinition = {
     'components.LanguageSwitcher': { path: `${c}/molecules/LanguageSwitcher/LanguageSwitcher.tsx` },
     'components.AppHeader': { path: `${c}/organisms/AppHeader/AppHeader.tsx` },
     'components.AppWebView': { path: `${c}/organisms/AppWebView/AppWebView.tsx` },
+    'components.LegalLinks': { path: `${c}/molecules/LegalLinks/LegalLinks.tsx` },
     'auth.form': { path: `${c}/organisms/LoginForm/LoginForm.tsx` },
     'components.AppScreen': { path: `${c}/templates/AppScreen/AppScreen.tsx` },
     'auth.types': { path: 'src/types/auth.ts' },

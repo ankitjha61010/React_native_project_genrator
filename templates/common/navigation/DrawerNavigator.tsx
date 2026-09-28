@@ -1,11 +1,13 @@
 import React from 'react';
 import { createDrawerNavigator } from '@react-navigation/drawer';
+import { useTranslation } from 'react-i18next';
 {{#if VECTOR_ICONS}}
 import { AppIcon } from '{{IMPORT:components.AppIcon}}';
 {{/if}}
 import { useTheme } from '{{IMPORT:hooks.useTheme}}';
 import { translate } from '{{IMPORT:i18n.index}}';
-import { HomeScreen } from '{{IMPORT:screens.Home}}';
+import { BottomTabNavigator } from './BottomTabNavigator';
+import { DrawerContent } from './DrawerContent';
 import type { DrawerParamList } from './navigationTypes';
 
 {{#if VECTOR_ICONS}}
@@ -16,25 +18,33 @@ function HomeIcon({ color, size }: { color: string; size: number }) {
 
 const Drawer = createDrawerNavigator<DrawerParamList>();
 
+function renderDrawerContent(props: React.ComponentProps<typeof DrawerContent>) {
+  return <DrawerContent {...props} />;
+}
+
 /**
- * TEMPLATE – not mounted by default.
- *
- * Enable it in MainNavigator:
- *   1. add `Drawer: NavigatorScreenParams<DrawerParamList>` to MainStackParamList,
- *   2. replace the `Tabs` screen with `<Stack.Screen name="Drawer" component={DrawerNavigator} options={{ headerShown: false }} />`.
- * Requires react-native-gesture-handler + react-native-reanimated (already configured).
+ * Side drawer around the bottom tabs: swipe from the edge or tap the menu button in
+ * the header. Its items (Notifications, Settings, Log out) live in DrawerContent.
+ * Add a screen here to get another drawer item.
  */
 export function DrawerNavigator(): React.JSX.Element {
   const { theme } = useTheme();
+  useTranslation();
+
   return (
     <Drawer.Navigator
+      drawerContent={renderDrawerContent}
       screenOptions={{
+        // Every screen below brings its own (tab / native stack) header.
+        headerShown: false,
+        drawerType: 'front',
         drawerActiveTintColor: theme.colors.primary,
-        drawerInactiveTintColor: theme.colors.tabInactive,
+        drawerInactiveTintColor: theme.colors.text,
+        drawerStyle: { backgroundColor: theme.colors.surface },
       }}>
       <Drawer.Screen
-        name="HomeDrawer"
-        component={HomeScreen}
+        name="HomeTabs"
+        component={BottomTabNavigator}
         options={{
           title: translate('home', 'home'),
 {{#if VECTOR_ICONS}}

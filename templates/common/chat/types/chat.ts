@@ -14,6 +14,9 @@ export interface ChatMessageCrop {
   aspectRatio: string;
   rotation?: number;
   filter?: 'normal' | 'warm' | 'cool' | 'mono';
+  /** Pixel size of the (already cropped) media file. */
+  outputWidth?: number;
+  outputHeight?: number;
 }
 
 export interface ChatMessage {

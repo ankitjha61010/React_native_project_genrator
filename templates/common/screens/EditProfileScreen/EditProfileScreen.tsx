@@ -79,11 +79,11 @@ export function EditProfileScreen(): React.JSX.Element {
     if (!avatarCrop?.filter) return null;
     switch (avatarCrop.filter) {
       case 'warm':
-        return { tintColor: '#ff9800', opacity: 0.15 };
+        return { backgroundColor: '#ff9800', opacity: 0.15 };
       case 'cool':
-        return { tintColor: '#2196f3', opacity: 0.15 };
+        return { backgroundColor: '#2196f3', opacity: 0.15 };
       case 'mono':
-        return { tintColor: '#000000', opacity: 0.25 };
+        return { backgroundColor: '#000000', opacity: 0.25 };
       default:
         return null;
     }

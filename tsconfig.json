@@ -13,5 +13,10 @@
     "outDir": "dist",
     "rootDir": "."
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts"]
+  // Only lint the generator source & tests.
+  // The templates/ directory contains Handlebars-style placeholders ({{IMPORT:...}},
+  // {{#if FLAG}}) and a tsconfig.json with un-substituted variables — none of which
+  // are valid TypeScript. VS Code must not try to typecheck template files.
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules", "dist", "templates"]
 }

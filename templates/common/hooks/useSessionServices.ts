@@ -3,7 +3,7 @@ import { configureApiAuth } from '{{IMPORT:api.client}}';
 import { useAuthSession } from '{{IMPORT:hooks.useAuthSession}}';
 import { resetToAuth } from '{{IMPORT:navigation.ref}}';
 {{#if NOTIFICATIONS}}
-import { openUrlInApp } from '{{IMPORT:navigation.ref}}';
+import { handleNotificationTap } from '{{IMPORT:notification.router}}';
 import { notificationService } from '{{IMPORT:notification.service}}';
 {{/if}}
 import { flash } from '{{IMPORT:utils.flashMessage}}';
@@ -33,13 +33,9 @@ export function useSessionServices(): void {
 
     notificationService
       .initialize({
-        // Send `{ "url": "https://…" }` in the FCM data payload to open a page on tap.
-        onNotificationTap: ({ data }) => {
-          const url = data.url;
-          if (typeof url === 'string') {
-            openUrlInApp(url);
-          }
-        },
+        // Routing per notification type lives in notificationTypes.ts:
+        // `chat` → the conversation, everything else → the Notifications screen.
+        onNotificationTap: handleNotificationTap,
       })
       .then(dispose => {
         if (unmounted) dispose();

@@ -10,7 +10,7 @@ import { AppScreen } from '{{IMPORT:components.AppScreen}}';
 import { AppText } from '{{IMPORT:components.AppText}}';
 import { FadeInView } from '{{IMPORT:components.FadeInView}}';
 import { useStyles } from '{{IMPORT:hooks.useTheme}}';
-import { showSuccessFlashMessage } from '{{IMPORT:utils.flashMessage}}';
+import { flash } from '{{IMPORT:utils.flashMessage}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
 import type { IntlKey } from '{{IMPORT:i18n.index}}';
 
@@ -39,8 +39,8 @@ export function ResetPasswordScreen(): React.JSX.Element {
   });
 
   const onSubmit = handleSubmit(async () => {
-    await new Promise(res => setTimeout(res, 800));
-    showSuccessFlashMessage({ message: 'Password reset successfully! Please log in.' });
+    await new Promise<void>(res => setTimeout(res, 800));
+    flash.success({ message: 'Password reset successfully! Please log in.' });
     navigation.navigate('Login');
   });
 
@@ -109,7 +109,7 @@ export function ResetPasswordScreen(): React.JSX.Element {
               errorValue={fieldState.error?.message as IntlKey<'auth'> | undefined}
               secureTextEntry
               returnKeyType="done"
-              onSubmitEditing={onSubmit}
+              onSubmitEditing={() => onSubmit()}
             />
           )}
         />

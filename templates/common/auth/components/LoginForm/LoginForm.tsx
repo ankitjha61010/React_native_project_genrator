@@ -1,5 +1,9 @@
+{{#if HAS_SOCIAL_AUTH}}
 import React, { useState } from 'react';
-import { StyleSheet, View, TouchableOpacity } from 'react-native';
+{{else}}
+import React from 'react';
+{{/if}}
+import { StyleSheet, View, TouchableOpacity{{#if HAS_SOCIAL_AUTH}}, ActivityIndicator{{/if}} } from 'react-native';
 import { Controller, type Control } from 'react-hook-form';
 import { useNavigation } from '@react-navigation/native';
 import type { LoginFormValues } from '{{IMPORT:auth.schema}}';
@@ -7,14 +11,26 @@ import { AppButton } from '{{IMPORT:components.AppButton}}';
 import { AppInput } from '{{IMPORT:components.AppInput}}';
 import { AppText } from '{{IMPORT:components.AppText}}';
 {{#if VECTOR_ICONS}}
+{{#if HAS_SOCIAL_AUTH}}
 import { AppIcon } from '{{IMPORT:components.AppIcon}}';
 {{/if}}
-import { useStyles } from '{{IMPORT:hooks.useTheme}}';
-import { useAuthSession } from '{{IMPORT:hooks.useAuthSession}}';
-{{#if HAS_SOCIAL_AUTH}}
-import { socialAuthService } from '{{IMPORT:auth.socialAuth}}';
 {{/if}}
+import { useStyles } from '{{IMPORT:hooks.useTheme}}';
+{{#if HAS_SOCIAL_AUTH}}
+import { useAuthSession } from '{{IMPORT:hooks.useAuthSession}}';
+{{#if SOCIAL_APPLE}}
+import { AppleButton } from '@invertase/react-native-apple-authentication';
+{{/if}}
+import { {{SYMBOL:auth.service}} } from '{{IMPORT:auth.service}}';
+import {
+  socialAuthService,
+  SocialAuthCancelledError,
+  type SocialProvider,
+} from '{{IMPORT:auth.socialAuth}}';
+{{/if}}
+{{#if HAS_SOCIAL_AUTH}}
 import { flash } from '{{IMPORT:utils.flashMessage}}';
+{{/if}}
 import type { IntlKey } from '{{IMPORT:i18n.index}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
 
@@ -27,32 +43,24 @@ export interface LoginFormProps {
 /** Presentational form – validation rules live in the zod schema. */
 export function LoginForm({ control, onSubmit, submitting = false }: LoginFormProps): React.JSX.Element {
   const navigation = useNavigation<any>();
-  const { signIn } = useAuthSession();
   const styles = useStyles(createStyles);
-  const [socialLoading, setSocialLoading] = useState<'google' | 'facebook' | null>(null);
-
 {{#if HAS_SOCIAL_AUTH}}
-  const handleGoogleLogin = async () => {
-    try {
-      setSocialLoading('google');
-      const user = await socialAuthService.signInWithGoogle();
-      await signIn({ token: user.accessToken, user });
-      flash.success({ message: `Signed in as ${user.name}` });
-    } catch {
-      flash.error({ message: 'Google sign in failed' });
-    } finally {
-      setSocialLoading(null);
-    }
-  };
+  const { signIn } = useAuthSession();
+  const [socialLoading, setSocialLoading] = useState<SocialProvider | null>(null);
 
-  const handleFacebookLogin = async () => {
+  /** Provider SDK → your backend ({{SYMBOL:auth.service}}.socialLogin) → persisted session. */
+  const handleSocialLogin = async (provider: SocialProvider, label: string) => {
+    if (socialLoading) return;
     try {
-      setSocialLoading('facebook');
-      const user = await socialAuthService.signInWithFacebook();
-      await signIn({ token: user.accessToken, user });
-      flash.success({ message: `Signed in as ${user.name}` });
-    } catch {
-      flash.error({ message: 'Facebook sign in failed' });
+      setSocialLoading(provider);
+      const result = await socialAuthService.signIn(provider);
+      const session = await {{SYMBOL:auth.service}}.socialLogin(result);
+      await signIn(session);
+      flash.success({ message: `Signed in as ${session.user.name}` });
+    } catch (error) {
+      // Closing the provider sheet is not an error.
+      if (error instanceof SocialAuthCancelledError) return;
+      flash.error({ message: error instanceof Error ? error.message : `${label} sign in failed` });
     } finally {
       setSocialLoading(null);
     }
@@ -138,27 +146,55 @@ export function LoginForm({ control, onSubmit, submitting = false }: LoginFormPr
 {{#if SOCIAL_GOOGLE}}
         <TouchableOpacity
           style={styles.socialBtn}
-          onPress={handleGoogleLogin}
-          disabled={Boolean(socialLoading)}>
+          onPress={() => handleSocialLogin('google', 'Google')}
+          disabled={Boolean(socialLoading)}
+          accessibilityLabel="Continue with Google">
+          {socialLoading === 'google' ? (
+            <ActivityIndicator size="small" />
+          ) : (
+            <>
 {{#if VECTOR_ICONS}}
-          <AppIcon name="google" size={20} tintColor="#EA4335" />
+              <AppIcon name="google" size={20} tintColor="#EA4335" />
 {{/if}}
-          <AppText style={styles.socialBtnText}>Google</AppText>
+              <AppText style={styles.socialBtnText}>Google</AppText>
+            </>
+          )}
         </TouchableOpacity>
 {{/if}}
 
 {{#if SOCIAL_FACEBOOK}}
         <TouchableOpacity
           style={styles.socialBtn}
-          onPress={handleFacebookLogin}
-          disabled={Boolean(socialLoading)}>
+          onPress={() => handleSocialLogin('facebook', 'Facebook')}
+          disabled={Boolean(socialLoading)}
+          accessibilityLabel="Continue with Facebook">
+          {socialLoading === 'facebook' ? (
+            <ActivityIndicator size="small" />
+          ) : (
+            <>
 {{#if VECTOR_ICONS}}
-          <AppIcon name="facebook" size={20} tintColor="#1877F2" />
+              <AppIcon name="facebook" size={20} tintColor="#1877F2" />
 {{/if}}
-          <AppText style={styles.socialBtnText}>Facebook</AppText>
+              <AppText style={styles.socialBtnText}>Facebook</AppText>
+            </>
+          )}
         </TouchableOpacity>
 {{/if}}
       </View>
+
+{{#if SOCIAL_APPLE}}
+      {/* Apple's own button (required by the App Store guidelines); iOS 13+ only. */}
+      {socialAuthService.isAppleSupported && (
+        <View pointerEvents={socialLoading ? 'none' : 'auto'} style={socialLoading ? styles.disabled : undefined}>
+          <AppleButton
+            buttonStyle={AppleButton.Style.BLACK}
+            buttonType={AppleButton.Type.CONTINUE}
+            style={styles.appleBtn}
+            onPress={() => handleSocialLogin('apple', 'Apple')}
+          />
+        </View>
+      )}
+{{/if}}
 {{/if}}
 
 {{#if AUTH_EMAIL}}
@@ -219,6 +255,15 @@ const createStyles = (theme: Theme) =>
       fontWeight: '600',
       color: theme.colors.text,
     },
+{{#if SOCIAL_APPLE}}
+    appleBtn: {
+      width: '100%',
+      height: 46,
+    },
+    disabled: {
+      opacity: 0.5,
+    },
+{{/if}}
     signUpRow: {
       flexDirection: 'row',
       alignItems: 'center',

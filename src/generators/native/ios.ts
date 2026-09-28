@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'fs-extra';
 import plist from 'plist';
 import xcode from 'xcode';
+import { SOCIAL_PLACEHOLDERS, type SocialProviders } from '../../config/socialAuth.js';
 import { GeneratorError } from '../../utils/errors.js';
 import { applyPatches } from '../../utils/nativePatch.js';
 
@@ -301,4 +302,125 @@ export async function linkIosFonts(
   [...fontPaths.map(font => path.posix.basename(font)), ...extraAppFonts].forEach(font => fonts.add(font));
   data.UIAppFonts = [...fonts];
   await fs.writeFile(infoPlist, plist.build(data, { indent: '\t', pretty: true }) + '\n', 'utf8');
+}
+
+/** Adds a URL scheme to Info.plist › CFBundleURLTypes (idempotent). */
+function addUrlScheme(data: Record<string, plist.PlistValue>, scheme: string): void {
+  const types = Array.isArray(data.CFBundleURLTypes) ? (data.CFBundleURLTypes as Array<Record<string, plist.PlistValue>>) : [];
+  const exists = types.some(t => Array.isArray(t.CFBundleURLSchemes) && (t.CFBundleURLSchemes as string[]).includes(scheme));
+  if (!exists) {
+    types.push({ CFBundleURLSchemes: [scheme] });
+  }
+  data.CFBundleURLTypes = types;
+}
+
+/** Schemes the Facebook SDK queries to log in through the Facebook app. */
+const FACEBOOK_QUERY_SCHEMES = ['fbapi', 'fb-messenger-api', 'fbauth2', 'fbshareextension'];
+
+/**
+ * Social login on iOS:
+ * - Google: reversed iOS client id URL scheme.
+ * - Facebook: FacebookAppID / ClientToken / DisplayName, `fb<APP_ID>` URL scheme, query
+ *   schemes and the SDK hooks in AppDelegate (launch + open URL).
+ * - Apple: "Sign in with Apple" entitlement wired into the app target.
+ * Every value is a placeholder listed in docs/SOCIAL_LOGIN.md.
+ */
+export async function configureIosSocialAuth(
+  projectDir: string,
+  appName: string,
+  displayName: string,
+  providers: SocialProviders,
+): Promise<void> {
+  const { infoPlist, appDelegate, pbxproj, appFolder } = iosPaths(projectDir, appName);
+
+  if (providers.google || providers.facebook) {
+    if (!(await fs.pathExists(infoPlist))) {
+      throw new GeneratorError(`Expected Info.plist at ${infoPlist}.`);
+    }
+    const data = plist.parse(await fs.readFile(infoPlist, 'utf8')) as Record<string, plist.PlistValue>;
+    if (providers.google) {
+      addUrlScheme(data, SOCIAL_PLACEHOLDERS.googleIosUrlScheme);
+    }
+    if (providers.facebook) {
+      data.FacebookAppID = SOCIAL_PLACEHOLDERS.facebookAppId;
+      data.FacebookClientToken = SOCIAL_PLACEHOLDERS.facebookClientToken;
+      data.FacebookDisplayName ??= displayName;
+      addUrlScheme(data, `fb${SOCIAL_PLACEHOLDERS.facebookAppId}`);
+      const queries = new Set(Array.isArray(data.LSApplicationQueriesSchemes) ? (data.LSApplicationQueriesSchemes as string[]) : []);
+      FACEBOOK_QUERY_SCHEMES.forEach(s => queries.add(s));
+      data.LSApplicationQueriesSchemes = [...queries];
+    }
+    await fs.writeFile(infoPlist, plist.build(data, { indent: '\t', pretty: true }) + '\n', 'utf8');
+  }
+
+  if (providers.facebook) {
+    await edit(appDelegate, 'AppDelegate.swift', source =>
+      applyPatches(
+        source,
+        [
+          {
+            id: 'facebook-import',
+            anchor: /^import UIKit$/m,
+            position: 'after',
+            comment: '//',
+            content: 'import FBSDKCoreKit',
+          },
+          {
+            id: 'facebook-launch',
+            anchor: /didFinishLaunchingWithOptions launchOptions:[^\n]*\n\s*\) -> Bool \{/,
+            position: 'after',
+            comment: '//',
+            content: 'ApplicationDelegate.shared.application(application, didFinishLaunchingWithOptions: launchOptions)',
+          },
+          {
+            id: 'facebook-open-url',
+            // Last line of the AppDelegate class (the RN delegate class follows it).
+            anchor: /^\}\n\nclass ReactNativeDelegate/m,
+            position: 'before',
+            comment: '//',
+            content: [
+              '  // Facebook Login returns to the app through a URL; other deep links go to React Native.',
+              '  func application(',
+              '    _ app: UIApplication,',
+              '    open url: URL,',
+              '    options: [UIApplication.OpenURLOptionsKey: Any] = [:]',
+              '  ) -> Bool {',
+              '    if ApplicationDelegate.shared.application(app, open: url, options: options) {',
+              '      return true',
+              '    }',
+              '    return RCTLinkingManager.application(app, open: url, options: options)',
+              '  }',
+            ].join('\n'),
+          },
+        ],
+        'AppDelegate.swift',
+      ),
+    );
+  }
+
+  if (providers.apple) {
+    const entitlementsName = `${appName}.entitlements`;
+    const entitlementsFile = path.join(appFolder, entitlementsName);
+    const entitlements = (await fs.pathExists(entitlementsFile))
+      ? (plist.parse(await fs.readFile(entitlementsFile, 'utf8')) as Record<string, plist.PlistValue>)
+      : {};
+    entitlements['com.apple.developer.applesignin'] = ['Default'];
+    await fs.writeFile(entitlementsFile, plist.build(entitlements, { indent: '\t', pretty: true }) + '\n', 'utf8');
+
+    // Point the app target (Debug + Release) at the entitlements file.
+    const project = xcode.project(pbxproj);
+    project.parseSync();
+    let linked = false;
+    for (const config of Object.values(project.pbxXCBuildConfigurationSection())) {
+      if (typeof config !== 'object' || config === null) continue;
+      const settings = (config as { buildSettings?: Record<string, unknown> }).buildSettings;
+      if (!settings || String(settings.INFOPLIST_FILE ?? '').replace(/"/g, '') !== `${appName}/Info.plist`) continue;
+      settings.CODE_SIGN_ENTITLEMENTS = `${appName}/${entitlementsName}`;
+      linked = true;
+    }
+    if (!linked) {
+      throw new GeneratorError(`Could not add the Sign in with Apple entitlement to the "${appName}" target.`);
+    }
+    await fs.writeFile(pbxproj, project.writeSync(), 'utf8');
+  }
 }

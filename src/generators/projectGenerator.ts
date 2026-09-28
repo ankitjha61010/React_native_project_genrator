@@ -13,7 +13,8 @@ import { generateFirebase } from './firebaseGenerator.js';
 import { initGit } from './gitGenerator.js';
 import { generateNavigation, generateScreens } from './navigationGenerator.js';
 import { generateNotifications } from './notificationGenerator.js';
-import { installAndroidFonts } from './native/android.js';
+import { generateSocialAuth } from './socialAuthGenerator.js';
+import { configureAndroidLayoutDirection, installAndroidFonts } from './native/android.js';
 import { configureXcodeEnv, linkIosFonts, VECTOR_ICON_FONTS } from './native/ios.js';
 import { initReactNativeProject } from './reactNativeInit.js';
 
@@ -82,6 +83,7 @@ export async function generateProject(options: ProjectOptions, hooks: Generation
         await (hooks.initProject ?? initReactNativeProject)(projectDir, options, profile);
         await Promise.all(OBSOLETE_TEMPLATE_FILES.map(file => fs.remove(path.join(projectDir, file))));
         await configureXcodeEnv(projectDir, options.appName);
+        await configureAndroidLayoutDirection(projectDir, options.rtl);
       },
       `React Native ${profile.reactNative} project created`,
     );
@@ -118,6 +120,12 @@ export async function generateProject(options: ProjectOptions, hooks: Generation
 
     if (options.notifications) {
       await step('Configuring notifications', () => generateNotifications(projectDir, files, options), 'Notification service generated');
+    }
+
+    if (options.socialAuth !== 'none') {
+      await step('Configuring social login', () => generateSocialAuth(projectDir, options), providers =>
+        `Social login configured (${providers.join(', ')}) – add your keys, see docs/SOCIAL_LOGIN.md`,
+      );
     }
 
     const screens = await step('Creating screens', () => generateScreens(projectDir, files), 'Screens created');

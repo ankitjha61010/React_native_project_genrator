@@ -3,6 +3,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 export type AuthStackParamList = {
   Login: undefined;
+  /** Terms & Conditions / Privacy Policy before sign-in. */
+  WebView: { url: string; title?: string };
 {{#if AUTH_EMAIL}}
   Register: undefined;
   ForgotPassword: undefined;
@@ -14,19 +16,40 @@ export type AuthStackParamList = {
 {{/if}}
 };
 
+/** The Home tab is a native stack, so Home gets the native header. */
+export type HomeStackParamList = {
+  Home: undefined;
+};
+
 /** The tabs of the signed-in home (BottomTabNavigator). */
 export type BottomTabParamList = {
-  HomeTab: undefined;
+  HomeTab: NavigatorScreenParams<HomeStackParamList> | undefined;
 {{#if CHAT}}
   ChatTab: undefined;
 {{/if}}
   ProfileTab: undefined;
 };
 
+{{#if DRAWER}}
+/** The side drawer (DrawerNavigator); its only screen holds the bottom tabs. */
+export type DrawerParamList = {
+  HomeTabs: NavigatorScreenParams<BottomTabParamList> | undefined;
+};
+
+{{/if}}
 export type MainStackParamList = {
+{{#if DRAWER}}
+  Drawer: NavigatorScreenParams<DrawerParamList> | undefined;
+{{else}}
   Tabs: NavigatorScreenParams<BottomTabParamList> | undefined;
+{{/if}}
   WebView: { url: string; title?: string };
   EditProfile: undefined;
+  Settings: undefined;
+{{#if NOTIFICATIONS}}
+  /** `highlightId`: the notification that was tapped (shown highlighted). */
+  Notifications: { highlightId?: string } | undefined;
+{{/if}}
 {{#if CHAT}}
   ChatRoom: {
     conversationId: string;
@@ -42,11 +65,6 @@ export type RootStackParamList = {
   Splash: undefined;
   Auth: NavigatorScreenParams<AuthStackParamList> | undefined;
   Main: NavigatorScreenParams<MainStackParamList> | undefined;
-};
-
-/** Used by the DrawerNavigator template. */
-export type DrawerParamList = {
-  HomeDrawer: undefined;
 };
 
 /** Navigation object that can reach every route: `useNavigation<RootNavigation>()`. */

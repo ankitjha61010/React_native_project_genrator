@@ -9,6 +9,7 @@ import { AppIcon } from '{{IMPORT:components.AppIcon}}';
 import { AppButton } from '{{IMPORT:components.AppButton}}';
 import { FadeInView } from '{{IMPORT:components.FadeInView}}';
 import { LanguageSwitcher } from '{{IMPORT:components.LanguageSwitcher}}';
+import { useLegalPages } from '{{IMPORT:components.LegalLinks}}';
 import { MediaPickerModal, type MediaPickerOption } from '{{IMPORT:components.MediaPickerModal}}';
 import { useAuthSession } from '{{IMPORT:hooks.useAuthSession}}';
 import { useImagePicker } from '{{IMPORT:hooks.useImagePicker}}';
@@ -29,6 +30,7 @@ export function ProfileScreen(): React.JSX.Element {
 {{/if}}
   const { user, signOut } = useAuthSession();
   const { pick } = useImagePicker();
+  const legal = useLegalPages();
 
   const [avatarUri, setAvatarUri] = useState<string | null>(
     user?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200'
@@ -157,6 +159,31 @@ export function ProfileScreen(): React.JSX.Element {
         </FadeInView>
 
 {{/if}}
+        {/* Legal: Terms & Conditions / Privacy Policy (URLs in .env, opened in the WebView) */}
+        <FadeInView delay={160} style={styles.section}>
+          <AppText fontFamily="semiBold" fontSize="size14" color="textSecondary" intlType="common" value="legal" style={styles.sectionTitle} />
+          <View style={styles.card}>
+            {legal.pages.map(({ page, title, open }, index) => (
+              <React.Fragment key={page}>
+                {index > 0 && <View style={styles.divider} />}
+                <TouchableOpacity style={styles.infoRow} onPress={open} accessibilityRole="link">
+                  <View style={styles.infoLeft}>
+{{#if VECTOR_ICONS}}
+                    <AppIcon name={page === 'terms' ? 'file-document-outline' : 'shield-lock-outline'} size={20} tintColor="#888888" />
+{{/if}}
+                    <AppText fontSize="size14" fontFamily="medium" text={title} />
+                  </View>
+{{#if VECTOR_ICONS}}
+                  <AppIcon name="chevron-right" size={20} tintColor="#888888" />
+{{else}}
+                  <AppText fontSize="size14" color="textSecondary" text="›" />
+{{/if}}
+                </TouchableOpacity>
+              </React.Fragment>
+            ))}
+          </View>
+        </FadeInView>
+
         {/* Session Management (Log out) */}
         <FadeInView delay={180} style={styles.section}>
           <AppButton

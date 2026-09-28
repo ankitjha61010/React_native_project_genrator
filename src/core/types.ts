@@ -20,7 +20,8 @@ export interface FirebaseFiles {
   iosConfigPath?: string;
 }
 
-export type SocialLoginOption = 'none' | 'google' | 'facebook' | 'both';
+/** Which social login providers the app offers. Apple is iOS-only at runtime. */
+export type SocialLoginOption = 'none' | 'google' | 'facebook' | 'google-facebook' | 'google-apple' | 'all';
 
 /** Everything the generators need to know, collected from prompts or CLI flags. */
 export interface ProjectOptions {
@@ -49,12 +50,14 @@ export interface ProjectOptions {
   authEmail: boolean;
   /** Mobile OTP authentication (Phone login, OTP verification, Forgot PIN). */
   authMobile: boolean;
-  /** Social logins (Google, Facebook, Both, None). */
+  /** Social login providers (see SOCIAL_LOGIN_CHOICES). */
   socialAuth: SocialLoginOption;
   /** Socket.io client integration. */
   socket: boolean;
   /** Real-time WhatsApp-style chat module with media/audio/video/documents. */
   chat: boolean;
+  /** Side drawer menu wrapping the bottom tabs. */
+  drawer: boolean;
   initGit: boolean;
   installDependencies: boolean;
   installPods: boolean;

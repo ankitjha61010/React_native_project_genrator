@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -9,7 +9,20 @@ import {
   ScrollView,
   Dimensions,
   PanResponder,
+  ActivityIndicator,
+  type GestureResponderEvent,
+  type PanResponderGestureState,
 } from 'react-native';
+import ImageEditor from '@react-native-community/image-editor';
+import {
+  Canvas,
+  ColorMatrix,
+  Image as SkiaImage,
+  ImageFormat,
+  Skia,
+  useImage,
+} from '@shopify/react-native-skia';
+import { Dirs, FileSystem } from 'react-native-file-access';
 import { AppText } from '{{IMPORT:components.AppText}}';
 {{#if VECTOR_ICONS}}
 import { AppIcon } from '{{IMPORT:components.AppIcon}}';
@@ -18,16 +31,24 @@ import { useStyles } from '{{IMPORT:hooks.useTheme}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const PREVIEW_MAX_WIDTH = SCREEN_WIDTH - 32;
-const PREVIEW_MAX_HEIGHT = 380;
-const MIN_CROP_SIZE = 100;
+/** The image preview fills this width minus outer padding */
+const PREVIEW_W = SCREEN_WIDTH - 32;
+const PREVIEW_H = 320;
+const MIN_CROP = 60; // px – smallest allowed crop dimension
 
 export interface MediaCropData {
+  /** Crop box left offset relative to the preview image (0-1 normalised). */
+  x: number;
+  /** Crop box top offset relative to the preview image (0-1 normalised). */
+  y: number;
   width: number;
   height: number;
   aspectRatio: AspectRatio;
   rotation?: number;
   filter?: 'normal' | 'warm' | 'cool' | 'mono';
+  /** Pixel size of the cropped output file (the `uri` is already cropped). */
+  outputWidth?: number;
+  outputHeight?: number;
 }
 
 export interface MediaItem {
@@ -49,6 +70,157 @@ export interface MediaEditorModalProps {
 
 export type AspectRatio = 'free' | '1:1' | '4:5' | '16:9' | '3:2';
 
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+function clamp(v: number, lo: number, hi: number) {
+  return Math.min(hi, Math.max(lo, v));
+}
+
+/** Returns fixed crop {x,y,w,h} for non-free aspect ratios (centred on image). */
+function presetCrop(ratio: AspectRatio): { x: number; y: number; w: number; h: number } {
+  switch (ratio) {
+    case '1:1': {
+      const s = Math.min(PREVIEW_W, PREVIEW_H);
+      return { x: (PREVIEW_W - s) / 2, y: (PREVIEW_H - s) / 2, w: s, h: s };
+    }
+    case '4:5': {
+      const w = PREVIEW_W * 0.8;
+      const h = Math.min(PREVIEW_H, w * (5 / 4));
+      return { x: (PREVIEW_W - w) / 2, y: (PREVIEW_H - h) / 2, w, h };
+    }
+    case '16:9': {
+      const h = (PREVIEW_W * 9) / 16;
+      return { x: 0, y: (PREVIEW_H - h) / 2, w: PREVIEW_W, h };
+    }
+    case '3:2': {
+      const h = (PREVIEW_W * 2) / 3;
+      return { x: 0, y: (PREVIEW_H - h) / 2, w: PREVIEW_W, h };
+    }
+    default:
+      return { x: 0, y: 0, w: PREVIEW_W, h: PREVIEW_H };
+  }
+}
+
+/** Image picker paths may come without a scheme; the native cropper needs one. */
+function toFileUri(uri: string) {
+  return uri.startsWith('/') ? `file://${uri}` : uri;
+}
+
+/**
+ * Maps the crop box (preview-frame pixels) to a rect in the source image's pixels.
+ * Accounts for `resizeMode="cover"` scaling/offset and the preview rotation
+ * (the image view is rotated around the frame centre).
+ */
+function previewBoxToImageRect(
+  box: { x: number; y: number; w: number; h: number },
+  rotation: number,
+  imgW: number,
+  imgH: number,
+) {
+  const cx = PREVIEW_W / 2;
+  const cy = PREVIEW_H / 2;
+  const rad = (rotation * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
+  // Undo the (clockwise) view rotation for each crop-box corner.
+  const corners = [
+    [box.x, box.y],
+    [box.x + box.w, box.y],
+    [box.x, box.y + box.h],
+    [box.x + box.w, box.y + box.h],
+  ].map(([px, py]) => {
+    const a = px - cx;
+    const b = py - cy;
+    return [cx + a * cos + b * sin, cy - a * sin + b * cos];
+  });
+  const xs = corners.map(c => c[0]);
+  const ys = corners.map(c => c[1]);
+
+  // resizeMode="cover": uniform scale so the image fills the frame, centred.
+  const scale = Math.max(PREVIEW_W / imgW, PREVIEW_H / imgH);
+  const offX = (PREVIEW_W - imgW * scale) / 2;
+  const offY = (PREVIEW_H - imgH * scale) / 2;
+
+  const left = clamp((Math.min(...xs) - offX) / scale, 0, imgW);
+  const top = clamp((Math.min(...ys) - offY) / scale, 0, imgH);
+  const right = clamp((Math.max(...xs) - offX) / scale, 0, imgW);
+  const bottom = clamp((Math.max(...ys) - offY) / scale, 0, imgH);
+
+  return {
+    x: Math.round(left),
+    y: Math.round(top),
+    width: Math.max(1, Math.round(right - left)),
+    height: Math.max(1, Math.round(bottom - top)),
+  };
+}
+
+type FilterId = NonNullable<MediaCropData['filter']>;
+
+/**
+ * 4×5 colour matrices (RGBA rows, last column is an offset in 0-1).
+ * Used for both the live Skia preview and the full-resolution output, so what
+ * the user sees is exactly what gets sent.
+ */
+const FILTER_MATRICES: Record<Exclude<FilterId, 'normal'>, number[]> = {
+  warm: [
+    1.1, 0, 0, 0, 0.03,
+    0, 1.0, 0, 0, 0.01,
+    0, 0, 0.85, 0, -0.02,
+    0, 0, 0, 1, 0,
+  ],
+  cool: [
+    0.9, 0, 0, 0, -0.02,
+    0, 1.0, 0, 0, 0,
+    0, 0, 1.15, 0, 0.03,
+    0, 0, 0, 1, 0,
+  ],
+  // True greyscale (Rec. 709 luminance).
+  mono: [
+    0.2126, 0.7152, 0.0722, 0, 0,
+    0.2126, 0.7152, 0.0722, 0, 0,
+    0.2126, 0.7152, 0.0722, 0, 0,
+    0, 0, 0, 1, 0,
+  ],
+};
+
+/**
+ * Applies a colour filter to every pixel of the image at its full resolution
+ * (no screenshot / downscale) and writes the result to a cache file.
+ */
+async function applyFilterToFile(uri: string, filter: Exclude<FilterId, 'normal'>) {
+  const data = await Skia.Data.fromURI(uri);
+  const image = Skia.Image.MakeImageFromEncoded(data);
+  if (!image) throw new Error('Could not decode image');
+
+  const width = image.width();
+  const height = image.height();
+  const surface = Skia.Surface.Make(width, height);
+  if (!surface) throw new Error('Could not create drawing surface');
+
+  const paint = Skia.Paint();
+  paint.setColorFilter(Skia.ColorFilter.MakeMatrix(FILTER_MATRICES[filter]));
+  surface.getCanvas().drawImage(image, 0, 0, paint);
+  surface.flush();
+
+  const base64 = surface.makeImageSnapshot().encodeToBase64(ImageFormat.JPEG, 95);
+  const path = `${Dirs.CacheDir}/media_${Date.now()}.jpg`;
+  await FileSystem.writeFile(path, base64, 'base64');
+  return { uri: `file://${path}`, width, height };
+}
+
+// ─── types ───────────────────────────────────────────────────────────────────
+
+/** Which crop handle the user is currently dragging. */
+type HandleId =
+  | 'tl' | 'tc' | 'tr'
+  | 'ml' | 'mr'
+  | 'bl' | 'bc' | 'br';
+
+interface CropBox { x: number; y: number; w: number; h: number }
+
+// ─── component ───────────────────────────────────────────────────────────────
+
 export function MediaEditorModal({
   visible,
   media,
@@ -58,204 +230,199 @@ export function MediaEditorModal({
 }: MediaEditorModalProps): React.JSX.Element | null {
   const styles = useStyles(createStyles);
 
-  // Editor states
-  const [rotation, setRotation] = useState<number>(0);
+  // ── editor state ──────────────────────────────────────────────────────────
+  const [rotation, setRotation] = useState(0);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('free');
-  const [filter, setFilter] = useState<'normal' | 'warm' | 'cool' | 'mono'>('normal');
+  const [filter, setFilter] = useState<FilterId>('normal');
+  const [trimStart, setTrimStart] = useState(0);
+  const [trimEnd, setTrimEnd] = useState(media?.duration || 15);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  // Flexible Crop box dimensions (for 'free' mode)
-  const [cropBoxWidth, setCropBoxWidth] = useState<number>(PREVIEW_MAX_WIDTH);
-  const [cropBoxHeight, setCropBoxHeight] = useState<number>(300);
+  // ── crop box (pixel-space inside the preview area) ────────────────────────
+  // Use both state (for rendering) and ref (for PanResponder closures).
+  const initialBox: CropBox = { x: 0, y: 0, w: PREVIEW_W, h: PREVIEW_H };
+  const [cropBox, setCropBox] = useState<CropBox>(initialBox);
+  const cropBoxRef = useRef<CropBox>(initialBox);
 
-  // Ref tracking current crop box size for gesture calculations
-  const cropSizeRef = useRef({ width: PREVIEW_MAX_WIDTH, height: 300 });
-  cropSizeRef.current = { width: cropBoxWidth, height: cropBoxHeight };
+  // Snapshot of the crop box taken when a gesture starts.
+  const gestureStart = useRef<CropBox>(initialBox);
 
-  // Video trim states (in seconds)
-  const [trimStart, setTrimStart] = useState<number>(0);
-  const [trimEnd, setTrimEnd] = useState<number>(media?.duration || 15);
-
-  // Reset editor states whenever a new media is loaded or modal is opened
+  // ── reset when a new image is opened ─────────────────────────────────────
   useEffect(() => {
     if (visible && media) {
+      const box: CropBox = { x: 0, y: 0, w: PREVIEW_W, h: PREVIEW_H };
+      cropBoxRef.current = box;
+      setCropBox(box);
       setRotation(0);
       setAspectRatio('free');
       setFilter('normal');
-      setCropBoxWidth(PREVIEW_MAX_WIDTH);
-      setCropBoxHeight(300);
       setTrimStart(0);
       setTrimEnd(media.duration || 15);
+      setIsProcessing(false);
     }
+    // Intentionally depend on media?.uri so reopening with a NEW image resets.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, media?.uri]);
 
-  const resetCropState = () => {
-    setRotation(0);
-    setAspectRatio('free');
-    setFilter('normal');
-    setCropBoxWidth(PREVIEW_MAX_WIDTH);
-    setCropBoxHeight(300);
-    setTrimStart(0);
-    setTrimEnd(15);
-  };
+  // ── apply preset aspect ratio ─────────────────────────────────────────────
+  const applyRatio = useCallback((ratio: AspectRatio) => {
+    setAspectRatio(ratio);
+    if (ratio === 'free') return;
+    const p = presetCrop(ratio);
+    const box: CropBox = { x: p.x, y: p.y, w: p.w, h: p.h };
+    cropBoxRef.current = box;
+    setCropBox(box);
+  }, []);
 
-  const handleRotate = () => {
-    setRotation(prev => (prev + 90) % 360);
-  };
+  // ── send ──────────────────────────────────────────────────────────────────
+  const handleSend = async () => {
+    if (!media || isProcessing) return;
 
-  const getComputedCropSize = () => {
-    switch (aspectRatio) {
-      case '1:1':
-        return { width: PREVIEW_MAX_WIDTH, height: PREVIEW_MAX_WIDTH };
-      case '4:5':
-        return { width: PREVIEW_MAX_WIDTH * 0.8, height: PREVIEW_MAX_WIDTH };
-      case '16:9':
-        return { width: PREVIEW_MAX_WIDTH, height: (PREVIEW_MAX_WIDTH * 9) / 16 };
-      case '3:2':
-        return { width: PREVIEW_MAX_WIDTH, height: (PREVIEW_MAX_WIDTH * 2) / 3 };
-      case 'free':
-      default:
-        return { width: cropBoxWidth, height: cropBoxHeight };
+    if (media.type === 'video') {
+      onSend({ ...media, duration: Math.max(1, trimEnd - trimStart) });
+      onClose();
+      return;
     }
-  };
 
-  const handleSend = () => {
-    if (!media) return;
-    const isVideo = media.type === 'video';
-    const computedSize = getComputedCropSize();
-    const edited: MediaItem = {
-      ...media,
-      duration: isVideo ? Math.max(1, trimEnd - trimStart) : media.duration,
-      crop: !isVideo
-        ? {
-            width: Math.round(computedSize.width),
-            height: Math.round(computedSize.height),
-            aspectRatio,
-            rotation,
-            filter,
-          }
-        : undefined,
+    const box = cropBoxRef.current;
+    const crop: MediaCropData = {
+      x: box.x / PREVIEW_W,
+      y: box.y / PREVIEW_H,
+      width: box.w / PREVIEW_W,
+      height: box.h / PREVIEW_H,
+      aspectRatio,
+      rotation,
+      filter,
     };
-    resetCropState();
-    onSend(edited);
-    onClose();
-  };
 
-  const handleClose = () => {
-    resetCropState();
-    onClose();
-  };
+    if (!enableCropper && filter === 'normal') {
+      onSend({ ...media, crop });
+      onClose();
+      return;
+    }
 
-  const getFilterStyle = () => {
-    switch (filter) {
-      case 'warm':
-        return { tintColor: '#ff9800', opacity: 0.15 };
-      case 'cool':
-        return { tintColor: '#2196f3', opacity: 0.15 };
-      case 'mono':
-        return { tintColor: '#000000', opacity: 0.25 };
-      default:
-        return null;
+    setIsProcessing(true);
+    try {
+      // Produce a real edited file so consumers receive the cropped/filtered
+      // image, not the original one plus edit metadata.
+      let output: { uri: string; width?: number; height?: number; name?: string } = {
+        uri: toFileUri(media.uri),
+      };
+
+      if (enableCropper) {
+        const { width: imgW, height: imgH } = await Image.getSize(output.uri);
+        const rect = previewBoxToImageRect(box, rotation, imgW, imgH);
+        output = await ImageEditor.cropImage(output.uri, {
+          offset: { x: rect.x, y: rect.y },
+          size: { width: rect.width, height: rect.height },
+          format: 'jpeg',
+          quality: 1,
+        });
+      }
+
+      if (filter !== 'normal') {
+        output = { ...output, ...(await applyFilterToFile(output.uri, filter)) };
+      }
+
+      onSend({
+        ...media,
+        uri: output.uri,
+        fileName: output.name || media.fileName,
+        crop: {
+          ...crop,
+          // The filter is now part of the file — consumers must not overlay it again.
+          filter: 'normal',
+          outputWidth: output.width,
+          outputHeight: output.height,
+        },
+      });
+      onClose();
+    } catch (e) {
+      console.warn('[MediaEditorModal] Failed to edit image', e);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const getCropContainerStyle = () => {
-    switch (aspectRatio) {
-      case '1:1':
-        return { width: PREVIEW_MAX_WIDTH, height: PREVIEW_MAX_WIDTH };
-      case '4:5':
-        return { width: PREVIEW_MAX_WIDTH * 0.8, height: PREVIEW_MAX_WIDTH };
-      case '16:9':
-        return { width: PREVIEW_MAX_WIDTH, height: (PREVIEW_MAX_WIDTH * 9) / 16 };
-      case '3:2':
-        return { width: PREVIEW_MAX_WIDTH, height: (PREVIEW_MAX_WIDTH * 2) / 3 };
-      case 'free':
-      default:
-        return { width: cropBoxWidth, height: cropBoxHeight };
-    }
-  };
+  const handleClose = () => onClose();
 
-  // Helper function to update crop size within bounds
-  const updateCropSize = (newW: number, newH: number) => {
-    setCropBoxWidth(Math.min(PREVIEW_MAX_WIDTH, Math.max(MIN_CROP_SIZE, newW)));
-    setCropBoxHeight(Math.min(PREVIEW_MAX_HEIGHT, Math.max(MIN_CROP_SIZE, newH)));
-  };
+  // ── live filter preview (Skia, same matrix as the output) ────────────────
+  const previewImage = useImage(media ? toFileUri(media.uri) : null);
 
-  // Draggable Corner PanResponders
-  const startDragSize = useRef({ width: PREVIEW_MAX_WIDTH, height: 300 });
+  // ── PanResponder factory ──────────────────────────────────────────────────
+  /**
+   * Creates a PanResponder for one of the 8 resize handles.
+   * The IMAGE IS NEVER MOVED — only the crop box edges change.
+   *
+   * Handle IDs (t=top, b=bottom, l=left, r=right, c=center):
+   *   tl  tc  tr
+   *   ml      mr
+   *   bl  bc  br
+   */
+  const makePan = useCallback((handle: HandleId) =>
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => aspectRatio === 'free',
+      onMoveShouldSetPanResponder:  () => aspectRatio === 'free',
+      onPanResponderGrant: () => {
+        gestureStart.current = { ...cropBoxRef.current };
+      },
+      onPanResponderMove: (_: GestureResponderEvent, gs: PanResponderGestureState) => {
+        const s = gestureStart.current;
+        let { x, y, w, h } = s;
+        const dx = gs.dx;
+        const dy = gs.dy;
 
-  const panBottomRight = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onPanResponderGrant: () => {
-          startDragSize.current = { ...cropSizeRef.current };
-        },
-        onPanResponderMove: (_, gestureState) => {
-          const newW = startDragSize.current.width + gestureState.dx * 2;
-          const newH = startDragSize.current.height + gestureState.dy * 2;
-          updateCropSize(newW, newH);
-        },
-      }),
-    []
+        // Each handle mutates the relevant edge(s).
+        if (handle === 'tl') { x += dx; y += dy; w -= dx; h -= dy; }
+        if (handle === 'tc') {           y += dy;           h -= dy; }
+        if (handle === 'tr') {           y += dy; w += dx;  h -= dy; }
+        if (handle === 'ml') { x += dx;           w -= dx;           }
+        if (handle === 'mr') {                     w += dx;           }
+        if (handle === 'bl') { x += dx;            w -= dx; h += dy;  }
+        if (handle === 'bc') {                              h += dy;  }
+        if (handle === 'br') {                     w += dx; h += dy;  }
+
+        // Enforce minimum size
+        w = Math.max(MIN_CROP, w);
+        h = Math.max(MIN_CROP, h);
+
+        // Clamp to preview bounds
+        x = clamp(x, 0, PREVIEW_W - MIN_CROP);
+        y = clamp(y, 0, PREVIEW_H - MIN_CROP);
+        if (x + w > PREVIEW_W) w = PREVIEW_W - x;
+        if (y + h > PREVIEW_H) h = PREVIEW_H - y;
+
+        const box: CropBox = { x, y, w, h };
+        cropBoxRef.current = box;
+        setCropBox(box);
+      },
+    }),
+    // Only recreate when aspect ratio changes (free ↔ preset toggle).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [aspectRatio]
   );
 
-  const panBottomLeft = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onPanResponderGrant: () => {
-          startDragSize.current = { ...cropSizeRef.current };
-        },
-        onPanResponderMove: (_, gestureState) => {
-          const newW = startDragSize.current.width - gestureState.dx * 2;
-          const newH = startDragSize.current.height + gestureState.dy * 2;
-          updateCropSize(newW, newH);
-        },
-      }),
-    []
-  );
-
-  const panTopRight = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onPanResponderGrant: () => {
-          startDragSize.current = { ...cropSizeRef.current };
-        },
-        onPanResponderMove: (_, gestureState) => {
-          const newW = startDragSize.current.width + gestureState.dx * 2;
-          const newH = startDragSize.current.height - gestureState.dy * 2;
-          updateCropSize(newW, newH);
-        },
-      }),
-    []
-  );
-
-  const panTopLeft = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onPanResponderGrant: () => {
-          startDragSize.current = { ...cropSizeRef.current };
-        },
-        onPanResponderMove: (_, gestureState) => {
-          const newW = startDragSize.current.width - gestureState.dx * 2;
-          const newH = startDragSize.current.height - gestureState.dy * 2;
-          updateCropSize(newW, newH);
-        },
-      }),
-    []
-  );
+  // Create all 8 handles once (memoised per-ratio).
+  const panTL = useMemo(() => makePan('tl'), [makePan]);
+  const panTC = useMemo(() => makePan('tc'), [makePan]);
+  const panTR = useMemo(() => makePan('tr'), [makePan]);
+  const panML = useMemo(() => makePan('ml'), [makePan]);
+  const panMR = useMemo(() => makePan('mr'), [makePan]);
+  const panBL = useMemo(() => makePan('bl'), [makePan]);
+  const panBC = useMemo(() => makePan('bc'), [makePan]);
+  const panBR = useMemo(() => makePan('br'), [makePan]);
 
   if (!media) return null;
 
   const isVideo = media.type === 'video';
   const totalDuration = media.duration || 15;
+  const { x: cx, y: cy, w: cw, h: ch } = cropBox;
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={handleClose}>
       <SafeAreaView style={styles.container}>
-        {/* Top Header */}
+
+        {/* ── Top Header ─────────────────────────────────────────────── */}
         <View style={styles.header}>
           <TouchableOpacity onPress={handleClose} style={styles.iconBtn}>
 {{#if VECTOR_ICONS}}
@@ -269,28 +436,52 @@ export function MediaEditorModal({
             {isVideo ? 'Trim & Edit Video' : 'Crop & Edit Photo'}
           </AppText>
 
-          <TouchableOpacity onPress={handleSend} style={styles.doneBtn}>
+          <TouchableOpacity onPress={handleSend} style={styles.doneBtn} disabled={isProcessing}>
             <AppText style={styles.doneBtnText}>Send</AppText>
+            {isProcessing ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
 {{#if VECTOR_ICONS}}
-            <AppIcon name="send" size={16} tintColor="#FFFFFF" />
+            ) : (
+              <AppIcon name="send" size={16} tintColor="#FFFFFF" />
+            )}
+{{else}}
+            ) : null}
 {{/if}}
           </TouchableOpacity>
         </View>
 
-        {/* Media Preview Box with Draggable Interactive Crop Handles */}
+        {/* ── Image Preview + Free Crop Overlay ──────────────────────── */}
         <View style={styles.previewContainer}>
-          <View style={[styles.cropFrame, getCropContainerStyle()]}>
+          {/*
+            The image is FIXED. It never moves.
+            The crop overlay (positioned absolute) indicates the selected region.
+            Each handle is draggable and resizes the crop box.
+          */}
+          <View style={styles.imageFrame} pointerEvents="box-none">
+            {/* Fixed background image — NOT wrapped in any pan responder */}
             <Image
               source={{ uri: media.uri }}
               style={[
-                styles.previewMedia,
+                styles.previewImage,
                 { transform: [{ rotate: `${rotation}deg` }] },
               ]}
               resizeMode="cover"
             />
-            {getFilterStyle() && <View style={[styles.filterOverlay, getFilterStyle()]} />}
+
+            {/* Filter preview — drawn on top of the image with the real colour matrix */}
+            {!isVideo && filter !== 'normal' && previewImage && (
+              <Canvas
+                pointerEvents="none"
+                style={[StyleSheet.absoluteFill, { transform: [{ rotate: `${rotation}deg` }] }]}>
+                <SkiaImage image={previewImage} x={0} y={0} width={PREVIEW_W} height={PREVIEW_H} fit="cover">
+                  <ColorMatrix matrix={FILTER_MATRICES[filter]} />
+                </SkiaImage>
+              </Canvas>
+            )}
+
+            {/* Video play indicator */}
             {isVideo && (
-              <View style={styles.playOverlay}>
+              <View style={styles.playOverlay} pointerEvents="none">
 {{#if VECTOR_ICONS}}
                 <AppIcon name="play-circle" size={48} tintColor="#FFFFFF" />
 {{else}}
@@ -299,70 +490,102 @@ export function MediaEditorModal({
               </View>
             )}
 
-            {/* Viewfinder Corner Overlays & Grid */}
-            {!isVideo && (
-              <View style={styles.gridOverlay} pointerEvents="box-none">
-                <View style={styles.gridLineH1} pointerEvents="none" />
-                <View style={styles.gridLineH2} pointerEvents="none" />
-                <View style={styles.gridLineV1} pointerEvents="none" />
-                <View style={styles.gridLineV2} pointerEvents="none" />
+            {/* ── Crop overlay (only for images in free mode) ───────── */}
+            {!isVideo && enableCropper && (
+              <>
+                {/* Dimmed areas outside crop box */}
+                {/* top */}
+                <View style={[styles.dim, { top: 0, left: 0, right: 0, height: cy }]} pointerEvents="none" />
+                {/* bottom */}
+                <View style={[styles.dim, { top: cy + ch, left: 0, right: 0, bottom: 0 }]} pointerEvents="none" />
+                {/* left */}
+                <View style={[styles.dim, { top: cy, left: 0, width: cx, height: ch }]} pointerEvents="none" />
+                {/* right */}
+                <View style={[styles.dim, { top: cy, left: cx + cw, right: 0, height: ch }]} pointerEvents="none" />
 
-                {/* 4 Interactive Draggable Corner Touch Areas */}
-                <View {...panTopLeft.panHandlers} style={[styles.touchCorner, styles.cornerTopLeft]}>
-                  <View style={[styles.cornerHandle, styles.handleTopLeft]} />
-                </View>
-                <View {...panTopRight.panHandlers} style={[styles.touchCorner, styles.cornerTopRight]}>
-                  <View style={[styles.cornerHandle, styles.handleTopRight]} />
-                </View>
-                <View {...panBottomLeft.panHandlers} style={[styles.touchCorner, styles.cornerBottomLeft]}>
-                  <View style={[styles.cornerHandle, styles.handleBottomLeft]} />
-                </View>
-                <View {...panBottomRight.panHandlers} style={[styles.touchCorner, styles.cornerBottomRight]}>
-                  <View style={[styles.cornerHandle, styles.handleBottomRight]} />
-                </View>
-              </View>
+                {/* Crop box border */}
+                <View
+                  pointerEvents="none"
+                  style={[
+                    styles.cropBorder,
+                    { left: cx, top: cy, width: cw, height: ch },
+                  ]}
+                />
+
+                {/* Rule-of-thirds grid lines */}
+                <View pointerEvents="none" style={[styles.gridLineH, { top: cy + ch / 3, left: cx, width: cw }]} />
+                <View pointerEvents="none" style={[styles.gridLineH, { top: cy + (ch * 2) / 3, left: cx, width: cw }]} />
+                <View pointerEvents="none" style={[styles.gridLineV, { left: cx + cw / 3, top: cy, height: ch }]} />
+                <View pointerEvents="none" style={[styles.gridLineV, { left: cx + (cw * 2) / 3, top: cy, height: ch }]} />
+
+                {/* ── 8 draggable handles ─────────────────────────────── */}
+                {/* Top-left corner */}
+                <View
+                  {...panTL.panHandlers}
+                  style={[styles.handle, styles.cornerHandle,
+                    { top: cy - 10, left: cx - 10, borderTopWidth: 3, borderLeftWidth: 3 }]}
+                />
+                {/* Top-center edge */}
+                <View
+                  {...panTC.panHandlers}
+                  style={[styles.handle, styles.edgeHandle,
+                    { top: cy - 8, left: cx + cw / 2 - 14, width: 28 }]}
+                />
+                {/* Top-right corner */}
+                <View
+                  {...panTR.panHandlers}
+                  style={[styles.handle, styles.cornerHandle,
+                    { top: cy - 10, left: cx + cw - 10, borderTopWidth: 3, borderRightWidth: 3 }]}
+                />
+                {/* Middle-left edge */}
+                <View
+                  {...panML.panHandlers}
+                  style={[styles.handle, styles.edgeHandle, styles.edgeHandleV,
+                    { top: cy + ch / 2 - 14, left: cx - 8, height: 28 }]}
+                />
+                {/* Middle-right edge */}
+                <View
+                  {...panMR.panHandlers}
+                  style={[styles.handle, styles.edgeHandle, styles.edgeHandleV,
+                    { top: cy + ch / 2 - 14, left: cx + cw - 8, height: 28 }]}
+                />
+                {/* Bottom-left corner */}
+                <View
+                  {...panBL.panHandlers}
+                  style={[styles.handle, styles.cornerHandle,
+                    { top: cy + ch - 10, left: cx - 10, borderBottomWidth: 3, borderLeftWidth: 3 }]}
+                />
+                {/* Bottom-center edge */}
+                <View
+                  {...panBC.panHandlers}
+                  style={[styles.handle, styles.edgeHandle,
+                    { top: cy + ch - 8, left: cx + cw / 2 - 14, width: 28 }]}
+                />
+                {/* Bottom-right corner */}
+                <View
+                  {...panBR.panHandlers}
+                  style={[styles.handle, styles.cornerHandle,
+                    { top: cy + ch - 10, left: cx + cw - 10, borderBottomWidth: 3, borderRightWidth: 3 }]}
+                />
+              </>
             )}
           </View>
 
-          {/* Quick preset dimension controls / reset */}
+          {/* Hint text below the preview */}
           {!isVideo && aspectRatio === 'free' && (
-            <View style={styles.freeAdjustBar}>
-              <AppText style={styles.freeAdjustLabel}>Drag corners or tap below to adjust:</AppText>
-              <View style={styles.freeAdjustButtons}>
-                <TouchableOpacity style={styles.adjustPill} onPress={() => updateCropSize(cropBoxWidth - 30, cropBoxHeight)}>
-                  <AppText style={styles.adjustPillText}>W -</AppText>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.adjustPill} onPress={() => updateCropSize(cropBoxWidth + 30, cropBoxHeight)}>
-                  <AppText style={styles.adjustPillText}>W +</AppText>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.adjustPill} onPress={() => updateCropSize(cropBoxWidth, cropBoxHeight - 30)}>
-                  <AppText style={styles.adjustPillText}>H -</AppText>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.adjustPill} onPress={() => updateCropSize(cropBoxWidth, cropBoxHeight + 30)}>
-                  <AppText style={styles.adjustPillText}>H +</AppText>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.adjustPill, styles.adjustPillReset]}
-                  onPress={() => {
-                    setCropBoxWidth(PREVIEW_MAX_WIDTH);
-                    setCropBoxHeight(300);
-                  }}>
-                  <AppText style={styles.adjustPillText}>Reset</AppText>
-                </TouchableOpacity>
-              </View>
-            </View>
+            <AppText style={styles.hintText}>Drag the handles to resize the crop area</AppText>
           )}
         </View>
 
-        {/* Controls Section */}
+        {/* ── Controls ────────────────────────────────────────────────── */}
         <View style={styles.controlsSection}>
           {isVideo ? (
-            /* Video Trimmer Controls */
+            /* Video Trimmer */
             <View style={styles.trimContainer}>
               <View style={styles.trimHeader}>
                 <AppText style={styles.controlSectionTitle}>Video Trimming</AppText>
                 <AppText style={styles.trimDurationBadge}>
-                  {trimStart}s - {trimEnd}s (Length: {Math.max(1, trimEnd - trimStart)}s)
+                  {trimStart}s – {trimEnd}s ({Math.max(1, trimEnd - trimStart)}s)
                 </AppText>
               </View>
 
@@ -371,63 +594,49 @@ export function MediaEditorModal({
                   style={[
                     styles.trimSelectedRange,
                     {
-                      left: `${(trimStart / totalDuration) * 100}%`,
-                      width: `${((trimEnd - trimStart) / totalDuration) * 100}%`,
+                      left: `${(trimStart / totalDuration) * 100}%` as any,
+                      width: `${((trimEnd - trimStart) / totalDuration) * 100}%` as any,
                     },
                   ]}
                 />
               </View>
 
               <View style={styles.trimButtonsRow}>
-                <TouchableOpacity
-                  style={styles.trimAdjBtn}
-                  onPress={() => setTrimStart(prev => Math.max(0, prev - 1))}>
-                  <AppText style={styles.trimBtnText}>- Start</AppText>
+                <TouchableOpacity style={styles.trimAdjBtn} onPress={() => setTrimStart(p => Math.max(0, p - 1))}>
+                  <AppText style={styles.trimBtnText}>– Start</AppText>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.trimAdjBtn}
-                  onPress={() => setTrimStart(prev => Math.min(trimEnd - 1, prev + 1))}>
+                <TouchableOpacity style={styles.trimAdjBtn} onPress={() => setTrimStart(p => Math.min(trimEnd - 1, p + 1))}>
                   <AppText style={styles.trimBtnText}>+ Start</AppText>
                 </TouchableOpacity>
                 <View style={{ width: 16 }} />
-                <TouchableOpacity
-                  style={styles.trimAdjBtn}
-                  onPress={() => setTrimEnd(prev => Math.max(trimStart + 1, prev - 1))}>
-                  <AppText style={styles.trimBtnText}>- End</AppText>
+                <TouchableOpacity style={styles.trimAdjBtn} onPress={() => setTrimEnd(p => Math.max(trimStart + 1, p - 1))}>
+                  <AppText style={styles.trimBtnText}>– End</AppText>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.trimAdjBtn}
-                  onPress={() => setTrimEnd(prev => Math.min(totalDuration, prev + 1))}>
+                <TouchableOpacity style={styles.trimAdjBtn} onPress={() => setTrimEnd(p => Math.min(totalDuration, p + 1))}>
                   <AppText style={styles.trimBtnText}>+ End</AppText>
                 </TouchableOpacity>
               </View>
             </View>
           ) : (
-            /* Photo Editing Controls: Rotate, Crop Ratios & Filters */
             <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Aspect Ratio / Crop */}
+              {/* Aspect Ratio + Rotate */}
               <View style={styles.toolSection}>
                 <View style={styles.toolSectionHeader}>
-                  <AppText style={styles.controlSectionTitle}>Crop Aspect Ratio</AppText>
-                  <TouchableOpacity onPress={handleRotate} style={styles.rotateActionBtn}>
+                  <AppText style={styles.controlSectionTitle}>Crop Ratio</AppText>
+                  <TouchableOpacity onPress={() => setRotation(r => (r + 90) % 360)} style={styles.rotateActionBtn}>
 {{#if VECTOR_ICONS}}
-                    <AppIcon name="rotate-right" size={20} tintColor="#2196F3" />
+                    <AppIcon name="rotate-right" size={18} tintColor="#2196F3" />
 {{/if}}
-                    <AppText style={styles.rotateActionText}>Rotate 90° ({rotation}°)</AppText>
+                    <AppText style={styles.rotateActionText}>Rotate ({rotation}°)</AppText>
                   </TouchableOpacity>
                 </View>
-
-                <View style={styles.ratioRow}>
+                <View style={styles.chipRow}>
                   {(['free', '1:1', '4:5', '16:9', '3:2'] as AspectRatio[]).map(ratio => (
                     <TouchableOpacity
                       key={ratio}
-                      style={[styles.ratioChip, aspectRatio === ratio && styles.ratioChipActive]}
-                      onPress={() => setAspectRatio(ratio)}>
-                      <AppText
-                        style={[
-                          styles.ratioChipText,
-                          aspectRatio === ratio && styles.ratioChipTextActive,
-                        ]}>
+                      style={[styles.chip, aspectRatio === ratio && styles.chipActive]}
+                      onPress={() => applyRatio(ratio)}>
+                      <AppText style={[styles.chipText, aspectRatio === ratio && styles.chipTextActive]}>
                         {ratio.toUpperCase()}
                       </AppText>
                     </TouchableOpacity>
@@ -435,20 +644,16 @@ export function MediaEditorModal({
                 </View>
               </View>
 
-              {/* Preset Filters */}
+              {/* Filters */}
               <View style={styles.toolSection}>
                 <AppText style={styles.controlSectionTitle}>Filters</AppText>
-                <View style={styles.ratioRow}>
-                  {(['normal', 'warm', 'cool', 'mono'] as const).map(f => (
+                <View style={styles.chipRow}>
+                  {(['normal', 'warm', 'cool', 'mono'] as FilterId[]).map(f => (
                     <TouchableOpacity
                       key={f}
-                      style={[styles.ratioChip, filter === f && styles.ratioChipActive]}
+                      style={[styles.chip, filter === f && styles.chipActive]}
                       onPress={() => setFilter(f)}>
-                      <AppText
-                        style={[
-                          styles.ratioChipText,
-                          filter === f && styles.ratioChipTextActive,
-                        ]}>
+                      <AppText style={[styles.chipText, filter === f && styles.chipTextActive]}>
                         {f.toUpperCase()}
                       </AppText>
                     </TouchableOpacity>
@@ -462,6 +667,8 @@ export function MediaEditorModal({
     </Modal>
   );
 }
+
+// ─── styles ───────────────────────────────────────────────────────────────────
 
 const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -500,29 +707,25 @@ const createStyles = (theme: Theme) =>
       fontWeight: '600',
       fontSize: 14,
     },
+    // ── Preview ──────────────────────────────────────────────────────────────
     previewContainer: {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
       padding: 16,
     },
-    cropFrame: {
-      borderRadius: 12,
+    imageFrame: {
+      width: PREVIEW_W,
+      height: PREVIEW_H,
+      borderRadius: 10,
       overflow: 'hidden',
       backgroundColor: '#1E1E1E',
-      justifyContent: 'center',
-      alignItems: 'center',
-      borderWidth: 1.5,
-      borderColor: '#383838',
       position: 'relative',
     },
-    previewMedia: {
+    previewImage: {
+      // Image is FIXED — fills the frame exactly
       width: '100%',
       height: '100%',
-    },
-    filterOverlay: {
-      ...StyleSheet.absoluteFill,
-      backgroundColor: '#ff9800',
     },
     playOverlay: {
       ...StyleSheet.absoluteFill,
@@ -530,134 +733,64 @@ const createStyles = (theme: Theme) =>
       justifyContent: 'center',
       alignItems: 'center',
     },
-    gridOverlay: {
-      ...StyleSheet.absoluteFill,
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.4)',
-    },
-    gridLineH1: {
+    // ── Dim areas outside the crop box ───────────────────────────────────────
+    dim: {
       position: 'absolute',
-      left: 0,
-      right: 0,
-      top: '33.33%',
-      height: 1,
-      backgroundColor: 'rgba(255,255,255,0.25)',
+      backgroundColor: 'rgba(0,0,0,0.55)',
     },
-    gridLineH2: {
+    // ── Crop box border ───────────────────────────────────────────────────────
+    cropBorder: {
       position: 'absolute',
-      left: 0,
-      right: 0,
-      top: '66.66%',
-      height: 1,
-      backgroundColor: 'rgba(255,255,255,0.25)',
-    },
-    gridLineV1: {
-      position: 'absolute',
-      top: 0,
-      bottom: 0,
-      left: '33.33%',
-      width: 1,
-      backgroundColor: 'rgba(255,255,255,0.25)',
-    },
-    gridLineV2: {
-      position: 'absolute',
-      top: 0,
-      bottom: 0,
-      left: '66.66%',
-      width: 1,
-      backgroundColor: 'rgba(255,255,255,0.25)',
-    },
-    touchCorner: {
-      position: 'absolute',
-      width: 44,
-      height: 44,
-      justifyContent: 'center',
-      alignItems: 'center',
-      zIndex: 10,
-    },
-    cornerTopLeft: {
-      top: -6,
-      left: -6,
-    },
-    cornerTopRight: {
-      top: -6,
-      right: -6,
-    },
-    cornerBottomLeft: {
-      bottom: -6,
-      left: -6,
-    },
-    cornerBottomRight: {
-      bottom: -6,
-      right: -6,
-    },
-    cornerHandle: {
-      position: 'absolute',
-      width: 26,
-      height: 26,
+      borderWidth: 1.5,
       borderColor: '#FFFFFF',
     },
-    handleTopLeft: {
-      top: 6,
-      left: 6,
-      borderTopWidth: 4,
-      borderLeftWidth: 4,
+    // ── Grid lines ────────────────────────────────────────────────────────────
+    gridLineH: {
+      position: 'absolute',
+      height: 1,
+      backgroundColor: 'rgba(255,255,255,0.3)',
     },
-    handleTopRight: {
-      top: 6,
-      right: 6,
-      borderTopWidth: 4,
-      borderRightWidth: 4,
+    gridLineV: {
+      position: 'absolute',
+      width: 1,
+      backgroundColor: 'rgba(255,255,255,0.3)',
     },
-    handleBottomLeft: {
-      bottom: 6,
-      left: 6,
-      borderBottomWidth: 4,
-      borderLeftWidth: 4,
+    // ── Handles ───────────────────────────────────────────────────────────────
+    /** Base style shared by all handles */
+    handle: {
+      position: 'absolute',
+      zIndex: 20,
     },
-    handleBottomRight: {
-      bottom: 6,
-      right: 6,
-      borderBottomWidth: 4,
-      borderRightWidth: 4,
+    /** Corner handles — 28×28 px L-shaped border */
+    cornerHandle: {
+      width: 22,
+      height: 22,
+      borderColor: '#FFFFFF',
     },
-    freeAdjustBar: {
-      marginTop: 12,
-      alignItems: 'center',
+    /** Edge mid-handles — thin pill, horizontal by default */
+    edgeHandle: {
+      height: 6,
+      backgroundColor: '#FFFFFF',
+      borderRadius: 3,
     },
-    freeAdjustLabel: {
-      color: '#AAAAAA',
+    /** Vertical variant for left / right edge handles */
+    edgeHandleV: {
+      height: 28,
+      width: 6,
+    },
+    hintText: {
+      color: '#888888',
       fontSize: 12,
-      marginBottom: 6,
-      fontWeight: '500',
+      marginTop: 8,
     },
-    freeAdjustButtons: {
-      flexDirection: 'row',
-      gap: 8,
-    },
-    adjustPill: {
-      backgroundColor: '#2A2A2A',
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: '#3D3D3D',
-    },
-    adjustPillReset: {
-      backgroundColor: '#3E3E3E',
-    },
-    adjustPillText: {
-      color: '#FFFFFF',
-      fontSize: 11,
-      fontWeight: '600',
-    },
+    // ── Controls section ──────────────────────────────────────────────────────
     controlsSection: {
       backgroundColor: '#1E1E1E',
       borderTopLeftRadius: 20,
       borderTopRightRadius: 20,
       padding: 20,
       paddingBottom: 28,
-      maxHeight: 280,
+      maxHeight: 260,
     },
     toolSection: {
       marginBottom: 16,
@@ -670,7 +803,7 @@ const createStyles = (theme: Theme) =>
     },
     controlSectionTitle: {
       color: '#AAAAAA',
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: '600',
       textTransform: 'uppercase',
       letterSpacing: 0.5,
@@ -685,32 +818,33 @@ const createStyles = (theme: Theme) =>
       fontSize: 13,
       fontWeight: '500',
     },
-    ratioRow: {
+    chipRow: {
       flexDirection: 'row',
-      gap: 10,
+      gap: 8,
+      flexWrap: 'wrap',
     },
-    ratioChip: {
+    chip: {
       flex: 1,
+      minWidth: 54,
       paddingVertical: 10,
       borderRadius: 10,
       backgroundColor: '#2A2A2A',
       alignItems: 'center',
       justifyContent: 'center',
     },
-    ratioChipActive: {
+    chipActive: {
       backgroundColor: theme.colors.primary,
     },
-    ratioChipText: {
+    chipText: {
       color: '#FFFFFF',
-      fontSize: 12,
+      fontSize: 11,
       fontWeight: '600',
     },
-    ratioChipTextActive: {
+    chipTextActive: {
       color: '#FFFFFF',
     },
-    trimContainer: {
-      gap: 14,
-    },
+    // ── Video trim ────────────────────────────────────────────────────────────
+    trimContainer: { gap: 14 },
     trimHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',

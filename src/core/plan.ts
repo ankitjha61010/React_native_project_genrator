@@ -47,7 +47,10 @@ function resolveEntry(entry: ManifestEntry, arch: ArchitectureDefinition): Plann
 
 /** Works out every file of the generated project for an architecture + options. */
 export function createPlan(arch: ArchitectureDefinition, ctx: RenderContext): GenerationPlan {
-  const manifest = [...COMMON_MANIFEST, ...(arch.extraFiles ?? [])].filter(e => !e.when || e.when(ctx));
+  const allEntries = [...COMMON_MANIFEST, ...(arch.extraFiles ?? [])];
+  const manifest = allEntries.filter(e => !e.when || e.when(ctx));
+  /** Ids that exist but are switched off by an option (e.g. screens.Notifications without notifications). */
+  const optionalIds = new Set(allEntries.filter(e => e.when && !e.when(ctx)).map(e => e.id));
 
   const files: PlannedFile[] = [];
   const byId = new Map<string, PlannedFile>();
@@ -97,11 +100,13 @@ export function createPlan(arch: ArchitectureDefinition, ctx: RenderContext): Ge
   }
 
   for (const [barrelPath, ids] of Object.entries(arch.customBarrels ?? {})) {
-    const targets = ids.map(id => {
+    const targets = ids.flatMap(id => {
       const target = byId.get(id);
-      if (!target) throw new Error(`Barrel ${barrelPath} references unknown file "${id}".`);
-      return target.path;
+      if (target) return [target.path];
+      if (optionalIds.has(id)) return []; // file disabled by an option
+      throw new Error(`Barrel ${barrelPath} references unknown file "${id}".`);
     });
+    if (targets.length === 0) continue;
     // A barrel at <dir>/index.ts re-exports relative to <dir>.
     const lines = targets.map(t => `export * from '${relativeSpecifier(posix.dirname(barrelPath), t)}';`);
     add(barrelPath, `${lines.join('\n')}\n`);

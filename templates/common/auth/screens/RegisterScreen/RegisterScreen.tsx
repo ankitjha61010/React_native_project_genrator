@@ -11,7 +11,7 @@ import { AppText } from '{{IMPORT:components.AppText}}';
 import { FadeInView } from '{{IMPORT:components.FadeInView}}';
 import { useStyles } from '{{IMPORT:hooks.useTheme}}';
 import { useAuthSession } from '{{IMPORT:hooks.useAuthSession}}';
-import { showSuccessFlashMessage, showErrorFlashMessage } from '{{IMPORT:utils.flashMessage}}';
+import { flash } from '{{IMPORT:utils.flashMessage}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
 import type { IntlKey } from '{{IMPORT:i18n.index}}';
 
@@ -31,7 +31,7 @@ type RegisterFormValues = z.infer<typeof registerSchema>;
 
 export function RegisterScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
-  const { setSession } = useAuthSession();
+  const { signIn } = useAuthSession();
   const styles = useStyles(createStyles);
 
   const { control, handleSubmit, formState: { isSubmitting } } = useForm<RegisterFormValues>({
@@ -47,14 +47,14 @@ export function RegisterScreen(): React.JSX.Element {
   const onSubmit = handleSubmit(async data => {
     try {
       // Replace with your real registration endpoint
-      await new Promise(res => setTimeout(res, 800));
-      setSession({
+      await new Promise<void>(res => setTimeout(res, 800));
+      await signIn({
         token: 'registered_sample_token',
         user: { id: 'usr_new', name: data.name, email: data.email },
       });
-      showSuccessFlashMessage({ message: 'Account created successfully!' });
+      flash.success({ message: 'Account created successfully!' });
     } catch {
-      showErrorFlashMessage({ message: 'Registration failed.' });
+      flash.error({ message: 'Registration failed.' });
     }
   });
 
@@ -144,7 +144,7 @@ export function RegisterScreen(): React.JSX.Element {
               errorValue={fieldState.error?.message as IntlKey<'auth'> | undefined}
               secureTextEntry
               returnKeyType="done"
-              onSubmitEditing={onSubmit}
+              onSubmitEditing={() => onSubmit()}
             />
           )}
         />

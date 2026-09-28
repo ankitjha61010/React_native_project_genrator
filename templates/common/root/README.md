@@ -19,6 +19,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a deep dive into the archit
 5. [Running iOS](#running-ios)
 6. [Firebase setup](#firebase-setup)
 7. [Notification setup](#notification-setup)
+{{#if HAS_SOCIAL_AUTH}}
+   - [Social login](#social-login)
+{{/if}}
 8. [Environment variables](#environment-variables)
 9. [Navigation](#navigation)
 10. [State management](#state-management)
@@ -62,7 +65,10 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a deep dive into the archit
 {{else}}
 | UI | `react-native-flash-message`, `react-native-webview` |
 {{/if}}
-| Media & permissions | `react-native-image-picker`, `react-native-permissions` |
+| Media & permissions | `react-native-image-picker`, `react-native-permissions`, `@react-native-community/image-editor` (crop), `@shopify/react-native-skia` + `react-native-file-access` (photo filters) |
+{{#if HAS_SOCIAL_AUTH}}
+| Social login |{{#if SOCIAL_GOOGLE}} `@react-native-google-signin/google-signin`{{/if}}{{#if SOCIAL_FACEBOOK}} `react-native-fbsdk-next`{{/if}}{{#if SOCIAL_APPLE}} `@invertase/react-native-apple-authentication`{{/if}} |
+{{/if}}
 {{#if STATE_REDUX}}
 | State | `@reduxjs/toolkit`, `react-redux` |
 {{/if}}
@@ -169,8 +175,73 @@ Code lives in `{{DIR_NOTIFICATION}}`:
 in the in-app WebView when a notification is tapped. Taps are reported whether FCM or Notifee showed the
 notification and whatever state the app was in.
 
-Test with the Firebase console → *Messaging* → *Send test message* using the token printed in Metro.
+{{#if NOTIFICATIONS}}
+### Notification types and taps
 
+**Every notification type is defined in one file: `{{PATH_NOTIFICATION_TYPES}}`.** Change or add types there; the
+handlers, the inbox and the Notifications screen all read from it.
+
+The backend sends the type in the FCM **data** payload:
+
+```json
+{
+  "notification": { "title": "Jane", "body": "Hi there 👋" },
+  "data": { "type": "chat", "conversationId": "conv_1", "senderName": "Jane" }
+}
+```
+
+| `data.type` | Tap on the push notification opens |
+| --- | --- |
+{{#if CHAT}}
+| `chat` | The conversation (`ChatRoom` with `data.conversationId`); the Notifications screen if the id is missing |
+{{else}}
+| `chat` | The Notifications screen (enable the chat module to open conversations) |
+{{/if}}
+| `order`, `promotion`, `account`, `general`, unknown or missing | The **Notifications** screen, with the tapped item highlighted |
+
+Every received notification is stored in the inbox (`{{PATH_NOTIFICATION_INBOX}}`, newest first, max 100) and listed on
+the Notifications screen with an unread badge in the Home header. Tapping a row opens its target;
+if it has none, a `data.url` opens in the in-app browser. Signing out clears the inbox.
+If your backend keeps the notification history, load it in `notificationInbox.reload()`.
+
+| File | Responsibility |
+| --- | --- |
+| `{{PATH_NOTIFICATION_TYPES}}` | **Types, labels, icons and where a tap goes** |
+| `{{PATH_NOTIFICATION_ROUTER}}` | `handleNotificationTap` (push taps) and `openNotification` (inbox rows) |
+| `{{PATH_NOTIFICATION_INBOX}}` | Stored list + read state; `{{PATH_NOTIFICATION_USENOTIFICATIONS}}` is its React hook |
+| `{{PATH_SCREENS_NOTIFICATIONS}}` | The Notifications screen |
+
+Test with the Firebase console → *Messaging* → *Send test message* using the token printed in Metro
+(add `type` / `conversationId` under *Additional options → Custom data*).
+{{else}}
+Test with the Firebase console → *Messaging* → *Send test message* using the token printed in Metro.
+{{/if}}
+
+{{#if HAS_SOCIAL_AUTH}}
+## Social login
+
+The login screen offers {{SOCIAL_PROVIDER_NAMES}}.
+The code and all native setup are done, but **every key is a `YOUR_…` placeholder**. Replace them before you test.
+
+| Where | What to replace |
+| --- | --- |
+{{#if SOCIAL_GOOGLE}}
+| `.env` | `GOOGLE_WEB_CLIENT_ID`, `GOOGLE_IOS_CLIENT_ID` |
+{{/if}}
+{{#if SOCIAL_GOOGLE}}
+| `ios/{{APP_NAME}}/Info.plist` | Google: reversed iOS client ID URL scheme |
+{{/if}}
+{{#if SOCIAL_FACEBOOK}}
+| `ios/{{APP_NAME}}/Info.plist` | Facebook: `FacebookAppID`, `FacebookClientToken`, `fb<APP_ID>` URL scheme |
+| `android/app/src/main/res/values/strings.xml` | Facebook: `facebook_app_id`, `facebook_client_token`, `fb_login_protocol_scheme` |
+{{/if}}
+{{#if SOCIAL_APPLE}}
+| Apple Developer portal / Xcode | Enable *Sign in with Apple* for `{{PACKAGE_NAME}}` (entitlement already added) |
+{{/if}}
+
+Step-by-step guide (consoles, SHA-1 and key hashes, backend token verification): [docs/SOCIAL_LOGIN.md](docs/SOCIAL_LOGIN.md).
+
+{{/if}}
 ## Environment variables
 
 `.env` is loaded at build time through `react-native-dotenv` and typed in `{{PATH_TYPES_ENV}}`.
@@ -179,10 +250,16 @@ Test with the Firebase console → *Messaging* → *Send test message* using the
 | --- | --- |
 | `API_BASE_URL` | Base URL used by the Axios client |
 | `APP_ENV` | `development` \| `staging` \| `production` |
+| `TERMS_URL` | Terms & Conditions page – opened in the in-app WebView from Login, Profile{{#if DRAWER}} and the drawer{{/if}} (dummy URL, replace it) |
+| `PRIVACY_POLICY_URL` | Privacy Policy page – same places (dummy URL, replace it) |
 {{#if API_ENCRYPTION}}
 | `API_ENCRYPTION_ENABLED` | `true` (default) encrypts requests/decrypts responses; `false` sends plain JSON |
 | `API_ENCRYPTION_KEY` | AES-256 key, exactly 32 characters – must match the backend |
 | `API_ENCRYPTION_IV` | AES IV, exactly 16 characters – must match the backend |
+{{/if}}
+{{#if SOCIAL_GOOGLE}}
+| `GOOGLE_WEB_CLIENT_ID` | Google OAuth **web** client ID (ID token audience) – see [docs/SOCIAL_LOGIN.md](docs/SOCIAL_LOGIN.md) |
+| `GOOGLE_IOS_CLIENT_ID` | Google OAuth **iOS** client ID |
 {{/if}}
 
 Read values through `{{PATH_CONFIG_ENV}}` – never import `@env` elsewhere.
@@ -191,16 +268,30 @@ After changing `.env` restart Metro with `npm start -- --reset-cache`. Never com
 ## Navigation
 
 ```
-Splash ──► Auth (Login) ──► Main ─┬─ Tabs (bottom tab bar): Home · Settings
+{{#if DRAWER}}
+Splash ──► Auth (Login) ──► Main ─┬─ Drawer (side menu) ──► Tabs (bottom tab bar): Home · …
+{{else}}
+Splash ──► Auth (Login) ──► Main ─┬─ Tabs (bottom tab bar): Home · …
+{{/if}}
+                                  ├─ Settings{{#if NOTIFICATIONS}} · Notifications{{/if}} · EditProfile
                                   └─ WebView (pushed, native header + back button)
 ```
 
 - `{{PATH_NAVIGATION_APP}}` – root stack + `NavigationContainer` (themed via `{{PATH_NAVIGATION_THEME}}`)
 - `{{PATH_NAVIGATION_AUTH}}` / `{{PATH_NAVIGATION_MAIN}}` – nested stacks
-- `{{PATH_NAVIGATION_TABS}}` – the bottom tab bar shown after login. Each tab has its own header.
+{{#if DRAWER}}
+- `{{PATH_NAVIGATION_DRAWER}}` – side drawer around the bottom tabs (swipe from the edge or tap ☰). Its menu
+  (user card, Notifications, Settings, Log out) is `{{PATH_NAVIGATION_DRAWERCONTENT}}`.
+{{/if}}
+- `{{PATH_NAVIGATION_TABS}}` – the bottom tab bar shown after login.
+- `{{PATH_NAVIGATION_HOMESTACK}}` – the Home tab is a **native stack**, so Home uses the platform's native
+  header (UINavigationBar / Android toolbar) – no custom header component.{{#if DRAWER}} Left: drawer button.{{/if}}{{#if NOTIFICATIONS}} Right: notification bell with the unread count.{{/if}}
+{{#if HAS_HEADER_BUTTONS}}
+- `{{PATH_NAVIGATION_HEADERBUTTONS}}` – `HeaderIconButton` and the ready-made header buttons. Use them in
+  `headerLeft` / `headerRight` of any screen.
+{{/if}}
 - `{{PATH_NAVIGATION_TYPES}}` – typed params for every route
 - `{{PATH_NAVIGATION_REF}}` – navigate from outside React (notifications, interceptors)
-- `{{PATH_NAVIGATION_DRAWER}}` – ready-made drawer template, **not mounted** (instructions at the top of the file).
 - Headers are React Navigation's own headers. Their colours and fonts come from the app theme, so they
   follow light / dark mode. Set a title with `options={{ title }}` or `navigation.setOptions({ title })`.
 

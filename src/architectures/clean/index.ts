@@ -31,6 +31,7 @@ export const clean: ArchitectureDefinition = {
     'auth.service': {
       path: 'src/data/repositories/AuthRepositoryImpl.ts',
       template: 'architectures/clean/AuthRepositoryImpl.ts',
+      symbol: 'authRepository',
     },
     'auth.form': { path: 'src/presentation/components/LoginForm/LoginForm.tsx' },
     'auth.logic': { path: 'src/presentation/hooks/useLogin.ts', template: 'architectures/clean/useLogin.ts' },

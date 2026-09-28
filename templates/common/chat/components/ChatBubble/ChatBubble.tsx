@@ -33,16 +33,17 @@ export function ChatBubble({ message, onPressMedia }: ChatBubbleProps): React.JS
     if (!message.crop) {
       return { width: 240, height: 180 };
     }
-    const { width, height, aspectRatio } = message.crop;
+    const { outputWidth, outputHeight, aspectRatio } = message.crop;
     const baseW = 240;
+    // mediaUrl is already the cropped file — size the bubble by its real pixels.
+    if (outputWidth && outputHeight) {
+      const calculatedHeight = Math.max(100, Math.min(320, (baseW * outputHeight) / outputWidth));
+      return { width: baseW, height: calculatedHeight };
+    }
     if (aspectRatio === '1:1') return { width: baseW, height: baseW };
     if (aspectRatio === '4:5') return { width: baseW, height: baseW * 1.25 };
     if (aspectRatio === '16:9') return { width: baseW, height: (baseW * 9) / 16 };
     if (aspectRatio === '3:2') return { width: baseW, height: (baseW * 2) / 3 };
-    if (width > 0 && height > 0) {
-      const calculatedHeight = Math.max(100, Math.min(320, (baseW * height) / width));
-      return { width: baseW, height: calculatedHeight };
-    }
     return { width: 240, height: 180 };
   };
 
@@ -50,11 +51,11 @@ export function ChatBubble({ message, onPressMedia }: ChatBubbleProps): React.JS
     if (!message.crop?.filter) return null;
     switch (message.crop.filter) {
       case 'warm':
-        return { tintColor: '#ff9800', opacity: 0.15 };
+        return { backgroundColor: '#ff9800', opacity: 0.15 };
       case 'cool':
-        return { tintColor: '#2196f3', opacity: 0.15 };
+        return { backgroundColor: '#2196f3', opacity: 0.15 };
       case 'mono':
-        return { tintColor: '#000000', opacity: 0.25 };
+        return { backgroundColor: '#000000', opacity: 0.25 };
       default:
         return null;
     }

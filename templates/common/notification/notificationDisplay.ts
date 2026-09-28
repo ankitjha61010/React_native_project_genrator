@@ -7,6 +7,8 @@ import { logger } from '{{IMPORT:utils.logger}}';
 /** A pressed notification – FCM (shown by the OS) or Notifee (shown by us). */
 export interface NotificationTap {
   id?: string;
+  title?: string;
+  body?: string;
   data: Record<string, unknown>;
 }
 
@@ -75,7 +77,8 @@ export async function displayNotification(message: RemoteMessage): Promise<void>
  */
 export async function handleBackgroundNotificationEvent({ type, detail }: Event): Promise<void> {
   if ((type === EventType.PRESS || type === EventType.ACTION_PRESS) && detail.notification) {
-    const tap: NotificationTap = { id: detail.notification.id, data: detail.notification.data ?? {} };
+    const { id, title, body, data } = detail.notification;
+    const tap: NotificationTap = { id, title, body, data: data ?? {} };
     await storageService.set(StorageKeys.PENDING_NOTIFICATION_TAP, tap);
   }
 }

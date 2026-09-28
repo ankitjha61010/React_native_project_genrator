@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Modal,
   StyleSheet,
@@ -27,6 +27,19 @@ export interface ChatMediaPreviewProps {
 export function ChatMediaPreview({ visible, message, onClose }: ChatMediaPreviewProps): React.JSX.Element | null {
   const styles = useStyles(createStyles);
   const [loading, setLoading] = useState(false);
+  // iOS can fire onLoadStart AFTER onLoad/onLoadEnd for local or cached images, which
+  // left the spinner running forever. Once the image has finished, ignore late starts.
+  const imageSettled = useRef(false);
+
+  useEffect(() => {
+    imageSettled.current = false;
+    setLoading(false);
+  }, [visible, message?.id]);
+
+  const settleImage = () => {
+    imageSettled.current = true;
+    setLoading(false);
+  };
 
   if (!message) return null;
 
@@ -40,11 +53,11 @@ export function ChatMediaPreview({ visible, message, onClose }: ChatMediaPreview
     if (!message.crop?.filter) return null;
     switch (message.crop.filter) {
       case 'warm':
-        return { tintColor: '#ff9800', opacity: 0.15 };
+        return { backgroundColor: '#ff9800', opacity: 0.15 };
       case 'cool':
-        return { tintColor: '#2196f3', opacity: 0.15 };
+        return { backgroundColor: '#2196f3', opacity: 0.15 };
       case 'mono':
-        return { tintColor: '#000000', opacity: 0.25 };
+        return { backgroundColor: '#000000', opacity: 0.25 };
       default:
         return null;
     }
@@ -64,8 +77,12 @@ export function ChatMediaPreview({ visible, message, onClose }: ChatMediaPreview
                 },
               ]}
               resizeMode="contain"
-              onLoadStart={() => setLoading(true)}
-              onLoadEnd={() => setLoading(false)}
+              onLoadStart={() => {
+                if (!imageSettled.current) setLoading(true);
+              }}
+              onLoad={settleImage}
+              onError={settleImage}
+              onLoadEnd={settleImage}
             />
             {getFilterStyle() && <View style={[StyleSheet.absoluteFill, getFilterStyle()]} pointerEvents="none" />}
           </View>

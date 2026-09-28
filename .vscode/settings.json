@@ -1,0 +1,38 @@
+{
+  // ── TypeScript ────────────────────────────────────────────────────────────
+  // Point the TS language server to the generator's own tsconfig so it only
+  // checks src/ and tests/ — NOT the templates/ folder.
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.tsconfig.fallback": "tsconfig.json",
+
+  // Disable VS Code's built-in "validate JS/TS" for files inside templates/.
+  // The sentinel tsconfig at templates/tsconfig.json already sets noCheck:true,
+  // but this adds an extra layer so the Problems panel stays clean.
+  "typescript.validate.enable": true,
+  "javascript.validate.enable": false,
+
+  // Tell the TS extension which tsconfig to use for files NOT matched by the
+  // root tsconfig (e.g. open template files). This picks up templates/tsconfig.json
+  // automatically via directory walking, but we reinforce it here.
+  "typescript.preferences.includePackageJsonAutoImports": "off",
+
+  // ── Search / Explorer ─────────────────────────────────────────────────────
+  // Hide noise from explorer and search results.
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true
+  },
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/.git": true
+  },
+
+  // ── Editor ────────────────────────────────────────────────────────────────
+  "editor.formatOnSave": true,
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  }
+}

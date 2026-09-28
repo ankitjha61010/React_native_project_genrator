@@ -1,4 +1,6 @@
-import { Command, Option } from 'commander';
+import { Command, InvalidArgumentError, Option } from 'commander';
+import type { SocialLoginOption } from '../core/types.js';
+import { SOCIAL_LOGIN_IDS } from '../config/socialAuth.js';
 import { ARCHITECTURE_IDS } from '../architectures/index.js';
 import { STATE_MANAGEMENT_IDS, STORAGE_IDS } from '../config/constants.js';
 import { REACT_NATIVE_PROFILES } from '../config/reactNativeVersions.js';
@@ -20,9 +22,10 @@ export interface CliFlags {
   notifications?: boolean;
   authEmail?: boolean;
   authMobile?: boolean;
-  socialAuth?: 'google' | 'facebook' | 'both' | 'none';
+  socialAuth?: SocialLoginOption;
   socket?: boolean;
   chat?: boolean;
+  drawer?: boolean;
   storage?: string;
   install: boolean;
   pods: boolean;
@@ -59,11 +62,24 @@ export function parseArgs(argv: string[], version: string): CliFlags {
     .option('--no-auth-email', 'disable email authentication')
     .option('--auth-mobile', 'enable mobile OTP authentication (Phone Login, OTP Verification)')
     .option('--no-auth-mobile', 'disable mobile OTP authentication')
-    .addOption(new Option('--social-auth <type>', 'social login provider').choices(['google', 'facebook', 'both', 'none']))
+    .addOption(
+      new Option('--social-auth <type>', 'social login providers ("both" = google-facebook)')
+        .choices([...SOCIAL_LOGIN_IDS, 'both'])
+        // argParser replaces the choices check, so validate here. `both` is the old name of google-facebook.
+        .argParser(value => {
+          if (value === 'both') return 'google-facebook';
+          if (!(SOCIAL_LOGIN_IDS as string[]).includes(value)) {
+            throw new InvalidArgumentError(`Allowed choices are ${[...SOCIAL_LOGIN_IDS, 'both'].join(', ')}.`);
+          }
+          return value;
+        }),
+    )
     .option('--socket', 'implement Socket.io client for real-time events')
     .option('--no-socket', 'no socket client')
     .option('--chat', 'implement real-time chat with media/audio/video/documents')
     .option('--no-chat', 'no chat module')
+    .option('--drawer', 'add a side drawer menu around the bottom tabs')
+    .option('--no-drawer', 'bottom tabs only, no drawer')
     .option('--analytics', 'add Firebase Analytics (screen tracking + analyticsService)')
     .option('--no-analytics', 'no Firebase Analytics')
     .addOption(new Option('--storage <engine>', 'key-value storage').choices(STORAGE_IDS))

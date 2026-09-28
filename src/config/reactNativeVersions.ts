@@ -44,6 +44,9 @@ const ECOSYSTEM_2026_08: Record<string, string> = {
   'react-i18next': '17.0.15',
   'react-native-localize': '3.7.2',
   'react-native-image-picker': '8.2.1',
+  '@react-native-community/image-editor': '4.3.1',
+  '@shopify/react-native-skia': '2.13.0',
+  'react-native-file-access': '4.0.4',
   'react-native-permissions': '5.6.2',
   'react-native-webview': '14.0.1',
   '@react-native-vector-icons/material-design-icons': '13.1.4',
@@ -62,6 +65,9 @@ const ECOSYSTEM_2026_08: Record<string, string> = {
   'react-native-mmkv': '4.3.2',
   'react-native-nitro-modules': '0.37.1',
   'react-native-restart': '0.0.29',
+  '@react-native-google-signin/google-signin': '16.1.5',
+  'react-native-fbsdk-next': '13.4.3',
+  '@invertase/react-native-apple-authentication': '2.5.1',
   'socket.io-client': '^4.8.1',
 };
 

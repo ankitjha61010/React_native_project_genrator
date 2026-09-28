@@ -5,6 +5,7 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
+  I18nManager,
 } from 'react-native';
 {{#if VECTOR_ICONS}}
 import { AppIcon } from '{{IMPORT:components.AppIcon}}';
@@ -173,6 +174,9 @@ export function ChatInputBar({ onSendMessage, onTyping }: ChatInputBarProps): Re
           onTyping?.();
         }}
         multiline
+        // RTL: cursor and text flow from the correct side
+        textAlign={I18nManager.isRTL ? 'right' : 'left'}
+        writingDirection={I18nManager.isRTL ? 'rtl' : 'ltr'}
       />
 
       {/* Action Button: Send or Mic */}

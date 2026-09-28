@@ -1,6 +1,7 @@
 import path from 'node:path';
 import fs from 'fs-extra';
 import type { ReactNativeProfile } from '../../config/reactNativeVersions.js';
+import { SOCIAL_PLACEHOLDERS, type SocialProviders } from '../../config/socialAuth.js';
 import { GeneratorError } from '../../utils/errors.js';
 import { appendBlock, applyPatches } from '../../utils/nativePatch.js';
 
@@ -63,8 +64,7 @@ export async function configureAndroidPermissions(projectDir: string): Promise<v
   const manifest = path.join(projectDir, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
   await edit(manifest, 'AndroidManifest.xml', source =>
     applyPatches(
-      // I18nManager.forceRTL (RTL languages) has no effect on Android without supportsRtl.
-      /android:supportsRtl=/.test(source) ? source : source.replace(/<application\b/, '<application\n      android:supportsRtl="true"'),
+      source,
       [
         {
           id: 'permissions',
@@ -84,6 +84,19 @@ export async function configureAndroidPermissions(projectDir: string): Promise<v
       'AndroidManifest.xml',
     ),
   );
+}
+
+/**
+ * Android only mirrors the UI when the app declares `supportsRtl`. Set it ONLY for apps
+ * generated with RTL support: an LTR-only app must stay left-to-right even on an Arabic
+ * device (otherwise stack headers show a mirrored back arrow).
+ */
+export async function configureAndroidLayoutDirection(projectDir: string, rtl: boolean): Promise<void> {
+  const manifest = path.join(projectDir, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+  await edit(manifest, 'AndroidManifest.xml', source => {
+    const withoutFlag = source.replace(/\n?\s*android:supportsRtl="(true|false)"/, '');
+    return withoutFlag.replace(/<application\b/, `<application\n      android:supportsRtl="${rtl}"`);
+  });
 }
 
 export async function setAndroidDisplayName(projectDir: string, displayName: string): Promise<void> {
@@ -107,4 +120,78 @@ export async function installAndroidFonts(projectDir: string, fontPaths: string[
   for (const font of fontPaths) {
     await fs.copy(path.join(projectDir, font), path.join(target, path.basename(font)));
   }
+}
+
+/**
+ * Facebook Login on Android: app id / client token string resources, the SDK meta-data,
+ * the Custom Tab redirect activity and package visibility for the Facebook app.
+ * Google Sign-In needs no manifest changes (only the SHA-1 in Google Cloud – see
+ * docs/SOCIAL_LOGIN.md). Sign in with Apple is iOS only.
+ */
+export async function configureAndroidSocialAuth(projectDir: string, providers: SocialProviders): Promise<void> {
+  if (!providers.facebook) return;
+  const main = path.join(projectDir, 'android', 'app', 'src', 'main');
+
+  await edit(path.join(main, 'res', 'values', 'strings.xml'), 'strings.xml', source =>
+    applyPatches(
+      source,
+      [
+        {
+          id: 'facebook-strings',
+          anchor: /^<\/resources>/m,
+          position: 'before',
+          comment: 'xml',
+          content: [
+            '    <!-- Facebook Login – replace with your values (see docs/SOCIAL_LOGIN.md) -->',
+            `    <string name="facebook_app_id">${SOCIAL_PLACEHOLDERS.facebookAppId}</string>`,
+            `    <string name="facebook_client_token">${SOCIAL_PLACEHOLDERS.facebookClientToken}</string>`,
+            '    <!-- "fb" followed by your app id, e.g. fb1234567890 -->',
+            `    <string name="fb_login_protocol_scheme">fb${SOCIAL_PLACEHOLDERS.facebookAppId}</string>`,
+          ].join('\n'),
+        },
+      ],
+      'strings.xml',
+    ),
+  );
+
+  await edit(path.join(main, 'AndroidManifest.xml'), 'AndroidManifest.xml', source =>
+    applyPatches(
+      source,
+      [
+        {
+          id: 'facebook-application',
+          anchor: /^[ \t]*<\/application>/m,
+          position: 'before',
+          comment: 'xml',
+          content: [
+            '  <!-- Facebook SDK (values live in res/values/strings.xml) -->',
+            '  <meta-data android:name="com.facebook.sdk.ApplicationId" android:value="@string/facebook_app_id" />',
+            '  <meta-data android:name="com.facebook.sdk.ClientToken" android:value="@string/facebook_client_token" />',
+            '  <!-- Browser (Custom Tab) login redirects back to the app through this activity -->',
+            '  <activity android:name="com.facebook.CustomTabActivity" android:exported="true">',
+            '    <intent-filter>',
+            '      <action android:name="android.intent.action.VIEW" />',
+            '      <category android:name="android.intent.category.DEFAULT" />',
+            '      <category android:name="android.intent.category.BROWSABLE" />',
+            '      <data android:scheme="@string/fb_login_protocol_scheme" />',
+            '    </intent-filter>',
+            '  </activity>',
+          ].join('\n'),
+        },
+        {
+          id: 'facebook-queries',
+          anchor: /^<\/manifest>/m,
+          position: 'before',
+          comment: 'xml',
+          content: [
+            '    <!-- Android 11+ package visibility: lets the SDK log in through the Facebook app -->',
+            '    <queries>',
+            '        <provider android:authorities="com.facebook.katana.provider.PlatformProvider" />',
+            '    </queries>',
+          ].join('\n'),
+        },
+      ],
+      'AndroidManifest.xml',
+    ),
+  );
 }

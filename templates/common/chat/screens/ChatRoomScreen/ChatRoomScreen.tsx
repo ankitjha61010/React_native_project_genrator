@@ -7,6 +7,7 @@ import {
   Platform,
   TouchableOpacity,
   Image,
+  I18nManager,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -105,7 +106,7 @@ export function ChatRoomScreen(): React.JSX.Element {
   };
 
   if (loading) {
-    return <AppLoader />;
+    return <AppLoader fullScreen />;
   }
 
   return (
@@ -117,9 +118,14 @@ export function ChatRoomScreen(): React.JSX.Element {
           onPress={() => navigation.goBack()}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
 {{#if VECTOR_ICONS}}
-          <AppIcon name="chevron-left" size={28} tintColor={styles.backIconColor.color} />
+          {/* chevron flips direction in RTL so it always points "back" */}
+          <AppIcon
+            name={I18nManager.isRTL ? 'chevron-right' : 'chevron-left'}
+            size={28}
+            tintColor={styles.backIconColor.color}
+          />
 {{else}}
-          <AppText style={{ fontSize: 20 }}>‹</AppText>
+          <AppText style={{ fontSize: 20 }}>{I18nManager.isRTL ? '›' : '‹'}</AppText>
 {{/if}}
         </TouchableOpacity>
 
@@ -200,7 +206,7 @@ const createStyles = (theme: Theme) =>
     },
     backBtn: {
       padding: 4,
-      marginRight: 4,
+      marginEnd: 4,  // RTL-aware: flips automatically
     },
     backIconColor: {
       color: theme.colors.text,
@@ -235,7 +241,7 @@ const createStyles = (theme: Theme) =>
       backgroundColor: '#9E9E9E',
     },
     headerInfo: {
-      marginLeft: 10,
+      marginStart: 10,  // RTL-aware: becomes marginRight in RTL
       flex: 1,
     },
     headerTitle: {

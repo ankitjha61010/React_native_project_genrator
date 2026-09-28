@@ -6,11 +6,14 @@ import { AppIcon } from '{{IMPORT:components.AppIcon}}';
 {{/if}}
 import { useTheme } from '{{IMPORT:hooks.useTheme}}';
 import { translate } from '{{IMPORT:i18n.index}}';
-import { HomeScreen } from '{{IMPORT:screens.Home}}';
 import { ProfileScreen } from '{{IMPORT:screens.Profile}}';
 {{#if CHAT}}
 import { ChatListScreen } from '{{IMPORT:chat.ChatListScreen}}';
 {{/if}}
+{{#if DRAWER}}
+import { DrawerMenuButton } from './HeaderButtons';
+{{/if}}
+import { HomeStackNavigator } from './HomeStackNavigator';
 import type { BottomTabParamList } from './navigationTypes';
 
 {{#if VECTOR_ICONS}}
@@ -34,7 +37,8 @@ function ChatIcon({ color, size }: { color: string; size: number }) {
 const Tab = createBottomTabNavigator<BottomTabParamList>();
 
 /**
- * The signed-in home: a bottom tab bar, each tab with its own header.
+ * The signed-in home: a bottom tab bar. Home is a native stack (native header with
+ * {{#if DRAWER}}the drawer button and {{/if}}{{#if NOTIFICATIONS}}the notification bell{{else}}its own title{{/if}}); the other tabs use the tab header.
  */
 export function BottomTabNavigator(): React.JSX.Element {
   const { theme } = useTheme();
@@ -45,14 +49,20 @@ export function BottomTabNavigator(): React.JSX.Element {
     <Tab.Navigator
       screenOptions={{
         headerTitleAlign: 'center',
+{{#if DRAWER}}
+        headerLeft: DrawerMenuButton,
+        headerLeftContainerStyle: { paddingStart: 12 },
+{{/if}}
         tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: theme.colors.tabInactive,
       }}>
       <Tab.Screen
         name="HomeTab"
-        component={HomeScreen}
+        component={HomeStackNavigator}
         options={{
           title: translate('home', 'home'),
+          // HomeStackNavigator draws the native header.
+          headerShown: false,
 {{#if VECTOR_ICONS}}
           tabBarIcon: HomeIcon,
 {{/if}}

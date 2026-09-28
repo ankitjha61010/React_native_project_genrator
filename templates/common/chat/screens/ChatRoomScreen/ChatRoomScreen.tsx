@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -16,8 +16,11 @@ import { AppText } from '{{IMPORT:components.AppText}}';
 {{#if VECTOR_ICONS}}
 import { AppIcon } from '{{IMPORT:components.AppIcon}}';
 {{/if}}
+import { userMessage } from '{{IMPORT:api.errors}}';
+import { useAuthSession } from '{{IMPORT:hooks.useAuthSession}}';
 import { useStyles } from '{{IMPORT:hooks.useTheme}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
+import { flash } from '{{IMPORT:utils.flashMessage}}';
 {{#if SOCKET}}
 import { socketService } from '{{IMPORT:socket.service}}';
 import { SOCKET_EVENTS } from '{{IMPORT:socket.events}}';
@@ -34,7 +37,9 @@ export function ChatRoomScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const styles = useStyles(createStyles);
 
-  const conversationId = route.params?.conversationId ?? 'conv_1';
+  const conversationId: string = route.params?.conversationId;
+  const { user } = useAuthSession();
+  const myId = user?.id;
   const initialTitle = route.params?.title ?? 'Chat';
   const initialAvatar = route.params?.avatar;
   const initialIsOnline = route.params?.isOnline;
@@ -43,28 +48,36 @@ export function ChatRoomScreen(): React.JSX.Element {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [previewMedia, setPreviewMedia] = useState<ChatMessage | null>(null);
+  const [typingName, setTypingName] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
 
   const title = conversation?.title ?? initialTitle;
-  const avatar =
-    conversation?.avatar ??
-    initialAvatar ??
-    'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150';
+  const avatar = conversation?.avatar ?? initialAvatar;
   const isOnline =
     conversation?.participants?.some(p => p.isOnline) ?? (initialIsOnline || false);
+
+  /** Adds or replaces a message (the same id never appears twice). */
+  const upsert = useCallback(
+    (message: ChatMessage, replaceId?: string) =>
+      setMessages(prev => {
+        const next = { ...message, isMe: message.senderId === myId };
+        const without = prev.filter(m => m.id !== next.id && m.id !== replaceId);
+        return [...without, next].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      }),
+    [myId],
+  );
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
 
     const initChat = async () => {
       try {
-        const [allConvs, msgs] = await Promise.all([
-          chatService.fetchConversations(),
-          chatService.fetchMessages(conversationId),
-        ]);
-        const found = allConvs.find(c => c.id === conversationId);
-        if (found) setConversation(found);
-        setMessages(msgs);
+        const [details, page] = await Promise.all([chatService.fetchConversation(conversationId), chatService.fetchMessages(conversationId)]);
+        setConversation(details);
+        setMessages(page.items);
+        await chatService.markRead(conversationId);
+      } catch (error) {
+        flash.error({ message: userMessage(error) ?? 'Could not load the conversation.' });
       } finally {
         setLoading(false);
       }
@@ -73,14 +86,29 @@ export function ChatRoomScreen(): React.JSX.Element {
     initChat();
 
 {{#if SOCKET}}
-    // Connect and listen for real-time messages via socket
+    // The room is for typing indicators; messages reach every member anyway.
     socketService.emit(SOCKET_EVENTS.JOIN_ROOM, { roomId: conversationId });
-
-    unsubscribe = socketService.on(SOCKET_EVENTS.RECEIVE_MESSAGE, (newMsg: ChatMessage) => {
-      if (newMsg.conversationId === conversationId) {
-        setMessages(prev => [...prev, newMsg]);
-      }
-    });
+    const subscriptions = [
+      socketService.on<ChatMessage>(SOCKET_EVENTS.RECEIVE_MESSAGE, message => {
+        if (message.conversationId !== conversationId) return;
+        upsert(message);
+        if (message.senderId !== myId) chatService.markRead(conversationId).catch(() => undefined);
+      }),
+      // The others read the conversation: my messages get blue ticks.
+      socketService.on<{ conversationId: string }>(SOCKET_EVENTS.MESSAGE_READ, event => {
+        if (event.conversationId === conversationId) setMessages(prev => prev.map(m => (m.isMe ? { ...m, status: 'read' } : m)));
+      }),
+      socketService.on<{ conversationId: string; messageId: string }>(SOCKET_EVENTS.MESSAGE_DELETE, event => {
+        if (event.conversationId === conversationId) setMessages(prev => prev.filter(m => m.id !== event.messageId));
+      }),
+      socketService.on<{ roomId: string; name: string }>(SOCKET_EVENTS.USER_TYPING, event => {
+        if (event.roomId === conversationId) setTypingName(event.name);
+      }),
+      socketService.on<{ roomId: string }>(SOCKET_EVENTS.USER_STOP_TYPING, event => {
+        if (event.roomId === conversationId) setTypingName(null);
+      }),
+    ];
+    unsubscribe = () => subscriptions.forEach(off => off());
 {{/if}}
 
     return () => {
@@ -89,20 +117,48 @@ export function ChatRoomScreen(): React.JSX.Element {
       unsubscribe?.();
 {{/if}}
     };
-  }, [conversationId]);
-
-  const handleSendMessage = async (msgData: Partial<ChatMessage>) => {
-    const sentMsg = await chatService.sendMessage(conversationId, msgData);
-    setMessages(prev => [...prev, sentMsg]);
-
+  }, [conversationId, myId, upsert]);
 {{#if SOCKET}}
-    // Broadcast via socket
-    socketService.emit(SOCKET_EVENTS.SEND_MESSAGE, sentMsg);
+
+  // Typing indicator: "typing" at most every 3 s, "stop" after 4 s without keystrokes.
+  const typingState = useRef<{ lastSent: number; timer?: ReturnType<typeof setTimeout> }>({ lastSent: 0 });
+  const handleTyping = useCallback(() => {
+    const state = typingState.current;
+    if (Date.now() - state.lastSent > 3000) {
+      socketService.emit(SOCKET_EVENTS.USER_TYPING, { roomId: conversationId });
+      state.lastSent = Date.now();
+    }
+    if (state.timer) clearTimeout(state.timer);
+    state.timer = setTimeout(() => {
+      socketService.emit(SOCKET_EVENTS.USER_STOP_TYPING, { roomId: conversationId });
+      state.lastSent = 0;
+    }, 4000);
+  }, [conversationId]);
 {{/if}}
 
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
+  const handleSendMessage = async (msgData: Partial<ChatMessage>) => {
+    // Show it right away ("sending"); the server's copy replaces it.
+    const localId = `local-${Date.now()}`;
+    const pending: ChatMessage = {
+      id: localId,
+      conversationId,
+      senderId: myId ?? '',
+      senderName: user?.name ?? '',
+      type: msgData.type ?? 'text',
+      ...msgData,
+      createdAt: new Date().toISOString(),
+      status: 'sending',
+    };
+    upsert(pending);
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    try {
+      // The server delivers it to the other members over Socket.IO.
+      const sent = await chatService.sendMessage(conversationId, msgData);
+      upsert(sent, localId);
+    } catch (error) {
+      setMessages(prev => prev.filter(m => m.id !== localId));
+      flash.error({ message: userMessage(error) ?? 'The message could not be sent.' });
+    }
   };
 
   if (loading) {
@@ -149,7 +205,7 @@ export function ChatRoomScreen(): React.JSX.Element {
                 styles.headerSubtitle,
                 isOnline ? styles.statusOnlineText : styles.statusOfflineText,
               ]}>
-              {isOnline ? 'Online' : 'Offline'}
+              {typingName ? 'typing…' : isOnline ? 'Online' : 'Offline'}
             </AppText>
           </View>
         </TouchableOpacity>
@@ -171,7 +227,11 @@ export function ChatRoomScreen(): React.JSX.Element {
         />
 
         <View style={{ paddingBottom: Math.max(insets.bottom, 8) }}>
+{{#if SOCKET}}
+          <ChatInputBar onSendMessage={handleSendMessage} onTyping={handleTyping} />
+{{else}}
           <ChatInputBar onSendMessage={handleSendMessage} />
+{{/if}}
         </View>
 
         <ChatMediaPreview

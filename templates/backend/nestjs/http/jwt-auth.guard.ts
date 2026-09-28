@@ -1,12 +1,8 @@
-import { {{#if STYLE_USECASE}}Inject, {{/if}}Injectable, type CanActivate, type ExecutionContext } from '@nestjs/common';
+import { Inject, Injectable, type CanActivate, type ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { UnauthorizedError } from '{{IMPORT:core.errors}}';
-{{#if STYLE_SERVICE}}
-import { AuthService } from '{{IMPORT:app.authService}}';
-{{else}}
-import type { AuthUseCases } from '{{IMPORT:nest.auth.providers}}';
-import { AUTH_USE_CASES } from '{{IMPORT:nest.tokens}}';
-{{/if}}
+import type { Services } from '{{IMPORT:app.container}}';
+import { SERVICES } from '{{IMPORT:nest.tokens}}';
 import { IS_PUBLIC, type AuthenticatedRequest } from '{{IMPORT:nest.decorators}}';
 
 /**
@@ -17,11 +13,7 @@ import { IS_PUBLIC, type AuthenticatedRequest } from '{{IMPORT:nest.decorators}}
 export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
-{{#if STYLE_SERVICE}}
-    private readonly auth: AuthService,
-{{else}}
-    @Inject(AUTH_USE_CASES) private readonly auth: AuthUseCases,
-{{/if}}
+    @Inject(SERVICES) private readonly services: Services,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -30,7 +22,7 @@ export class JwtAuthGuard implements CanActivate {
     const req = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const [scheme, token] = (req.headers.authorization ?? '').split(' ');
     if (scheme?.toLowerCase() !== 'bearer' || !token) throw new UnauthorizedError('Missing bearer token', 'MISSING_TOKEN');
-    req.user = await this.auth.authenticate{{CALL}}(token);
+    req.user = await this.services.sessions.authenticate(token);
     return true;
   }
 }

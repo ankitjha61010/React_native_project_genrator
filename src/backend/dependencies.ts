@@ -37,6 +37,19 @@ export const BACKEND_VERSIONS: Record<string, string> = {
   bcrypt: '6.0.0',
   '@types/bcrypt': '6.0.0',
   argon2: '0.45.1',
+  // Features
+  multer: '2.4.0',
+  '@types/multer': '2.2.0',
+  'socket.io': '4.8.4',
+  'socket.io-client': '4.8.4',
+  nodemailer: '10.0.12',
+  '@types/nodemailer': '8.0.2',
+  jose: '6.2.12',
+  'firebase-admin': '14.5.0',
+  ioredis: '5.11.1',
+  // Microservices gateway / workspace
+  'http-proxy-middleware': '4.2.0',
+  concurrently: '10.0.5',
   // Databases
   prisma: '7.10.0',
   '@prisma/client': '7.10.0',
@@ -99,11 +112,33 @@ export function resolveBackendDependencies(o: BackendOptions): BackendDependenci
   if (s.helmet) add(runtime, 'helmet');
 
   if (auth) {
+    const m = o.authMethods;
     add(runtime, 'jsonwebtoken');
     add(dev, '@types/jsonwebtoken');
-    if (o.hashing === 'bcrypt' || o.hashing === 'configurable') add(runtime, 'bcrypt'), add(dev, '@types/bcrypt');
-    if (o.hashing === 'argon2' || o.hashing === 'configurable') add(runtime, 'argon2');
+    // File uploads (avatars, chat media) – not in the notifications service. Nest ships multer inside @nestjs/platform-express.
+    if (o.service !== 'notifications') {
+      if (o.framework === 'express') add(runtime, 'multer');
+      add(dev, '@types/multer');
+    }
+    if (m.email) {
+      add(runtime, 'nodemailer');
+      add(dev, '@types/nodemailer');
+      if (o.hashing === 'bcrypt' || o.hashing === 'configurable') {
+        add(runtime, 'bcrypt');
+        add(dev, '@types/bcrypt');
+      }
+      if (o.hashing === 'argon2' || o.hashing === 'configurable') add(runtime, 'argon2');
+    }
+    if (m.google || m.facebook || m.apple) add(runtime, 'jose');
+    // Socket.IO server – in microservices only the chat service holds the sockets.
+    if ((o.modules.chat || o.modules.notifications) && o.service !== 'notifications') {
+      add(runtime, 'socket.io');
+      add(dev, 'socket.io-client');
+    }
+    if (o.modules.notifications) add(runtime, 'firebase-admin');
   }
+  // Microservices: Redis events between the services.
+  if (o.service) add(runtime, 'ioredis');
 
   switch (o.orm) {
     case 'prisma':

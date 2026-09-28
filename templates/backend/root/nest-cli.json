@@ -5,6 +5,16 @@
   "entryFile": "{{NEST_ENTRY}}",
   "compilerOptions": {
     "deleteOutDir": true,
+{{#if SWAGGER}}
+    "tsConfigPath": "tsconfig.build.json",
+    "plugins": [
+      {
+        "name": "@nestjs/swagger",
+        "options": { "introspectComments": true, "classValidatorShim": true, "dtoFileNameSuffix": [".dto.ts"] }
+      }
+    ]
+{{else}}
     "tsConfigPath": "tsconfig.build.json"
+{{/if}}
   }
 }

@@ -17,4 +17,16 @@ export const authService = {
     return authRepository.socialLogin(result);
   },
 {{/if}}
+{{#if AUTH_EMAIL}}
+
+  register: authRepository.register,
+  forgotPassword: authRepository.forgotPassword,
+  resetPassword: authRepository.resetPassword,
+{{/if}}
+{{#if AUTH_MOBILE}}
+  sendOtp: authRepository.sendOtp,
+  verifyOtp: authRepository.verifyOtp,
+{{/if}}
+  me: authRepository.me,
+  logout: authRepository.logout,
 };

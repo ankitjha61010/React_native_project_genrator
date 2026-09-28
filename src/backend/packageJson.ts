@@ -34,6 +34,8 @@ export function buildBackendPackageJson(ctx: BackendRenderContext): Record<strin
     'test:cov': 'vitest run --coverage',
   });
 
+  // Replica services (microservices) get their users from the identity service.
+  const seeds = options.service !== 'chat' && options.service !== 'notifications';
   switch (options.orm) {
     case 'prisma':
       Object.assign(scripts, {
@@ -43,7 +45,7 @@ export function buildBackendPackageJson(ctx: BackendRenderContext): Record<strin
         'db:generate': 'prisma generate',
         'db:migrate': 'prisma migrate dev',
         'db:deploy': 'prisma migrate deploy',
-        'db:seed': 'prisma db seed',
+        ...(seeds ? { 'db:seed': 'prisma db seed' } : {}),
         'db:reset': 'prisma migrate reset',
         'db:studio': 'prisma studio',
       });
@@ -55,11 +57,11 @@ export function buildBackendPackageJson(ctx: BackendRenderContext): Record<strin
         'db:deploy': `npm run typeorm -- migration:run -d ${dataSource}`,
         'db:revert': `npm run typeorm -- migration:revert -d ${dataSource}`,
         'db:migration:generate': `npm run typeorm -- migration:generate -d ${dataSource}`,
-        'db:seed': `tsx ${variables.SEED_TS}`,
+        ...(seeds ? { 'db:seed': `tsx ${variables.SEED_TS}` } : {}),
       });
       break;
     case 'mongoose':
-      Object.assign(scripts, { 'db:seed': `tsx ${variables.SEED_TS}` });
+      if (seeds) Object.assign(scripts, { 'db:seed': `tsx ${variables.SEED_TS}` });
       break;
   }
 

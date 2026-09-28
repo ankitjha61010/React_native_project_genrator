@@ -1,0 +1,36 @@
+import { Module } from '@nestjs/common';
+{{#if MODULE_HEALTH}}
+import { HealthController } from '{{IMPORT:nest.health.controller}}';
+
+/** Services come from the global CoreModule – a feature module only declares its controller. */
+@Module({ controllers: [HealthController] })
+export class HealthModule {}
+{{/if}}
+{{#if MODULE_AUTH}}
+import { AuthController } from '{{IMPORT:nest.auth.controller}}';
+
+/** Services come from the global CoreModule – a feature module only declares its controller. */
+@Module({ controllers: [AuthController] })
+export class AuthModule {}
+{{/if}}
+{{#if MODULE_USERS}}
+import { UsersController } from '{{IMPORT:nest.users.controller}}';
+
+/** Services come from the global CoreModule – a feature module only declares its controller. */
+@Module({ controllers: [UsersController] })
+export class UsersModule {}
+{{/if}}
+{{#if MODULE_CHAT}}
+import { ChatController } from '{{IMPORT:nest.chat.controller}}';
+
+/** Services come from the global CoreModule – a feature module only declares its controller. */
+@Module({ controllers: [ChatController] })
+export class ChatModule {}
+{{/if}}
+{{#if MODULE_NOTIFICATIONS}}
+import { NotificationsController } from '{{IMPORT:nest.notifications.controller}}';
+
+/** Services come from the global CoreModule – a feature module only declares its controller. */
+@Module({ controllers: [NotificationsController] })
+export class NotificationsModule {}
+{{/if}}

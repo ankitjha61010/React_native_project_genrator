@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { userMessage } from '{{IMPORT:api.errors}}';
+import { {{SYMBOL:auth.service}} } from '{{IMPORT:auth.service}}';
 import { AppButton } from '{{IMPORT:components.AppButton}}';
 import { AppInput } from '{{IMPORT:components.AppInput}}';
 import { AppScreen } from '{{IMPORT:components.AppScreen}}';
@@ -16,7 +18,7 @@ import type { Theme } from '{{IMPORT:theme.index}}';
 import type { IntlKey } from '{{IMPORT:i18n.index}}';
 
 const otpSchema = z.object({
-  otp: z.string().length(6, 'otpLength' as IntlKey<'auth'>),
+  otp: z.string().trim().regex(/^\d{6}$/, 'otpLength' as IntlKey<'auth'>),
 });
 
 type OtpFormValues = z.infer<typeof otpSchema>;
@@ -24,10 +26,19 @@ type OtpFormValues = z.infer<typeof otpSchema>;
 export function OtpVerifyScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const phone = route.params?.phone ?? '';
+  const countryCode: string = route.params?.countryCode ?? '';
+  const phone: string = route.params?.phone ?? '';
   const { signIn } = useAuthSession();
   const styles = useStyles(createStyles);
   const [resending, setResending] = useState(false);
+  // Seconds until "Resend" may be pressed (the backend throttles codes).
+  const [wait, setWait] = useState<number>(route.params?.resendIn ?? 60);
+
+  useEffect(() => {
+    if (wait <= 0) return undefined;
+    const timer = setTimeout(() => setWait(value => value - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [wait]);
 
   const { control, handleSubmit, formState: { isSubmitting } } = useForm<OtpFormValues>({
     resolver: zodResolver(otpSchema),
@@ -36,22 +47,29 @@ export function OtpVerifyScreen(): React.JSX.Element {
 
   const onSubmit = handleSubmit(async data => {
     try {
-      await new Promise(res => setTimeout(res, 800));
-      await signIn({
-        token: 'mobile_sample_token',
-        user: { id: 'usr_mobile', name: 'Mobile User', email: 'user@example.com', phone },
-      });
+      // Creates the account on the first login.
+      const session = await {{SYMBOL:auth.service}}.verifyOtp({ countryCode, phone, otp: data.otp.trim() });
+      await signIn(session);
       flash.success({ message: 'Logged in successfully!' });
-    } catch {
-      flash.error({ message: 'Invalid verification code.' });
+      navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
+    } catch (error) {
+      // e.g. "Wrong code, 4 attempts left".
+      flash.error({ message: userMessage(error) ?? 'Invalid verification code.' });
     }
   });
 
   const onResend = async () => {
+    if (wait > 0) return;
     setResending(true);
-    await new Promise(res => setTimeout(res, 800));
-    setResending(false);
-    flash.success({ message: 'OTP resent to ' + phone });
+    try {
+      const sent = await {{SYMBOL:auth.service}}.sendOtp({ countryCode, phone });
+      setWait(sent.resendIn);
+      flash.success({ intlType: 'auth', value: 'codeSent' });
+    } catch (error) {
+      flash.error({ message: userMessage(error) ?? 'Could not send the code, please try again.' });
+    } finally {
+      setResending(false);
+    }
   };
 
   return (
@@ -59,7 +77,7 @@ export function OtpVerifyScreen(): React.JSX.Element {
       <FadeInView style={styles.header}>
         <AppText fontFamily="bold" fontSize="size24" intlType="auth" value="verifyOtp" />
         <AppText color="textSecondary" intlType="auth" value="otpSubtitle" />
-        {Boolean(phone) && <AppText fontFamily="semiBold" color="primary">{phone}</AppText>}
+        {Boolean(phone) && <AppText fontFamily="semiBold" color="primary">{`${countryCode} ${phone}`}</AppText>}
       </FadeInView>
 
       <FadeInView delay={120} style={styles.form}>
@@ -93,8 +111,10 @@ export function OtpVerifyScreen(): React.JSX.Element {
             intlType="auth"
             value="resendOtp"
             loading={resending}
+            disabled={wait > 0}
             onPress={onResend}
           />
+          {wait > 0 ? <AppText color="textSecondary" text={`${wait}s`} /> : null}
           <AppButton
             variant="ghost"
             intlType="common"

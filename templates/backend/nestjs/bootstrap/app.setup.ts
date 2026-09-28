@@ -7,6 +7,15 @@ import helmet from 'helmet';
 {{/if}}
 import { config } from '{{IMPORT:config.env}}';
 import { errorResponse } from '{{IMPORT:core.response}}';
+{{#if SOCKET_SERVER}}
+import { logger } from '{{IMPORT:core.logger}}';
+import type { Infrastructure, Services } from '{{IMPORT:app.container}}';
+import { attachSocketServer, SocketHub } from '{{IMPORT:realtime.server}}';
+import { INFRASTRUCTURE, SERVICES } from '{{IMPORT:nest.tokens}}';
+{{/if}}
+{{#if API_ENCRYPTION}}
+import { apiEncryption } from '{{IMPORT:http.encryption}}';
+{{/if}}
 {{#if SWAGGER}}
 import { setupSwagger } from '{{IMPORT:nest.swagger}}';
 {{/if}}
@@ -64,6 +73,14 @@ export function configureApp(app: NestExpressApplication): void {
 {{#if SEC_SANITIZE}}
   app.use(sanitizeInput);
 {{/if}}
+{{#if API_ENCRYPTION}}
+  // API routes only (not the docs / uploads).
+  app.use(config.api.basePath, apiEncryption);
+{{/if}}
+{{#if UPLOADS}}
+  // Uploaded files (avatars{{#if CHAT}}, chat media{{/if}}). Never executed, never listed.
+  app.useStaticAssets(config.uploads.dir, { prefix: config.uploads.publicPath, index: false, dotfiles: 'deny', maxAge: '7d' });
+{{/if}}
 
   // /<API_PREFIX>/v<N>/… e.g. /api/v1/auth/login
   app.setGlobalPrefix(config.api.prefix);
@@ -75,5 +92,22 @@ export function configureApp(app: NestExpressApplication): void {
 {{#if SWAGGER}}
 
   if (config.swagger.enabled) setupSwagger(app);
+{{/if}}
+{{#if SOCKET_SERVER}}
+
+  // Socket.IO on the same port (the app connects to the API origin).
+  const infra = app.get<Infrastructure>(INFRASTRUCTURE);
+  const services = app.get<Services>(SERVICES);
+  if (infra.realtime instanceof SocketHub) {
+    attachSocketServer(app.getHttpServer(), infra.realtime, {
+      authenticate: token => services.sessions.authenticate(token),
+      users: infra.repositories.users,
+{{#if CHAT}}
+      isMember: (userId, conversationId) => services.chat.isMember(userId, conversationId),
+      markRead: (userId, conversationId) => services.chat.markRead(userId, conversationId),
+{{/if}}
+      logger,
+    });
+  }
 {{/if}}
 }

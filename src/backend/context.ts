@@ -48,13 +48,19 @@ export function prepareBackendContext(options: BackendOptions): BackendRenderCon
   const arch: BackendArchitecture = getBackendArchitecture(options.architecture);
   const s = options.security;
   const hasAuth = options.auth !== 'none';
+  const m = options.authMethods;
+  const email = hasAuth && m.email;
+  const otp = hasAuth && m.mobileOtp;
+  const social = hasAuth && (m.google || m.facebook || m.apple);
+  const chat = hasAuth && options.modules.chat;
+  const notifications = hasAuth && options.modules.notifications;
+  const role = options.service;
+  const replica = role === 'chat' || role === 'notifications';
   const slug = options.appName.toLowerCase().replace(/[^a-z0-9-]+/g, '-');
 
   const flags: Record<string, boolean> = {
     NEST: options.framework === 'nestjs',
     EXPRESS: options.framework === 'express',
-    STYLE_SERVICE: arch.style === 'service',
-    STYLE_USECASE: arch.style === 'usecase',
     VIEWS: arch.views,
     FEATURE_MODULES: arch.featureModules,
     MODULE_FACTORIES: options.framework === 'express' && arch.id === 'modular',
@@ -70,9 +76,54 @@ export function prepareBackendContext(options: BackendOptions): BackendRenderCon
     AUTH_JWT_ONLY: options.auth === 'jwt',
     AUTH_REFRESH: options.auth === 'access-refresh' || options.auth === 'refresh-rotation',
     AUTH_ROTATION: options.auth === 'refresh-rotation',
-    HASH_BCRYPT: hasAuth && options.hashing === 'bcrypt',
-    HASH_ARGON2: hasAuth && options.hashing === 'argon2',
-    HASH_CONFIGURABLE: hasAuth && options.hashing === 'configurable',
+    // Sign-in methods
+    AUTH_EMAIL: email,
+    AUTH_OTP: otp,
+    SOCIAL: social,
+    SOCIAL_GOOGLE: hasAuth && m.google,
+    SOCIAL_FACEBOOK: hasAuth && m.facebook,
+    SOCIAL_APPLE: hasAuth && m.apple,
+    /** Accounts without email / password exist (mobile or social sign-in). */
+    PASSWORDLESS: otp || social,
+    /** 6-digit codes by email / SMS. */
+    CODES: email || otp,
+    // Password hashing (only email + password accounts have a password)
+    HASH_BCRYPT: email && options.hashing === 'bcrypt',
+    HASH_ARGON2: email && options.hashing === 'argon2',
+    HASH_CONFIGURABLE: email && options.hashing === 'configurable',
+    // Feature modules
+    CHAT: chat,
+    NOTIFICATIONS: notifications,
+    /** The Realtime port exists (chat events, live notifications). */
+    REALTIME: chat || notifications,
+    /** This process hosts the Socket.IO server (not the notifications service – it publishes events). */
+    SOCKET_SERVER: (chat || notifications) && role !== 'notifications',
+    // ── microservices ──
+    MICROSERVICE: role !== undefined,
+    SVC_IDENTITY: role === 'identity',
+    SVC_CHAT: role === 'chat',
+    SVC_NOTIFICATIONS: role === 'notifications',
+    /** Redis event bus between services. */
+    EVENTS: role !== undefined,
+    /** Auth routes + AuthService (monolith / identity service). */
+    AUTH_API: hasAuth && !replica,
+    /** Users routes + UsersService (monolith / identity service). */
+    USERS_API: !replica,
+    /** Users are a local copy synced from the identity service. */
+    REPLICA: replica,
+    /** Chat pushes through the notifications service (events). */
+    PUSH_EVENTS: role === 'chat' && Boolean(options.remotePush),
+    /** Nest lifecycle needs the infrastructure (sockets / event bus to close). */
+    INFRA_LIFECYCLE: ((chat || notifications) && role !== 'notifications') || role !== undefined,
+    /** Chat pushes offline members (in-process notifications, or the notifications service). */
+    CHAT_PUSH: notifications || (role === 'chat' && Boolean(options.remotePush)),
+    /** Realtime events are sent to the chat service's sockets. */
+    REALTIME_EVENTS: role === 'notifications',
+    /** File uploads (avatars, chat media) on local disk. */
+    UPLOADS: hasAuth && role !== 'notifications',
+    API_ENCRYPTION: options.apiEncryption,
+    /** env.ts needs its comma-separated list parser. */
+    ENV_LIST: s.cors || (hasAuth && (m.google || m.apple)),
     SWAGGER: options.swagger,
     SEC_HELMET: s.helmet,
     SEC_CORS: s.cors,
@@ -81,9 +132,15 @@ export function prepareBackendContext(options: BackendOptions): BackendRenderCon
     SEC_ANY_RATE_LIMIT: s.rateLimit || (hasAuth && s.authRateLimit),
     SEC_BODY_LIMIT: s.bodyLimit,
     SEC_SANITIZE: s.sanitize,
-    SEC_LOCKOUT: hasAuth && s.accountLockout,
-    // Filled per render of the env template.
+    // Lockout protects passwords – only with email + password sign-in.
+    SEC_LOCKOUT: email && s.accountLockout,
+    // Set per file (manifest `flags`).
     ENV_EXAMPLE: false,
+    MODULE_HEALTH: false,
+    MODULE_AUTH: false,
+    MODULE_USERS: false,
+    MODULE_CHAT: false,
+    MODULE_NOTIFICATIONS: false,
   };
   for (const a of ['feature-based', 'layered', 'clean', 'mvc', 'modular', 'enterprise']) {
     flags[`ARCH_${a.replace(/-/g, '_').toUpperCase()}`] = arch.id === a;
@@ -108,11 +165,26 @@ export function prepareBackendContext(options: BackendOptions): BackendRenderCon
     NEST_ENTRY: `${arch.dir('bootstrap', options.framework).replace(/^src\/?/, '')}${arch.dir('bootstrap', options.framework) === 'src' ? '' : '/'}main`,
     ENTRY_JS: `dist/${arch.dir('bootstrap', options.framework).replace(/^src\/?/, '')}${arch.dir('bootstrap', options.framework) === 'src' ? '' : '/'}${options.framework === 'nestjs' ? 'main' : 'server'}.js`,
     ENTRY_TS: `${arch.dir('bootstrap', options.framework)}/${options.framework === 'nestjs' ? 'main' : 'server'}.ts`,
-    /** `.execute` for use-case style – controllers call `this.auth.login{{CALL}}(…)`. */
-    CALL: arch.style === 'usecase' ? '.execute' : '',
     SEED_TS: `${arch.dir('database', options.framework)}/seed.ts`,
-    JWT_ACCESS_SECRET: secret(),
+    JWT_ACCESS_SECRET: options.sharedJwtSecret ?? secret(),
     JWT_REFRESH_SECRET: secret(),
+    APP_PACKAGE: options.appPackage,
+    PORT: String(options.port ?? 3000),
+    /** Every service must accept the identity service's tokens. */
+    JWT_ISSUER: options.sharedName ?? slug,
+    TRUST_PROXY: String(role !== undefined),
+    SERVICE_NAME: role ?? 'api',
+    /** Prisma native type of uuid columns. */
+    UUID: options.database === 'postgresql' ? '@db.Uuid' : '@db.Char(36)',
+    AUTH_METHODS_TEXT: [email && 'email + password', otp && 'mobile number + SMS code', hasAuth && m.google && 'Google', hasAuth && m.facebook && 'Facebook', hasAuth && m.apple && 'Apple'].filter(Boolean).join(', '),
+    CODE_PURPOSES: [...(email ? ['email_verification', 'password_reset'] : []), ...(otp ? ['phone_login'] : [])].map(p => `'${p}'`).join(' | ') || 'never',
+    SOCIAL_PROVIDERS_TEXT: (['Google', 'Facebook', 'Apple'] as const).filter(p => hasAuth && m[p.toLowerCase() as 'google']).join(' / '),
+    /** First enabled provider, as a literal (tests). */
+    SOCIAL_PROVIDER: `'${(['google', 'facebook', 'apple'] as const).find(p => m[p]) ?? 'google'}'`,
+    SOCIAL_PROVIDER_LIST: (['google', 'facebook', 'apple'] as const).filter(p => hasAuth && m[p]).map(p => `'${p}'`).join(', '),
+    // 32 / 16 characters, like the app's API_ENCRYPTION_KEY / API_ENCRYPTION_IV.
+    API_ENCRYPTION_KEY: options.encryptionSecrets?.key ?? randomBytes(24).toString('base64url'),
+    API_ENCRYPTION_IV: options.encryptionSecrets?.iv ?? randomBytes(12).toString('base64url'),
   };
 
   return { options, arch, flags, variables };

@@ -10,6 +10,7 @@ import { NotificationsScreen } from '{{IMPORT:screens.Notifications}}';
 import { translate } from '{{IMPORT:i18n.index}}';
 {{#if CHAT}}
 import { ChatRoomScreen } from '{{IMPORT:chat.ChatRoomScreen}}';
+import { NewChatScreen } from '{{IMPORT:chat.NewChatScreen}}';
 {{/if}}
 {{#if DRAWER}}
 import { DrawerNavigator } from './DrawerNavigator';
@@ -50,6 +51,7 @@ export function MainNavigator(): React.JSX.Element {
         component={ChatRoomScreen}
         options={{ headerShown: false }}
       />
+      <Stack.Screen name="NewChat" component={NewChatScreen} options={{ title: 'New chat' }} />
 {{/if}}
     </Stack.Navigator>
   );

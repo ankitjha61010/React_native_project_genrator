@@ -1,249 +1,183 @@
-import { Body, Controller, Get, HttpCode{{#if STYLE_USECASE}}, Inject{{/if}}, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post } from '@nestjs/common';
 {{#if SWAGGER}}
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiTags } from '@nestjs/swagger';
 {{/if}}
-{{#if STYLE_SERVICE}}
 import { AuthService } from '{{IMPORT:app.authService}}';
-{{else}}
-import type { AuthUseCases } from '{{IMPORT:nest.auth.providers}}';
-import { AUTH_USE_CASES } from '{{IMPORT:nest.tokens}}';
-{{/if}}
-import type { AuthResult, ClientContext } from '{{IMPORT:app.authTypes}}';
+import type { ClientContext } from '{{IMPORT:app.authTypes}}';
 {{#if VIEWS}}
 import { authView } from '{{IMPORT:views.auth}}';
 import { userView } from '{{IMPORT:views.user}}';
 import type { User } from '{{IMPORT:domain.user}}';
 {{else}}
+import { toSessionView } from '{{IMPORT:app.authTypes}}';
 import { toPublicUser, type User } from '{{IMPORT:domain.user}}';
 {{/if}}
-{{#if SWAGGER}}
-import { ApiEnvelope, ApiErrors } from '{{IMPORT:nest.apiResponses}}';
+import { AuthRateLimit, Client, CurrentUser, Public } from '{{IMPORT:nest.decorators}}';
+import { Endpoint } from '{{IMPORT:nest.endpoint}}';
 import { UserResponseDto } from '{{IMPORT:nest.users.dto}}';
-{{/if}}
-{{#if SEC_AUTH_RATE_LIMIT}}
-import { AuthRateLimit, Client, CurrentUser, Public, ResponseMessage } from '{{IMPORT:nest.decorators}}';
-{{else}}
-import { Client, CurrentUser, Public, ResponseMessage } from '{{IMPORT:nest.decorators}}';
-{{/if}}
 import {
-{{#if SWAGGER}}
-  AuthSessionDto,
-{{/if}}
+{{#if AUTH_EMAIL}}
   ChangePasswordDto,
   ForgotPasswordDto,
   LoginDto,
-{{#if AUTH_REFRESH}}
-  RefreshTokenDto,
-{{/if}}
   RegisterDto,
   ResetPasswordDto,
   VerifyEmailDto,
+{{/if}}
+{{#if CODES}}
+  SentCodeDto,
+{{/if}}
+{{#if AUTH_OTP}}
+  SendOtpDto,
+  VerifyOtpDto,
+{{/if}}
+{{#if SOCIAL}}
+  SocialLoginDto,
+{{/if}}
+{{#if AUTH_REFRESH}}
+  RefreshTokenDto,
+{{/if}}
+  SessionDto,
 } from '{{IMPORT:nest.auth.dto}}';
 
 {{#if VIEWS}}
-const session = (result: AuthResult) => authView.session(result);
-const user = userView.one;
+const session = authView.session;
+const publicUser = userView.one;
 {{else}}
-const session = (result: AuthResult) => ({ user: toPublicUser(result.user), tokens: result.tokens });
-const user = toPublicUser;
+const session = toSessionView;
+const publicUser = toPublicUser;
 {{/if}}
 
+/** `/auth` – {{AUTH_METHODS_TEXT}}, sessions. */
 {{#if SWAGGER}}
 @ApiTags('Auth')
 {{/if}}
 @Controller('auth')
 export class AuthController {
-  constructor({{#if STYLE_SERVICE}}private readonly auth: AuthService{{else}}@Inject(AUTH_USE_CASES) private readonly auth: AuthUseCases{{/if}}) {}
+  constructor(private readonly auth: AuthService) {}
+{{#if AUTH_EMAIL}}
 
   @Public()
-{{#if SEC_AUTH_RATE_LIMIT}}
   @AuthRateLimit()
-{{/if}}
   @Post('register')
-  @HttpCode(201)
-{{#if SWAGGER}}
-  @ApiOperation({ summary: 'Create an account (sends a verification email)' })
-  @ApiEnvelope(AuthSessionDto, { status: 201, description: 'Registered' })
-  @ApiErrors(409, 422, 429)
-{{/if}}
-  @ResponseMessage('Registered successfully')
+  @Endpoint({ summary: 'Create an account with email + password (a verification code is emailed)', message: 'Registered successfully', status: 201, response: SessionDto, errors: [409, 422, 429] })
   async register(@Body() dto: RegisterDto, @Client() client: ClientContext) {
-    return session(await this.auth.register{{CALL}}(dto, client));
+    return session(await this.auth.register(dto, client));
   }
 
   @Public()
-{{#if SEC_AUTH_RATE_LIMIT}}
   @AuthRateLimit()
-{{/if}}
   @Post('login')
-  @HttpCode(200)
-{{#if SWAGGER}}
-  @ApiOperation({ summary: 'Log in with email + password' })
-  @ApiEnvelope(AuthSessionDto, { description: 'Logged in' })
-  @ApiErrors(401, 403{{#if SEC_LOCKOUT}}, 423{{/if}}, 422, 429)
-{{/if}}
-  @ResponseMessage('Logged in successfully')
+  @Endpoint({ summary: 'Log in with email + password', message: 'Logged in successfully', status: 200, response: SessionDto, errors: [401, 403{{#if SEC_LOCKOUT}}, 423{{/if}}, 422, 429] })
   async login(@Body() dto: LoginDto, @Client() client: ClientContext) {
-    return session(await this.auth.login{{CALL}}(dto, client));
+    return session(await this.auth.login(dto, client));
   }
+{{/if}}
+{{#if AUTH_OTP}}
+
+  @Public()
+  @AuthRateLimit()
+  @Post('otp/send')
+  @Endpoint({ summary: 'Text a 6-digit login code to a mobile number', message: 'Code sent', status: 200, response: SentCodeDto, errors: [422, 429] })
+  sendOtp(@Body() dto: SendOtpDto) {
+    return this.auth.sendOtp(dto);
+  }
+
+  @Public()
+  @AuthRateLimit()
+  @Post('otp/verify')
+  @Endpoint({ summary: 'Sign in with the SMS code (creates the account on the first login)', message: 'Logged in successfully', status: 200, response: SessionDto, errors: [400, 403, 422, 429] })
+  async verifyOtp(@Body() dto: VerifyOtpDto, @Client() client: ClientContext) {
+    return session(await this.auth.verifyOtp(dto, client));
+  }
+{{/if}}
+{{#if SOCIAL}}
+
+  @Public()
+  @AuthRateLimit()
+  @Post('social')
+  @Endpoint({ summary: 'Sign in with {{SOCIAL_PROVIDERS_TEXT}} (the token from the provider SDK is verified with the provider)', message: 'Logged in successfully', status: 200, response: SessionDto, errors: [401, 403, 422, 429] })
+  async social(@Body() dto: SocialLoginDto, @Client() client: ClientContext) {
+    return session(await this.auth.socialLogin(dto, client));
+  }
+{{/if}}
 {{#if AUTH_REFRESH}}
 
   @Public()
-{{#if SEC_AUTH_RATE_LIMIT}}
   @AuthRateLimit()
-{{/if}}
   @Post('refresh')
-  @HttpCode(200)
-{{#if SWAGGER}}
 {{#if AUTH_ROTATION}}
-  @ApiOperation({ summary: 'New token pair for a refresh token (the used one is revoked; reusing it revokes the whole session)' })
+  @Endpoint({ summary: 'New token pair for a refresh token (the used one is revoked; reusing it revokes the whole session)', message: 'Token refreshed', status: 200, response: SessionDto, errors: [401, 422, 429] })
 {{else}}
-  @ApiOperation({ summary: 'New access token for a refresh token' })
+  @Endpoint({ summary: 'New access token for a refresh token', message: 'Token refreshed', status: 200, response: SessionDto, errors: [401, 422, 429] })
 {{/if}}
-  @ApiEnvelope(AuthSessionDto, { description: 'Refreshed' })
-  @ApiErrors(401, 422, 429)
-{{/if}}
-  @ResponseMessage('Token refreshed')
   async refresh(@Body() dto: RefreshTokenDto, @Client() client: ClientContext) {
-    return session(await this.auth.refresh{{CALL}}(dto.refreshToken, client));
+    return session(await this.auth.refresh(dto.refreshToken, client));
   }
 
   @Public()
   @Post('logout')
-  @HttpCode(200)
-{{#if SWAGGER}}
-  @ApiOperation({ summary: 'End the session of a refresh token' })
-  @ApiEnvelope(null, { description: 'Logged out' })
-  @ApiErrors(422)
-{{/if}}
-  @ResponseMessage('Logged out')
+  @Endpoint({ summary: 'End the session of a refresh token', message: 'Logged out', status: 200, errors: [422] })
   async logout(@Body() dto: RefreshTokenDto) {
-    await this.auth.logout{{CALL}}(dto.refreshToken);
-    return null;
+    await this.auth.logout(dto.refreshToken);
   }
 
   @Post('logout-all')
-  @HttpCode(200)
-{{#if SWAGGER}}
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Log out on every device' })
-  @ApiEnvelope(null, { description: 'Logged out everywhere' })
-  @ApiErrors(401)
-{{/if}}
-  @ResponseMessage('Logged out on all devices')
-  async logoutAll(@CurrentUser() current: User) {
-    await this.auth.logoutAll{{CALL}}(current.id);
-    return null;
+  @Endpoint({ summary: 'Log out on every device', message: 'Logged out on all devices', status: 200, errors: [401], bearer: true })
+  async logoutAll(@CurrentUser() user: User) {
+    await this.auth.logoutAll(user.id);
   }
 {{else}}
 
   @Post('logout')
-  @HttpCode(200)
-{{#if SWAGGER}}
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Log out (invalidates every token of the user)' })
-  @ApiEnvelope(null, { description: 'Logged out' })
-  @ApiErrors(401)
-{{/if}}
-  @ResponseMessage('Logged out')
-  async logout(@CurrentUser() current: User) {
-    await this.auth.logout{{CALL}}(current.id);
-    return null;
+  @Endpoint({ summary: 'Log out (invalidates every token of the user)', message: 'Logged out', status: 200, errors: [401], bearer: true })
+  async logout(@CurrentUser() user: User) {
+    await this.auth.logout(user.id);
   }
 {{/if}}
 
   @Get('me')
-{{#if SWAGGER}}
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'The signed-in user' })
-  @ApiEnvelope(UserResponseDto, { description: 'Current user' })
-  @ApiErrors(401)
-{{/if}}
-  @ResponseMessage('Current user')
-  async me(@CurrentUser() current: User) {
-    return user(await this.auth.getCurrentUser{{CALL}}(current.id));
+  @Endpoint({ summary: 'The signed-in user', message: 'Current user', response: UserResponseDto, errors: [401], bearer: true })
+  async me(@CurrentUser() user: User) {
+    return publicUser(await this.auth.getCurrentUser(user.id));
   }
+{{#if AUTH_EMAIL}}
 
-{{#if SEC_AUTH_RATE_LIMIT}}
   @AuthRateLimit()
-{{/if}}
   @Post('change-password')
-  @HttpCode(200)
-{{#if SWAGGER}}
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Change the password (other sessions are signed out)' })
-  @ApiEnvelope(AuthSessionDto, { description: 'Password changed' })
-  @ApiErrors(400, 401, 422, 429)
-{{/if}}
-  @ResponseMessage('Password changed')
-  async changePassword(@CurrentUser() current: User, @Body() dto: ChangePasswordDto, @Client() client: ClientContext) {
-    return session(await this.auth.changePassword{{CALL}}(current.id, dto, client));
+  @Endpoint({ summary: 'Change (or set) the password – other sessions are signed out', message: 'Password changed', status: 200, response: SessionDto, errors: [400, 401, 422, 429], bearer: true })
+  async changePassword(@CurrentUser() user: User, @Body() dto: ChangePasswordDto, @Client() client: ClientContext) {
+    return session(await this.auth.changePassword(user.id, dto, client));
   }
 
   @Public()
-{{#if SEC_AUTH_RATE_LIMIT}}
   @AuthRateLimit()
-{{/if}}
   @Post('forgot-password')
-  @HttpCode(200)
-{{#if SWAGGER}}
-  @ApiOperation({ summary: 'Send a password reset link (always succeeds)' })
-  @ApiEnvelope(null, { description: 'Reset link sent if the email exists' })
-  @ApiErrors(422, 429)
-{{/if}}
-  @ResponseMessage('If the email is registered, a reset link has been sent')
+  @Endpoint({ summary: 'Email a 6-digit password reset code (always succeeds)', message: 'If the email is registered, a reset code has been sent', status: 200, errors: [422, 429] })
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
-    await this.auth.requestPasswordReset{{CALL}}(dto.email);
-    return null;
+    await this.auth.requestPasswordReset(dto.email);
   }
 
   @Public()
-{{#if SEC_AUTH_RATE_LIMIT}}
   @AuthRateLimit()
-{{/if}}
   @Post('reset-password')
-  @HttpCode(200)
-{{#if SWAGGER}}
-  @ApiOperation({ summary: 'Set a new password with the token from the email' })
-  @ApiEnvelope(null, { description: 'Password reset' })
-  @ApiErrors(400, 422, 429)
-{{/if}}
-  @ResponseMessage('Password has been reset, please log in')
+  @Endpoint({ summary: 'Set a new password with the emailed code', message: 'Password has been reset, please log in', status: 200, errors: [400, 422, 429] })
   async resetPassword(@Body() dto: ResetPasswordDto) {
-    await this.auth.resetPassword{{CALL}}(dto.token, dto.newPassword);
-    return null;
+    await this.auth.resetPassword(dto);
   }
 
-  @Public()
-{{#if SEC_AUTH_RATE_LIMIT}}
   @AuthRateLimit()
-{{/if}}
-  @Post('verify-email')
-  @HttpCode(200)
-{{#if SWAGGER}}
-  @ApiOperation({ summary: 'Confirm the email address with the token from the email' })
-  @ApiEnvelope(UserResponseDto, { description: 'Email verified' })
-  @ApiErrors(400, 422, 429)
-{{/if}}
-  @ResponseMessage('Email verified')
-  async verifyEmail(@Body() dto: VerifyEmailDto) {
-    return user(await this.auth.verifyEmail{{CALL}}(dto.token));
-  }
-
-{{#if SEC_AUTH_RATE_LIMIT}}
-  @AuthRateLimit()
-{{/if}}
   @Post('verify-email/request')
-  @HttpCode(200)
-{{#if SWAGGER}}
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Send the verification email again' })
-  @ApiEnvelope(null, { description: 'Verification email sent' })
-  @ApiErrors(401, 409, 429)
-{{/if}}
-  @ResponseMessage('Verification email sent')
-  async requestEmailVerification(@CurrentUser() current: User) {
-    await this.auth.requestEmailVerification{{CALL}}(current.id);
-    return null;
+  @Endpoint({ summary: 'Email a verification code', message: 'Verification code sent', status: 200, response: SentCodeDto, errors: [400, 401, 409, 429], bearer: true })
+  requestEmailVerification(@CurrentUser() user: User) {
+    return this.auth.requestEmailVerification(user.id);
   }
+
+  @AuthRateLimit()
+  @Post('verify-email')
+  @Endpoint({ summary: 'Confirm the email address with the emailed code', message: 'Email verified', status: 200, response: UserResponseDto, errors: [400, 401, 422, 429], bearer: true })
+  async verifyEmail(@CurrentUser() user: User, @Body() dto: VerifyEmailDto) {
+    return publicUser(await this.auth.verifyEmail(user.id, dto.code));
+  }
+{{/if}}
 }

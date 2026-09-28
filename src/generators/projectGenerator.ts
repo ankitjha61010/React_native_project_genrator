@@ -61,7 +61,7 @@ export async function generateProject(options: ProjectOptions, hooks: Generation
   assertNodeVersion(profile);
   assertCompatible(profile);
 
-  const projectDir = path.join(options.parentDir, options.appName);
+  const projectDir = path.join(options.parentDir, options.directoryName ?? options.appName);
   const prepared = prepareGeneration(options);
   const arch = prepared.ctx.architecture;
   // Render everything up-front: a template problem fails before anything is written.

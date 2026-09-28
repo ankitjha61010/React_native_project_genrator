@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   StyleSheet,
   View,
@@ -21,7 +21,6 @@ export interface ChatBubbleProps {
 
 export function ChatBubble({ message, onPressMedia }: ChatBubbleProps): React.JSX.Element {
   const styles = useStyles(createStyles);
-  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const isMe = message.isMe;
 
   const timeFormatted = new Date(message.createdAt).toLocaleTimeString([], {
@@ -110,9 +109,9 @@ export function ChatBubble({ message, onPressMedia }: ChatBubbleProps): React.JS
           <TouchableOpacity activeOpacity={0.85} onPress={() => onPressMedia?.(message)} style={styles.audioContainer}>
             <TouchableOpacity onPress={() => onPressMedia?.(message)} style={styles.audioPlayBtn}>
 {{#if VECTOR_ICONS}}
-              <AppIcon name={isPlayingAudio ? 'pause' : 'play'} size={24} tintColor={isMe ? '#FFFFFF' : '#25D366'} />
+              <AppIcon name="play" size={24} tintColor={isMe ? '#FFFFFF' : '#25D366'} />
 {{else}}
-              <AppText style={styles.audioPlayIcon}>{isPlayingAudio ? '⏸' : '▶'}</AppText>
+              <AppText style={styles.audioPlayIcon}>▶</AppText>
 {{/if}}
             </TouchableOpacity>
 

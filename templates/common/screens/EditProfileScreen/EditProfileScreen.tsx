@@ -9,6 +9,13 @@ import {
   Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { authApi } from '{{IMPORT:api.auth}}';
+import { userMessage } from '{{IMPORT:api.errors}}';
+{{#if PHONE_INPUT}}
+import { defaultCountry, findCountryByDialCode, type Country } from '{{IMPORT:assets.countries}}';
+import { PhoneInput } from '{{IMPORT:components.PhoneInput}}';
+{{/if}}
+import { authSessionStorage } from '{{IMPORT:storage.session}}';
 import { AppScreen } from '{{IMPORT:components.AppScreen}}';
 import { AppText } from '{{IMPORT:components.AppText}}';
 {{#if VECTOR_ICONS}}
@@ -28,18 +35,21 @@ import { flash } from '{{IMPORT:utils.flashMessage}}';
 export function EditProfileScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
   const styles = useStyles(createStyles);
-  const { user } = useAuthSession();
+  const { user, signIn } = useAuthSession();
   const { pick } = useImagePicker();
 
-  const [name, setName] = useState(user?.name ?? 'Alex Johnson');
-  const [email, setEmail] = useState(user?.email ?? 'alex.johnson@example.com');
-  const [phone, setPhone] = useState('+1 (555) 234-5678');
-  const [location, setLocation] = useState('San Francisco, CA');
-  const [bio, setBio] = useState('Passionate mobile app developer specializing in React Native & TypeScript.');
+  const [name, setName] = useState(user?.name ?? '');
+  const email = user?.email ?? '';
+{{#if PHONE_INPUT}}
+  const [country, setCountry] = useState<Country>(() => (user?.countryCode && findCountryByDialCode(user.countryCode)) || defaultCountry());
+{{/if}}
+  const [phone, setPhone] = useState(user?.phone ?? '');
+  const [location, setLocation] = useState(user?.location ?? '');
+  const [bio, setBio] = useState(user?.bio ?? '');
 
-  const [avatarUri, setAvatarUri] = useState<string | null>(
-    user?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200'
-  );
+  const [avatarUri, setAvatarUri] = useState<string | null>(user?.avatar ?? null);
+  /** A newly picked image (a local file) that still has to be uploaded. */
+  const [pickedAvatar, setPickedAvatar] = useState<{ uri: string; fileName?: string } | null>(null);
   const [avatarCrop, setAvatarCrop] = useState<MediaItem['crop'] | undefined>(undefined);
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [editingMedia, setEditingMedia] = useState<MediaItem | null>(null);
@@ -71,8 +81,8 @@ export function EditProfileScreen(): React.JSX.Element {
   const handleApplyEditedAvatar = (editedMedia: MediaItem) => {
     setAvatarUri(editedMedia.uri);
     setAvatarCrop(editedMedia.crop);
+    setPickedAvatar({ uri: editedMedia.uri, fileName: editedMedia.fileName });
     setEditingMedia(null);
-    flash.success({ intlType: 'common', value: 'ok' });
   };
 
   const getAvatarFilterStyle = () => {
@@ -91,10 +101,30 @@ export function EditProfileScreen(): React.JSX.Element {
 
   const handleSave = async () => {
     setSaving(true);
-    await new Promise(r => setTimeout(() => r(true), 600));
-    setSaving(false);
-    flash.success({ intlType: 'common', value: 'ok' });
-    navigation.goBack();
+    try {
+      const digits = phone.replace(/\D/g, '');
+      let updated = await authApi.updateProfile({
+        name: name.trim(),
+{{#if PHONE_INPUT}}
+        ...(digits ? { countryCode: country.dialCode, phone: digits } : { phone: null }),
+{{else}}
+        ...(digits ? {} : { phone: null }),
+{{/if}}
+        location: location.trim() || null,
+        bio: bio.trim() || null,
+      });
+      if (pickedAvatar) updated = await authApi.uploadAvatar(pickedAvatar);
+      // Keep the signed-in session (tokens) and store the new profile.
+      const session = await authSessionStorage.load();
+      if (session) await signIn({ ...session, user: updated });
+      flash.success({ intlType: 'common', value: 'ok' });
+      navigation.goBack();
+    } catch (error) {
+      // e.g. "Mobile number is already registered".
+      flash.error({ message: userMessage(error) ?? 'Could not save your profile, please try again.' });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -160,7 +190,7 @@ export function EditProfileScreen(): React.JSX.Element {
               </AppText>
               <AppInput
                 value={email}
-                onChangeText={setEmail}
+                editable={false}
                 placeholder="Email Address"
 {{#if VECTOR_ICONS}}
                 leftIcon="email-outline"
@@ -171,6 +201,9 @@ export function EditProfileScreen(): React.JSX.Element {
             </View>
 
             <View style={styles.inputGroup}>
+{{#if PHONE_INPUT}}
+              <PhoneInput country={country} onCountryChange={setCountry} value={phone} onChangeText={setPhone} />
+{{else}}
               <AppText fontFamily="semiBold" fontSize="size13" color="textSecondary" style={styles.fieldLabel}>
                 PHONE NUMBER
               </AppText>
@@ -183,6 +216,7 @@ export function EditProfileScreen(): React.JSX.Element {
 {{/if}}
                 keyboardType="phone-pad"
               />
+{{/if}}
             </View>
 
             <View style={styles.inputGroup}>

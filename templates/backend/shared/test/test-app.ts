@@ -1,116 +1,130 @@
-{{#if EXPRESS}}
-import type { Server } from 'node:http';
-{{#if AUTH}}
-import { config } from '{{IMPORT:config.env}}';
-import { createPasswordHasher } from '{{IMPORT:impl.passwordHasher}}';
-import { JwtTokenService } from '{{IMPORT:impl.tokenService}}';
-{{/if}}
-import { createApp } from '{{IMPORT:ex.app}}';
-import { createContainer } from '{{IMPORT:ex.container}}';
-{{/if}}
 {{#if NEST}}
 import type { Server } from 'node:http';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
-import { AppModule } from '{{IMPORT:nest.appModule}}';
-import { configureApp } from '{{IMPORT:nest.setup}}';
-import {
-  DATABASE,
-{{#if AUTH}}
-  MAILER,
 {{/if}}
-{{#if AUTH_REFRESH}}
-  REFRESH_TOKENS_REPOSITORY,
+{{#if SOCKET_SERVER}}
+import { io as connect, type Socket } from 'socket.io-client';
 {{/if}}
-{{#if AUTH}}
-  USER_TOKENS_REPOSITORY,
-{{/if}}
-  USERS_REPOSITORY,
-} from '{{IMPORT:nest.tokens}}';
-{{/if}}
-{{#if AUTH}}
-import { FakeHealthCheck, FakeMailer } from './fakes.js';
-{{else}}
-import { FakeHealthCheck } from './fakes.js';
-{{/if}}
-import {
-{{#if AUTH_REFRESH}}
-  InMemoryRefreshTokensRepository,
-{{/if}}
-{{#if AUTH}}
-  InMemoryUserTokensRepository,
-{{/if}}
-  InMemoryUsersRepository,
-} from './in-memory-repositories.js';
-
-export interface TestApp {
-  /** Pass to supertest: `request(app.server)`. */
-  server: Server;
-  usersRepository: InMemoryUsersRepository;
-{{#if AUTH}}
-  mailer: FakeMailer;
-{{/if}}
-  health: FakeHealthCheck;
-  close(): Promise<void>;
-}
-
-/** The real HTTP app (middleware, validation, errors…) on in-memory infrastructure. */
-export async function createTestApp(): Promise<TestApp> {
-  const usersRepository = new InMemoryUsersRepository();
-{{#if AUTH}}
-  const mailer = new FakeMailer();
-{{/if}}
-  const health = new FakeHealthCheck();
 {{#if EXPRESS}}
-
-  const app = createApp(
-    createContainer({
-      usersRepository,
-{{#if AUTH}}
-{{#if AUTH_REFRESH}}
-      refreshTokensRepository: new InMemoryRefreshTokensRepository(),
+import { createServices } from '{{IMPORT:app.container}}';
+{{#if SOCKET_SERVER}}
+import { logger } from '{{IMPORT:core.logger}}';
 {{/if}}
-      userTokensRepository: new InMemoryUserTokensRepository(),
-{{#if HASH_ARGON2}}
-      passwordHasher: createPasswordHasher(),
+{{/if}}
+{{#if SOCKET_SERVER}}
+{{#if EXPRESS}}
+import { attachSocketServer, SocketHub } from '{{IMPORT:realtime.server}}';
 {{else}}
-      passwordHasher: createPasswordHasher(config.password),
+import { SocketHub } from '{{IMPORT:realtime.server}}';
 {{/if}}
-      tokenService: new JwtTokenService(config.jwt),
-      mailer,
 {{/if}}
-      healthChecks: [health],
-    }),
-  );
-  const server = await new Promise<Server>(resolve => {
-    const listening = app.listen(0, () => resolve(listening));
-  });
-  const close = () => new Promise<void>((resolve, reject) => server.close(error => (error ? reject(error) : resolve())));
+{{#if EXPRESS}}
+import { createApp } from '{{IMPORT:ex.app}}';
 {{/if}}
 {{#if NEST}}
+import { AppModule } from '{{IMPORT:nest.appModule}}';
+import { configureApp } from '{{IMPORT:nest.setup}}';
+import { DATABASE, INFRASTRUCTURE } from '{{IMPORT:nest.tokens}}';
+{{/if}}
+{{#if AUTH_API}}
+import request from 'supertest';
+{{/if}}
+import { createTestInfrastructure } from './test-infrastructure.js';
 
+export type TestApp = Awaited<ReturnType<typeof createTestApp>>;
+
+/**
+ * The real HTTP app (middleware, validation, errors{{#if SOCKET_SERVER}}, Socket.IO{{/if}}…) on in-memory infrastructure,
+ * listening on a random port. Pass `app.server` to supertest.
+ */
+export async function createTestApp() {
+  const test = createTestInfrastructure();
+{{#if SOCKET_SERVER}}
+  // The real socket hub, so e2e tests can connect with socket.io-client.
+  const hub = new SocketHub();
+  test.infra.realtime = hub;
+{{/if}}
+{{#if EXPRESS}}
+  const services = createServices(test.infra);
+  const server = createApp(services).listen(0);
+{{#if SOCKET_SERVER}}
+  const io = attachSocketServer(server, hub, {
+    authenticate: token => services.sessions.authenticate(token),
+    users: test.repositories.users,
+{{#if CHAT}}
+    isMember: (userId, conversationId) => services.chat.isMember(userId, conversationId),
+    markRead: (userId, conversationId) => services.chat.markRead(userId, conversationId),
+{{/if}}
+    logger,
+  });
+{{/if}}
+  await new Promise<void>(resolve => server.once('listening', resolve));
+{{#if SOCKET_SERVER}}
+  // Also closes the HTTP server.
+  const close = () => io.close();
+{{else}}
+  const close = () => new Promise<void>((resolve, reject) => server.close(error => (error ? reject(error) : resolve())));
+{{/if}}
+{{/if}}
+{{#if NEST}}
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(DATABASE)
-    .useValue({ healthCheck: health, connect: async () => {}, disconnect: async () => {} })
-    .overrideProvider(USERS_REPOSITORY)
-    .useValue(usersRepository)
-{{#if AUTH_REFRESH}}
-    .overrideProvider(REFRESH_TOKENS_REPOSITORY)
-    .useValue(new InMemoryRefreshTokensRepository())
-{{/if}}
-{{#if AUTH}}
-    .overrideProvider(USER_TOKENS_REPOSITORY)
-    .useValue(new InMemoryUserTokensRepository())
-    .overrideProvider(MAILER)
-    .useValue(mailer)
-{{/if}}
+    .useValue({ healthCheck: test.healthCheck, connect: async () => {}, disconnect: async () => {} })
+    .overrideProvider(INFRASTRUCTURE)
+    .useValue(test.infra)
     .compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>({ bodyParser: false, logger: false });
   configureApp(app);
   await app.init();
+  await app.listen(0);
   const server: Server = app.getHttpServer();
   const close = () => app.close();
 {{/if}}
+  const port = (server.address() as { port: number }).port;
+{{#if SOCKET_SERVER}}
 
-  return { server, usersRepository, {{#if AUTH}}mailer, {{/if}}health, close };
+  /** A Socket.IO client authenticated with an access token (like the app). */
+  const socket = (token: string): Promise<Socket> =>
+    new Promise((resolve, reject) => {
+      const client = connect(`http://localhost:${port}`, { transports: ['websocket'], auth: { token }, reconnection: false });
+      client.once('connect', () => resolve(client));
+      client.once('connect_error', reject);
+    });
+{{/if}}
+
+{{#if AUTH}}
+
+  let accounts = 0;
+  /** Creates an account through the API ({{AUTH_METHODS_TEXT}}) → its id + access token. */
+  const signUp = async (name: string, role: 'user' | 'admin' = 'user') => {
+    const n = ++accounts;
+{{#if AUTH_API}}
+{{#if AUTH_EMAIL}}
+    const res = await request(server).post('/api/v1/auth/register').send({ name, email: `user${n}@example.com`, password: 'Sup3rSecret' }).expect(201);
+{{else}}
+{{#if AUTH_OTP}}
+    const phone = { countryCode: '+1', phone: `55501${String(n).padStart(5, '0')}` };
+    await request(server).post('/api/v1/auth/otp/send').send(phone).expect(200);
+    const res = await request(server).post('/api/v1/auth/otp/verify').send({ ...phone, name, otp: test.sms.lastCode(`+1${phone.phone}`) }).expect(200);
+{{else}}
+    const res = await request(server).post('/api/v1/auth/social').send({ provider: {{SOCIAL_PROVIDER}}, token: `valid:user-${n}:user${n}@example.com`, tokenType: 'idToken', name }).expect(200);
+{{/if}}
+{{/if}}
+    const id: string = res.body.data.user.id;
+    if (role === 'admin') {
+      // Role changes bump the token version – issue a token for the new role directly.
+      const admin = await test.repositories.users.update(id, { role: 'admin', tokenVersion: 1 });
+      return { id, token: test.infra.tokenService.signAccessToken({ sub: id, role: admin.role, tv: admin.tokenVersion }).token };
+    }
+    return { id, token: res.body.data.tokens.accessToken as string };
+{{else}}
+    // Accounts live in the identity service: create the local copy + a token signed with the shared secret.
+    const user = await test.repositories.users.create({ email: `user${n}@example.com`, name, role });
+    return { id: user.id, token: test.infra.tokenService.signAccessToken({ sub: user.id, role: user.role, tv: user.tokenVersion }).token };
+{{/if}}
+  };
+{{/if}}
+
+  return { server, port, close, ...test{{#if SOCKET_SERVER}}, socket{{/if}}{{#if AUTH}}, signUp{{/if}} };
 }

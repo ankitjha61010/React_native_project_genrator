@@ -1,0 +1,84 @@
+import { z } from 'zod';
+import { MESSAGE_TYPES } from '{{IMPORT:domain.chat}}';
+
+export const conversationParams = z.object({ conversationId: z.string().min(1).max(64) });
+export const messageParams = conversationParams.extend({ messageId: z.string().min(1).max(64) });
+
+export const startConversationSchema = z
+  .object({
+    participantIds: z.array(z.string().min(1).max(64)).min(1).max(100),
+    title: z.string().trim().min(1).max(120).optional().meta({ description: 'Groups only' }),
+    isGroup: z.boolean().optional(),
+  })
+  .meta({ id: 'StartConversationRequest' });
+
+const cropSchema = z
+  .object({
+    width: z.number().positive(),
+    height: z.number().positive(),
+    aspectRatio: z.string().max(20),
+    rotation: z.number().optional(),
+    filter: z.enum(['normal', 'warm', 'cool', 'mono']).optional(),
+    outputWidth: z.number().positive().optional(),
+    outputHeight: z.number().positive().optional(),
+  })
+  .meta({ id: 'MediaCrop' });
+
+/** Same fields as the app's ChatMessage (media must be uploaded first – send the returned url). */
+export const sendMessageSchema = z
+  .object({
+    type: z.enum(MESSAGE_TYPES),
+    text: z.string().max(10_000).optional(),
+    mediaUrl: z.url().max(1024).optional(),
+    thumbnailUrl: z.url().max(1024).optional(),
+    fileName: z.string().max(255).optional(),
+    fileSize: z.string().max(32).optional(),
+    duration: z.number().int().min(0).max(86_400).optional(),
+    crop: cropSchema.optional(),
+  })
+  .meta({ id: 'SendMessageRequest' });
+
+export const listMessagesQuery = z.object({
+  before: z.string().max(64).optional().meta({ description: 'Id of the oldest message already loaded' }),
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+});
+
+// ── responses (used by the OpenAPI document) ──────────────────────────────────
+
+export const chatMessageSchema = z
+  .object({
+    id: z.string(),
+    conversationId: z.string(),
+    senderId: z.string(),
+    senderName: z.string(),
+    senderAvatar: z.url().optional(),
+    type: z.enum(MESSAGE_TYPES),
+    text: z.string().optional(),
+    mediaUrl: z.url().optional(),
+    thumbnailUrl: z.url().optional(),
+    fileName: z.string().optional(),
+    fileSize: z.string().optional(),
+    duration: z.number().optional(),
+    crop: cropSchema.optional(),
+    createdAt: z.iso.datetime(),
+    status: z.enum(['sent', 'read']),
+    isMe: z.boolean().optional(),
+  })
+  .meta({ id: 'ChatMessage' });
+
+export const conversationSchema = z
+  .object({
+    id: z.string(),
+    title: z.string(),
+    avatar: z.url().optional(),
+    isGroup: z.boolean(),
+    unreadCount: z.number(),
+    lastMessage: chatMessageSchema.optional(),
+    participants: z.array(z.object({ id: z.string(), name: z.string(), avatar: z.url().optional(), isOnline: z.boolean(), lastSeen: z.iso.datetime().optional() })),
+    updatedAt: z.iso.datetime(),
+  })
+  .meta({ id: 'Conversation' });
+
+export const uploadedMediaSchema = z
+  .object({ url: z.url(), type: z.enum(MESSAGE_TYPES), fileName: z.string(), fileSize: z.string(), mimeType: z.string() })
+  .meta({ id: 'UploadedMedia' });

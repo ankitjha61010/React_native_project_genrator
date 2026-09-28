@@ -174,9 +174,6 @@ export function ChatInputBar({ onSendMessage, onTyping }: ChatInputBarProps): Re
           onTyping?.();
         }}
         multiline
-        // RTL: cursor and text flow from the correct side
-        textAlign={I18nManager.isRTL ? 'right' : 'left'}
-        writingDirection={I18nManager.isRTL ? 'rtl' : 'ltr'}
       />
 
       {/* Action Button: Send or Mic */}
@@ -240,6 +237,9 @@ const createStyles = (theme: Theme) =>
     },
     input: {
       flex: 1,
+      // RTL: keeps text and cursor at the start (like AppInput – no textAlign, which makes the
+      // cursor jump while typing).
+      writingDirection: I18nManager.isRTL ? 'rtl' : 'ltr',
       minHeight: 40,
       maxHeight: 100,
       backgroundColor: theme.colors.background,

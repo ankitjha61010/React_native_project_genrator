@@ -6,16 +6,20 @@ import { apiConfig } from './apiConfig';
 {{#if API_ENCRYPTION}}
 import { fromEncryptedBody, isEncryptionEnabled, toEncryptedBody } from './apiEncryption';
 import { ApiError, toApiError } from './apiErrors';
-
-declare module 'axios' {
-  interface AxiosRequestConfig {
-    /** Send this request and read its response as plain JSON (e.g. multipart uploads). */
-    skipEncryption?: boolean;
-  }
-}
 {{else}}
 import { toApiError } from './apiErrors';
 {{/if}}
+
+declare module 'axios' {
+  interface AxiosRequestConfig {
+{{#if API_ENCRYPTION}}
+    /** Send this request and read its response as plain JSON (e.g. multipart uploads). */
+    skipEncryption?: boolean;
+{{/if}}
+    /** Don't try to refresh the token when this request answers 401 (the refresh call itself, login…). */
+    skipAuthRefresh?: boolean;
+  }
+}
 
 /** The single HTTP client of the app. Never create other axios instances. */
 export const apiClient = axios.create(apiConfig);
@@ -102,7 +106,7 @@ apiClient.interceptors.response.use(
     }
 {{/if}}
 
-    if (status === 401 && original && !original._retry && auth.refreshAccessToken) {
+    if (status === 401 && original && !original._retry && !original.skipAuthRefresh && auth.refreshAccessToken) {
       original._retry = true;
       try {
         refreshing ??= auth.refreshAccessToken().finally(() => {
@@ -119,21 +123,61 @@ apiClient.interceptors.response.use(
       }
     }
 
-    if (status === 401) {
+    if (status === 401 && !original?.skipAuthRefresh) {
       auth.onUnauthorized?.();
     }
     return Promise.reject(toApiError(error));
   },
 );
 
-/** Typed helpers that return the response body directly. */
+/** The backend wraps every response: `{ success, message, data, meta }`. */
+export interface ApiEnvelope<T> {
+  success: boolean;
+  message: string;
+  data: T;
+  meta?: Record<string, unknown>;
+}
+
+export interface PageMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+  [key: string]: unknown;
+}
+
+export interface Page<T> {
+  items: T[];
+  meta: PageMeta;
+}
+
+function isEnvelope(body: unknown): body is ApiEnvelope<unknown> {
+  return typeof body === 'object' && body !== null && 'success' in body && 'data' in body;
+}
+
+/** The `data` of the envelope (or the raw body for endpoints that don't use one). */
+function unwrap<T>(body: unknown): T {
+  return (isEnvelope(body) ? body.data : body) as T;
+}
+
+/** Typed helpers that return the response's `data`. */
 export const api = {
-  get: <T>(url: string, config?: AxiosRequestConfig) => apiClient.get<T>(url, config).then(r => r.data),
-  post: <T>(url: string, body?: unknown, config?: AxiosRequestConfig) =>
-    apiClient.post<T>(url, body, config).then(r => r.data),
-  put: <T>(url: string, body?: unknown, config?: AxiosRequestConfig) =>
-    apiClient.put<T>(url, body, config).then(r => r.data),
-  patch: <T>(url: string, body?: unknown, config?: AxiosRequestConfig) =>
-    apiClient.patch<T>(url, body, config).then(r => r.data),
-  delete: <T>(url: string, config?: AxiosRequestConfig) => apiClient.delete<T>(url, config).then(r => r.data),
+  get: <T>(url: string, config?: AxiosRequestConfig) => apiClient.get(url, config).then(r => unwrap<T>(r.data)),
+  post: <T>(url: string, body?: unknown, config?: AxiosRequestConfig) => apiClient.post(url, body, config).then(r => unwrap<T>(r.data)),
+  put: <T>(url: string, body?: unknown, config?: AxiosRequestConfig) => apiClient.put(url, body, config).then(r => unwrap<T>(r.data)),
+  patch: <T>(url: string, body?: unknown, config?: AxiosRequestConfig) => apiClient.patch(url, body, config).then(r => unwrap<T>(r.data)),
+  delete: <T>(url: string, config?: AxiosRequestConfig) => apiClient.delete(url, config).then(r => unwrap<T>(r.data)),
+  /** A list with its `meta` (pagination, unread count…). */
+  page: <T>(url: string, config?: AxiosRequestConfig) =>
+    apiClient.get<ApiEnvelope<T[]>>(url, config).then(r => ({ items: r.data.data, meta: (r.data.meta ?? {}) as PageMeta }) as Page<T>),
+  /** multipart/form-data upload of one file (`uri` from the image / document picker). */
+  upload: <T>(url: string, field: string, file: { uri: string; name: string; type: string }, config?: AxiosRequestConfig) => {
+    const form = new FormData();
+    form.append(field, file as unknown as Blob);
+    return apiClient
+      .post(url, form, { ...config, headers: { 'Content-Type': 'multipart/form-data' }{{#if API_ENCRYPTION}}, skipEncryption: true{{/if}}, timeout: 120_000 })
+      .then(r => unwrap<T>(r.data));
+  },
 };

@@ -5,7 +5,7 @@ export interface MailMessage {
   html?: string;
 }
 
-/** Sends transactional email (verification, password reset…). */
+/** Sends transactional email (verification and password reset codes). */
 export interface Mailer {
   send(message: MailMessage): Promise<void>;
 }

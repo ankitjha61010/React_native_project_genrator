@@ -1,6 +1,7 @@
 /** Variables exposed from `.env` by react-native-dotenv. Keep in sync with `.env.example`. */
 declare module '@env' {
   export const API_BASE_URL: string | undefined;
+  export const SOCKET_URL: string | undefined;
   export const APP_ENV: string | undefined;
   export const TERMS_URL: string | undefined;
   export const PRIVACY_POLICY_URL: string | undefined;

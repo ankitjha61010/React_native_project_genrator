@@ -1,11 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigation } from '@react-navigation/native';
+import { userMessage } from '{{IMPORT:api.errors}}';
+import { defaultCountry, type Country } from '{{IMPORT:assets.countries}}';
+import { {{SYMBOL:auth.service}} } from '{{IMPORT:auth.service}}';
 import { AppButton } from '{{IMPORT:components.AppButton}}';
-import { AppInput } from '{{IMPORT:components.AppInput}}';
+import { PhoneInput } from '{{IMPORT:components.PhoneInput}}';
 import { AppScreen } from '{{IMPORT:components.AppScreen}}';
 import { AppText } from '{{IMPORT:components.AppText}}';
 import { FadeInView } from '{{IMPORT:components.FadeInView}}';
@@ -15,7 +18,7 @@ import type { Theme } from '{{IMPORT:theme.index}}';
 import type { IntlKey } from '{{IMPORT:i18n.index}}';
 
 const mobileSchema = z.object({
-  phone: z.string().min(8, 'phoneMin' as IntlKey<'auth'>),
+  phone: z.string().refine(value => /^\d{4,15}$/.test(value.replace(/\D/g, '')), 'phoneMin' as IntlKey<'auth'>),
 });
 
 type MobileFormValues = z.infer<typeof mobileSchema>;
@@ -23,6 +26,7 @@ type MobileFormValues = z.infer<typeof mobileSchema>;
 export function MobileLoginScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
   const styles = useStyles(createStyles);
+  const [country, setCountry] = useState<Country>(defaultCountry);
 
   const { control, handleSubmit, formState: { isSubmitting } } = useForm<MobileFormValues>({
     resolver: zodResolver(mobileSchema),
@@ -30,10 +34,15 @@ export function MobileLoginScreen(): React.JSX.Element {
   });
 
   const onSubmit = handleSubmit(async data => {
-    // Simulated SMS OTP send request
-    await new Promise(res => setTimeout(res, 800));
-    flash.success({ message: 'OTP sent to ' + data.phone });
-    navigation.navigate('OtpVerify', { phone: data.phone });
+    const phone = data.phone.replace(/\D/g, '');
+    try {
+      const sent = await {{SYMBOL:auth.service}}.sendOtp({ countryCode: country.dialCode, phone });
+      flash.success({ intlType: 'auth', value: 'codeSent' });
+      navigation.navigate('OtpVerify', { countryCode: country.dialCode, phone, resendIn: sent.resendIn });
+    } catch (error) {
+      // e.g. "Please wait 42 seconds before requesting a new code".
+      flash.error({ message: userMessage(error) ?? 'Could not send the code, please try again.' });
+    }
   });
 
   return (
@@ -48,21 +57,13 @@ export function MobileLoginScreen(): React.JSX.Element {
           control={control}
           name="phone"
           render={({ field, fieldState }) => (
-            <AppInput
-              intlType="auth"
-              labelValue="phoneNumber"
-              placeholderValue="phonePlaceholder"
-{{#if VECTOR_ICONS}}
-              leftIcon="phone-outline"
-{{/if}}
+            <PhoneInput
+              country={country}
+              onCountryChange={setCountry}
               value={field.value}
               onChangeText={field.onChange}
               onBlur={field.onBlur}
               errorValue={fieldState.error?.message as IntlKey<'auth'> | undefined}
-              keyboardType="phone-pad"
-              autoComplete="tel"
-              returnKeyType="done"
-              onSubmitEditing={() => onSubmit()}
             />
           )}
         />

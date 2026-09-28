@@ -65,7 +65,7 @@ export async function describeDryRun(options: ProjectOptions): Promise<string> {
     `Social login: ${SOCIAL_LOGIN_CHOICES.find(c => c.value === options.socialAuth)?.label ?? options.socialAuth}`,
     '',
     chalk.bold('Project:'),
-    `${options.appName} (${options.packageName}) → ${options.parentDir}/${options.appName}`,
+    `${options.appName} (${options.packageName}) → ${options.parentDir}/${options.directoryName ?? options.appName}`,
     `React Native ${profile.reactNative} via @react-native-community/cli@${profile.cli}`,
     '',
     chalk.bold('Structure:'),

@@ -1,6 +1,7 @@
 import { StorageKeys } from '{{IMPORT:storage.keys}}';
 import { storageService } from '{{IMPORT:storage.service}}';
 import { logger } from '{{IMPORT:utils.logger}}';
+import { notificationsApi } from './notificationsApi';
 import type { AppNotification } from './notificationTypes';
 
 /** Newest first; older notifications are dropped. */
@@ -26,21 +27,33 @@ async function write(next: AppNotification[]): Promise<void> {
   }
 }
 
+/** Keeps the server in sync without making the UI wait (the local list is updated first). */
+function inBackground(request: Promise<unknown>, what: string): void {
+  request.catch(error => logger.warn(`${what} failed on the server`, error));
+}
+
 /**
- * Local list of received notifications (backs the Notifications screen and the
- * unread badge). Messages are added by the FCM handlers – see notificationHandlers.ts.
- *
- * Replace `reload()` with an API call if your backend keeps the notification history.
+ * The notification inbox (Notifications screen + unread badge). The backend keeps the
+ * history (GET /notifications); a local copy makes it work offline and shows pushes
+ * received while the app was closed (added by notificationHandlers.ts).
  */
 export const notificationInbox = {
   list: read,
 
-  /** Re-reads storage – messages received while the app was killed are saved by another JS context. */
+  /** Loads the inbox from the backend (falls back to the local copy when offline). */
   async reload(): Promise<AppNotification[]> {
-    cache = null;
-    const items = await read();
-    listeners.forEach(listener => listener(items));
-    return items;
+    try {
+      const { items } = await notificationsApi.list(MAX_NOTIFICATIONS);
+      await write(items);
+      return items;
+    } catch (error) {
+      logger.warn('Loading notifications failed – showing the local copy', error);
+      // Messages received while the app was killed are saved by another JS context.
+      cache = null;
+      const items = await read();
+      listeners.forEach(listener => listener(items));
+      return items;
+    }
   },
 
   /** Adds (or updates) a notification; the same id is never stored twice. */
@@ -60,6 +73,7 @@ export const notificationInbox = {
     const items = await read();
     if (items.some(item => item.id === id && !item.read)) {
       await write(items.map(item => (item.id === id ? { ...item, read: true } : item)));
+      if (!id.startsWith('local-')) inBackground(notificationsApi.markRead(id), 'Marking the notification read');
     }
   },
 
@@ -67,14 +81,16 @@ export const notificationInbox = {
     const items = await read();
     if (items.some(item => !item.read)) {
       await write(items.map(item => ({ ...item, read: true })));
+      inBackground(notificationsApi.markAllRead(), 'Marking all notifications read');
     }
   },
 
   async remove(id: string): Promise<void> {
     await write((await read()).filter(item => item.id !== id));
+    if (!id.startsWith('local-')) inBackground(notificationsApi.remove(id), 'Deleting the notification');
   },
 
-  /** Called on sign out. */
+  /** Called on sign out – clears this device's copy only (the history stays on the server). */
   async clear(): Promise<void> {
     await write([]);
   },

@@ -1,33 +1,52 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
-
-// Column types are always explicit: the app runs with tsx / Vitest, which don't emit
-// decorator type metadata.
-{{#if POSTGRES}}
-const TIMESTAMP = 'timestamptz';
-{{else}}
-const TIMESTAMP = 'datetime';
-{{/if}}
+import { Column, CreateDateColumn, Entity, {{#if AUTH}}Index, {{/if}}PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { TIMESTAMP } from './columns.js';
 
 @Entity({ name: 'users' })
+{{#if AUTH}}
+@Index(['countryCode', 'phone'], { unique: true })
+{{/if}}
 export class UserOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+{{#if AUTH}}
+  @Column({ type: 'varchar', length: 255, unique: true, nullable: true })
+  email: string | null;
+{{else}}
   @Column({ type: 'varchar', length: 255, unique: true })
   email: string;
+{{/if}}
 
   @Column({ type: 'varchar', length: 120 })
   name: string;
 {{#if AUTH}}
 
-  @Column({ name: 'password_hash', type: 'varchar', length: 255 })
-  passwordHash: string;
+  @Column({ name: 'password_hash', type: 'varchar', length: 255, nullable: true })
+  passwordHash: string | null;
 
   @Column({ type: 'varchar', length: 20, default: 'user' })
   role: string;
 
   @Column({ name: 'email_verified_at', type: TIMESTAMP, nullable: true })
   emailVerifiedAt: Date | null;
+
+  @Column({ name: 'country_code', type: 'varchar', length: 8, nullable: true })
+  countryCode: string | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  phone: string | null;
+
+  @Column({ name: 'phone_verified_at', type: TIMESTAMP, nullable: true })
+  phoneVerifiedAt: Date | null;
+
+  @Column({ name: 'avatar_url', type: 'varchar', length: 1024, nullable: true })
+  avatarUrl: string | null;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  location: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  bio: string | null;
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
@@ -37,6 +56,9 @@ export class UserOrmEntity {
 
   @Column({ name: 'last_login_at', type: TIMESTAMP, nullable: true })
   lastLoginAt: Date | null;
+
+  @Column({ name: 'last_seen_at', type: TIMESTAMP, nullable: true })
+  lastSeenAt: Date | null;
 {{#if SEC_LOCKOUT}}
 
   @Column({ name: 'failed_login_attempts', type: 'int', default: 0 })

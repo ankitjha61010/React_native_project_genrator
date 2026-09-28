@@ -1,11 +1,11 @@
 import type { BackendArchitectureId, BackendFramework } from './types.js';
 
 /** Business features every backend gets (auth only when authentication is enabled). */
-export type BackendFeature = 'auth' | 'users' | 'health';
+export type BackendFeature = 'auth' | 'users' | 'health' | 'chat' | 'notifications';
 
 /**
  * Architectural layers. Every generated file belongs to exactly one layer; the
- * architecture decides where each layer lives (and, through `style`, which layers exist).
+ * architecture decides where each layer lives.
  */
 export type BackendLayer =
   | 'bootstrap' // app.ts / server.ts / main.ts / container / app.module
@@ -14,11 +14,12 @@ export type BackendLayer =
   | 'domain' // entities, roles & permissions (per feature)
   | 'repositoryContract' // repository interfaces (per feature)
   | 'repositoryImpl' // ORM repositories (per feature)
-  | 'ports' // interfaces of external services (hashing, tokens, mail, health)
+  | 'ports' // interfaces of external services (hashing, tokens, mail, SMS, push, storage, realtime…)
   | 'security' // password hashing + JWT implementations
-  | 'mail' // mailer implementation
+  | 'adapters' // external providers: mail, SMS, push, file storage
+  | 'realtime' // Socket.IO server
   | 'database' // connection, ORM entities / models, seed
-  | 'application' // services or use-cases (per feature)
+  | 'application' // one service per feature
   | 'views' // response presenters (MVC)
   | 'httpKernel' // middleware / guards / filters / interceptors / decorators / pipes
   | 'http' // controllers (per feature)
@@ -31,8 +32,6 @@ export interface BackendArchitecture {
   id: BackendArchitectureId;
   name: string;
   summary: string;
-  /** `service`: one service class per feature. `usecase`: one class per use-case (Clean / Enterprise). */
-  style: 'service' | 'usecase';
   /** MVC: responses go through presenters in `views/`. */
   views: boolean;
   /** Nest: one module per feature (false = everything in AppModule, MVC). Express: module factories. */
@@ -56,7 +55,6 @@ export const BACKEND_ARCHITECTURES: BackendArchitecture[] = [
     id: 'feature-based',
     name: 'Feature-Based Architecture',
     summary: 'Code grouped by feature (auth, users…) with a small shared layer.',
-    style: 'service',
     views: false,
     featureModules: true,
     dir(layer, fw, feature) {
@@ -77,8 +75,10 @@ export const BACKEND_ARCHITECTURES: BackendArchitecture[] = [
           return 'src/shared/ports';
         case 'security':
           return 'src/shared/security';
-        case 'mail':
-          return 'src/shared/mail';
+        case 'adapters':
+          return 'src/shared/adapters';
+        case 'realtime':
+          return 'src/shared/realtime';
         case 'database':
           return 'src/database';
         case 'application':
@@ -118,7 +118,6 @@ export const BACKEND_ARCHITECTURES: BackendArchitecture[] = [
     id: 'layered',
     name: 'Layered Architecture',
     summary: 'Horizontal layers: routes/controllers → services → repositories → database.',
-    style: 'service',
     views: false,
     featureModules: true,
     dir(layer, fw) {
@@ -138,8 +137,10 @@ export const BACKEND_ARCHITECTURES: BackendArchitecture[] = [
           return 'src/services/interfaces';
         case 'security':
           return 'src/services/security';
-        case 'mail':
-          return 'src/services/mail';
+        case 'adapters':
+          return 'src/services/adapters';
+        case 'realtime':
+          return 'src/services/realtime';
         case 'database':
           return 'src/database';
         case 'application':
@@ -162,7 +163,7 @@ export const BACKEND_ARCHITECTURES: BackendArchitecture[] = [
     },
     preview: fw => `src/
  ├── ${fw === 'nestjs' ? 'controllers/       HTTP layer (+ dto/)' : 'routes/            URL → controller\n ├── controllers/       HTTP layer (+ validators)'}
- ├── services/          business layer (auth, users, security, mail)
+ ├── services/          business layer (auth, users, …) · security · adapters (mail, SMS, push, storage)
  ├── repositories/      data-access layer
  ├── models/            entities, roles & permissions
  ├── database/          connection · seed
@@ -181,8 +182,7 @@ export const BACKEND_ARCHITECTURES: BackendArchitecture[] = [
   {
     id: 'clean',
     name: 'Clean Architecture',
-    summary: 'Domain & use-cases in the centre, frameworks and databases at the edge.',
-    style: 'usecase',
+    summary: 'Domain & application services in the centre, frameworks and databases at the edge.',
     views: false,
     featureModules: true,
     dir(layer, fw, feature) {
@@ -200,13 +200,15 @@ export const BACKEND_ARCHITECTURES: BackendArchitecture[] = [
         case 'ports':
           return 'src/application/ports';
         case 'application':
-          return `src/application/use-cases/${need(feature, layer)}`;
+          return `src/application/services`;
         case 'repositoryImpl':
           return 'src/infrastructure/repositories';
         case 'security':
           return 'src/infrastructure/security';
-        case 'mail':
-          return 'src/infrastructure/mail';
+        case 'adapters':
+          return 'src/infrastructure/adapters';
+        case 'realtime':
+          return 'src/infrastructure/realtime';
         case 'database':
           return 'src/infrastructure/database';
         case 'views':
@@ -226,26 +228,25 @@ export const BACKEND_ARCHITECTURES: BackendArchitecture[] = [
     },
     preview: fw => `src/
  ├── domain/            entities · repository interfaces (no framework imports)
- ├── application/       use-cases/ (register, login, …) · ports/ (hasher, tokens, mail)
- ├── infrastructure/    database · repositories · security · mail · config
+ ├── application/       services/ (auth, users, …) · ports/ (hasher, tokens, mail, push…)
+ ├── infrastructure/    database · repositories · security · adapters · realtime · config
  ├── presentation/http/ ${fw === 'nestjs' ? 'controllers · DTOs · guards · filters' : 'routes · controllers · validators · middlewares'}
  └── main/              ${fw === 'nestjs' ? 'main.ts · app.module.ts · modules/ (wiring)' : 'app.ts · server.ts · container.ts (wiring)'}`,
     rules: [
       { question: 'What may the domain import?', answer: 'Nothing outside `src/domain` and `src/shared` – no framework, no ORM.' },
-      { question: 'Where do business rules go?', answer: 'One use-case class per action in `src/application/use-cases/<feature>/`.' },
-      { question: 'How does a use-case reach the database / JWT / email?', answer: 'Through interfaces (`domain/repositories`, `application/ports`) implemented in `src/infrastructure/`.' },
+      { question: 'Where do business rules go?', answer: 'One application service per feature in `src/application/services/` – no framework, ORM or HTTP types.' },
+      { question: 'How does a service reach the database / JWT / email?', answer: 'Through interfaces (`domain/repositories`, `application/ports`) implemented in `src/infrastructure/`.' },
       { question: 'Where is everything wired together?', answer: '`src/main/` (the composition root) – the only place that knows every layer.' },
     ],
     concepts: [
       { title: 'Dependency rule', body: 'Source code dependencies point inwards: presentation → application → domain. Infrastructure implements interfaces defined by the inner layers.' },
-      { title: 'Use-cases', body: 'Each user action (register, login, refresh…) is a small class with an `execute()` method – easy to find, test and change.' },
+      { title: 'Application services', body: 'One service per feature holds the use cases of that feature as methods (register, login, refresh…). It only depends on domain types and interfaces.' },
     ],
   },
   {
     id: 'mvc',
     name: 'MVC Architecture',
     summary: 'Models, Views (response presenters) and Controllers, with services for business logic.',
-    style: 'service',
     views: true,
     featureModules: false,
     dir(layer, fw) {
@@ -264,8 +265,10 @@ export const BACKEND_ARCHITECTURES: BackendArchitecture[] = [
           return 'src/services/interfaces';
         case 'security':
           return 'src/services/security';
-        case 'mail':
-          return 'src/services/mail';
+        case 'adapters':
+          return 'src/services/adapters';
+        case 'realtime':
+          return 'src/services/realtime';
         case 'database':
           return 'src/database';
         case 'application':
@@ -290,7 +293,7 @@ export const BACKEND_ARCHITECTURES: BackendArchitecture[] = [
  ├── models/            entities + data access (repositories)
  ├── views/             response presenters (what the client sees)
  ├── controllers/       ${fw === 'nestjs' ? 'Nest controllers + DTOs' : 'request handlers + validators'}
- ├── services/          business logic · security · mail
+ ├── services/          business logic · security · adapters (mail, SMS, push, storage)
 ${fw === 'nestjs' ? '' : ' ├── routes/            URL → controller\n'} ├── ${fw === 'nestjs' ? 'lib/               logger, errors, guards, filters' : 'middlewares/       auth, validation, errors, security\n ├── lib/               logger, errors, response'}
  ├── database/          connection · seed
  └── config/`,
@@ -308,7 +311,6 @@ ${fw === 'nestjs' ? '' : ' ├── routes/            URL → controller\n'} �
     id: 'modular',
     name: 'Modular Architecture',
     summary: 'Self-contained modules with a public API, on top of a shared core.',
-    style: 'service',
     views: false,
     featureModules: true,
     dir(layer, _fw, feature) {
@@ -329,8 +331,10 @@ ${fw === 'nestjs' ? '' : ' ├── routes/            URL → controller\n'} �
           return 'src/core/ports';
         case 'security':
           return 'src/core/security';
-        case 'mail':
-          return 'src/core/mail';
+        case 'adapters':
+          return 'src/core/adapters';
+        case 'realtime':
+          return 'src/core/realtime';
         case 'database':
           return 'src/core/database';
         case 'application':
@@ -352,12 +356,12 @@ ${fw === 'nestjs' ? '' : ' ├── routes/            URL → controller\n'} �
  │    ├── auth/        ${fw === 'nestjs' ? 'auth.module (public API) · controller · service · data/' : 'index.ts (createAuthModule – public API) · routes · controller · service · data/'}
  │    ├── users/       domain/ · data/ · …
  │    └── health/
- ├── core/             config · database · security · mail · http · lib (logger, errors)
+ ├── core/             config · database · security · adapters · realtime · http · lib
  └── ${fw === 'nestjs' ? 'main.ts · app.module.ts' : 'app.ts · server.ts · container.ts'}`,
     rules: [
       { question: 'How do modules talk to each other?', answer: 'Through their public API only: domain types + repository contracts, and what the module exports (Nest module `exports` / the factory in `index.ts`). Never import another module’s services, controllers or data files.' },
       { question: 'Where does a new module go?', answer: '`src/modules/<name>/` with its own domain, data and HTTP files.' },
-      { question: 'What goes into core?', answer: 'Infrastructure every module needs: config, database, security, mail, logging, HTTP kernel.' },
+      { question: 'What goes into core?', answer: 'Infrastructure every module needs: config, database, security, adapters (mail, SMS, push, storage), realtime, logging, HTTP kernel.' },
     ],
     concepts: [
       { title: 'Module boundaries', body: 'A module hides its internals and exposes a small public API, so modules can later be extracted into separate services.' },
@@ -368,7 +372,6 @@ ${fw === 'nestjs' ? '' : ' ├── routes/            URL → controller\n'} �
     id: 'enterprise',
     name: 'Enterprise Architecture',
     summary: 'Bounded-context modules, each with domain / application / infrastructure / presentation layers.',
-    style: 'usecase',
     views: false,
     featureModules: true,
     dir(layer, _fw, feature) {
@@ -385,7 +388,7 @@ ${fw === 'nestjs' ? '' : ' ├── routes/            URL → controller\n'} �
         case 'repositoryContract':
           return `${m(layer)}/domain/repositories`;
         case 'application':
-          return `${m(layer)}/application/use-cases`;
+          return `${m(layer)}/application`;
         case 'repositoryImpl':
           return `${m(layer)}/infrastructure/persistence`;
         case 'http':
@@ -401,8 +404,10 @@ ${fw === 'nestjs' ? '' : ' ├── routes/            URL → controller\n'} �
           return 'src/shared/application/ports';
         case 'security':
           return 'src/shared/infrastructure/security';
-        case 'mail':
-          return 'src/shared/infrastructure/mail';
+        case 'adapters':
+          return 'src/shared/infrastructure/adapters';
+        case 'realtime':
+          return 'src/shared/infrastructure/realtime';
         case 'database':
           return 'src/shared/infrastructure/database';
         case 'httpKernel':
@@ -415,11 +420,11 @@ ${fw === 'nestjs' ? '' : ' ├── routes/            URL → controller\n'} �
  ├── modules/                  bounded contexts
  │    ├── auth/
  │    │    ├── domain/         entities · repository interfaces
- │    │    ├── application/    use-cases
+ │    │    ├── application/    <module>.service
  │    │    ├── infrastructure/ persistence (ORM repositories)
  │    │    └── presentation/   ${fw === 'nestjs' ? 'controllers · DTOs' : 'routes · controllers · validators'}
  │    └── users/ …
- ├── shared/                   ports · security · mail · database (shared kernel)
+ ├── shared/                   ports · security · adapters · realtime · database (shared kernel)
  ├── core/                     config · kernel (logger, errors) · http · docs
  └── bootstrap/                ${fw === 'nestjs' ? 'main.ts · app.module.ts' : 'app.ts · server.ts · container.ts'}`,
     rules: [

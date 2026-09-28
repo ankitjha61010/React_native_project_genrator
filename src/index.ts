@@ -3,9 +3,11 @@ import path from 'node:path';
 import { select } from '@inquirer/prompts';
 import chalk from 'chalk';
 import { generateBackend, renderBackend } from './backend/generator.js';
+import { describeMicroservices, generateMicroservices, planMicroservices } from './backend/microservices.js';
 import { collectBackendOptions, describeBackend } from './backend/prompts.js';
 import type { BackendOptions, ProjectType } from './backend/types.js';
 import { parseArgs, type CliFlags } from './cli/args.js';
+import { collectFullstackOptions, describeFullstack, generateFullstack } from './fullstack/fullstack.js';
 import { log } from './cli/logger.js';
 import { collectOptions } from './cli/prompts.js';
 import { describeDryRun } from './generators/dryRun.js';
@@ -34,7 +36,7 @@ async function chooseProjectType(flags: CliFlags): Promise<ProjectType> {
     choices: [
       { name: '1. Frontend', value: 'frontend', description: 'React Native app (TypeScript) with the architecture of your choice' },
       { name: '2. Backend', value: 'backend', description: 'NestJS or Express API: database, auth, security, Swagger, tests' },
-      { name: '3. Frontend + Backend', value: 'fullstack', disabled: '(coming next – connected frontend + backend)' },
+      { name: '3. Frontend + Backend', value: 'fullstack', description: 'Both projects in one folder, already connected (API URL, auth, chat, notifications, encryption)' },
     ],
   });
 }
@@ -42,6 +44,15 @@ async function chooseProjectType(flags: CliFlags): Promise<ProjectType> {
 async function runBackend(flags: CliFlags): Promise<void> {
   const options: BackendOptions = await collectBackendOptions(flags);
 
+  const micro = options.deployment === 'microservices';
+  if (flags.dryRun && micro) {
+    log.newline();
+    describeBackend(options).forEach(line => log.info(line));
+    log.info(chalk.bold('\nWorkspace:'));
+    describeMicroservices(planMicroservices(options)).forEach(line => log.info(chalk.green(`+ ${line}`)));
+    log.dim('\nDry run – nothing was written.');
+    return;
+  }
   if (flags.dryRun) {
     const { files, packageJson } = await renderBackend(options);
     log.newline();
@@ -65,6 +76,22 @@ async function runBackend(flags: CliFlags): Promise<void> {
   if (flags.force) fs.rmSync(options.projectDir, { recursive: true, force: true });
 
   log.newline();
+  if (micro) {
+    const { warnings } = await generateMicroservices(options);
+    const rel = path.relative(process.cwd(), options.projectDir) || '.';
+    log.newline();
+    log.success(chalk.bold('🚀 Microservices generated!'));
+    warnings.forEach(w => log.warn(w));
+    log.newline();
+    log.info(chalk.cyan(`cd ${rel.startsWith('..') ? options.projectDir : rel}`));
+    log.info(chalk.cyan('docker compose up -d') + chalk.dim('            # database server + Redis'));
+    log.info(chalk.cyan('npm install && npm run install:all && npm run setup'));
+    log.info(chalk.cyan('npm run dev') + chalk.dim('                     # gateway + every service'));
+    log.newline();
+    log.dim(`API (gateway): http://localhost:3000/api/v1  ·  Guide: README.md`);
+    log.newline();
+    return;
+  }
   const summary = await generateBackend(options);
   const rel = path.relative(process.cwd(), summary.projectDir) || '.';
   const relative = rel.startsWith('..') ? summary.projectDir : rel;
@@ -86,6 +113,55 @@ async function runBackend(flags: CliFlags): Promise<void> {
   log.newline();
 }
 
+async function runFullstack(flags: CliFlags): Promise<void> {
+  const options = await collectFullstackOptions(flags);
+
+  if (flags.dryRun) {
+    log.newline();
+    describeFullstack(options).forEach(line => log.info(line));
+    log.info(chalk.bold('\nmobile/'));
+    log.info(await describeDryRun(options.frontend));
+    log.info(chalk.bold('\nbackend/'));
+    if (options.backend.deployment === 'microservices') {
+      describeMicroservices(planMicroservices(options.backend)).forEach(line => log.info(chalk.green(`+ backend/${line}`)));
+    } else {
+      const { files } = await renderBackend(options.backend);
+      files.map(f => f.path).sort().forEach(p => log.info(chalk.green(`+ backend/${p}`)));
+    }
+    log.dim('\nDry run – nothing was written.');
+    return;
+  }
+
+  if (fs.existsSync(options.rootDir) && fs.readdirSync(options.rootDir).length > 0 && !flags.force) {
+    throw new GeneratorError(`The directory ${options.rootDir} already exists and is not empty.`, {
+      tryHints: ['Choose another --name / --directory, or pass --force to replace it.'],
+    });
+  }
+  if (flags.force) fs.rmSync(options.rootDir, { recursive: true, force: true });
+
+  log.newline();
+  const { warnings } = await generateFullstack(options);
+  const rel = path.relative(process.cwd(), options.rootDir) || '.';
+  const relative = rel.startsWith('..') ? options.rootDir : rel;
+
+  log.newline();
+  log.success(chalk.bold('🚀 Frontend + Backend generated – already connected!'));
+  warnings.forEach(w => log.warn(w));
+  log.newline();
+  log.info(chalk.cyan(`cd ${relative}`));
+  if (options.backend.deployment === 'microservices') {
+    log.info(chalk.cyan('docker compose -f backend/docker-compose.yml up -d') + chalk.dim('   # database server + Redis'));
+    log.info(chalk.cyan('cd backend && npm install && npm run install:all && npm run setup && npm run dev'));
+  } else {
+    log.info(chalk.cyan('docker compose up -d db') + chalk.dim('        # or set DATABASE_URL in backend/.env'));
+    log.info(chalk.cyan(`cd backend && npm install${options.backend.orm === 'mongoose' ? '' : ' && npm run db:deploy'} && npm run db:seed && npm run dev`));
+  }
+  log.info(chalk.cyan('cd mobile && npm start') + chalk.dim('         # then npm run android / npm run ios'));
+  log.newline();
+  log.dim(`Guide: README.md · backend/${options.backend.deployment === 'microservices' ? 'README.md' : 'docs/API.md'}`);
+  log.newline();
+}
+
 export async function run(argv: string[]): Promise<void> {
   const flags = parseArgs(argv, packageVersion());
   log.banner();
@@ -93,10 +169,8 @@ export async function run(argv: string[]): Promise<void> {
   try {
     const projectType = await chooseProjectType(flags);
     if (projectType === 'fullstack') {
-      throw new GeneratorError('Frontend + Backend generation is not available yet.', {
-        reason: 'The connected full-stack setup (shared API types, generated frontend API services) is the next phase.',
-        tryHints: ['Generate the backend with --type backend and the app with --type frontend for now.'],
-      });
+      await runFullstack(flags);
+      return;
     }
     if (projectType === 'backend') {
       await runBackend(flags);

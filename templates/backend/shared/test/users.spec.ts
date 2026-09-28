@@ -1,10 +1,9 @@
-import { createHarness } from '../support/harness.js';
+import { createHarness, type Harness } from '../support/test-infrastructure.js';
 
 describe('users', () => {
-  let h: ReturnType<typeof createHarness>;
+  let h: Harness;
 
-  const seed = (email: string) =>
-    h.usersRepository.create({ email, name: email.split('@')[0] ?? email{{#if AUTH}}, passwordHash: 'hash'{{/if}} });
+  const seed = (email: string) => h.repositories.users.create({ email, name: email.split('@')[0] ?? email });
 
   beforeEach(() => {
     h = createHarness();
@@ -25,6 +24,45 @@ describe('users', () => {
   });
 {{#if AUTH}}
 
+  it('updates the profile; a new mobile number must be verified again', async () => {
+    const user = await h.repositories.users.create({ email: 'jane@example.com', name: 'Jane', countryCode: '+91', phone: '9876543210', phoneVerifiedAt: new Date() });
+    const updated = await h.users.updateProfile(user.id, { name: ' Jane D. ', location: 'Pune', bio: '', phone: '9000000001' });
+
+    expect(updated).toMatchObject({ name: 'Jane D.', location: 'Pune', bio: null, countryCode: '+91', phone: '9000000001', phoneVerifiedAt: null });
+  });
+
+  it('does not let two accounts share a mobile number', async () => {
+    await h.repositories.users.create({ email: 'a@example.com', name: 'A', countryCode: '+91', phone: '9876543210' });
+    const b = await seed('b@example.com');
+    await expect(h.users.updateProfile(b.id, { countryCode: '+91', phone: '98765-43210' })).rejects.toMatchObject({ statusCode: 409, code: 'PHONE_TAKEN' });
+  });
+
+  it('stores an avatar and deletes the previous one', async () => {
+    const user = await seed('jane@example.com');
+    const image = { buffer: Buffer.from('img'), originalName: 'me.png', mimeType: 'image/png', size: 3 };
+
+    const first = await h.users.setAvatar(user.id, image);
+    const second = await h.users.setAvatar(user.id, image);
+    expect(second.avatarUrl).toMatch(/^http:\/\/localhost:3000\/uploads\/avatars\//);
+    expect(h.storage.files.size).toBe(1);
+    expect(first.avatarUrl).not.toBe(second.avatarUrl);
+
+    await expect(h.users.setAvatar(user.id, { ...image, mimeType: 'application/pdf' })).rejects.toMatchObject({ code: 'INVALID_FILE_TYPE' });
+  });
+
+  it('searches other users by name', async () => {
+    const me = await seed('me@example.com');
+    await h.repositories.users.create({ email: 'ada@example.com', name: 'Ada Lovelace' });
+    expect(await h.users.search(me.id, 'ada')).toEqual([expect.objectContaining({ name: 'Ada Lovelace' })]);
+    expect(await h.users.search(me.id, 'me')).toEqual([]);
+  });
+
+  it('deletes the own account', async () => {
+    const user = await seed('jane@example.com');
+    await h.users.deleteAccount(user.id);
+    expect(await h.repositories.users.findById(user.id)).toBeNull();
+  });
+
   it('signs the user out everywhere when an admin changes their role', async () => {
     const admin = await seed('admin@example.com');
     const user = await seed('user@example.com');
@@ -40,19 +78,11 @@ describe('users', () => {
     await expect(h.users.update(admin.id, { isActive: false }, admin.id)).rejects.toMatchObject({ statusCode: 403 });
     await expect(h.users.delete(admin.id, admin.id)).rejects.toMatchObject({ statusCode: 403 });
   });
-
-  it('updates the own profile', async () => {
-    const user = await seed('user@example.com');
-    expect((await h.users.updateProfile(user.id, { name: '  New Name ' })).name).toBe('New Name');
-  });
 {{else}}
 
-  it('creates, updates and deletes a user', async () => {
-    const user = await h.users.create({ email: 'New@Example.com', name: 'New' });
-    expect(user.email).toBe('new@example.com');
-    expect((await h.users.update(user.id, { name: 'Renamed' })).name).toBe('Renamed');
-    await h.users.delete(user.id);
-    await expect(h.users.getById(user.id)).rejects.toMatchObject({ statusCode: 404 });
+  it('creates users with a normalized email', async () => {
+    const user = await h.users.create({ email: ' Ada@Example.com ', name: ' Ada ' });
+    expect(user).toMatchObject({ email: 'ada@example.com', name: 'Ada' });
   });
 {{/if}}
 });

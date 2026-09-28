@@ -1,8 +1,13 @@
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 
-/** URL safe random token (default 256 bits) – for email / password reset links. */
+/** URL safe random token (default 256 bits). */
 export function randomToken(bytes = 32): string {
   return randomBytes(bytes).toString('base64url');
+}
+
+/** Numeric one-time code, e.g. "042917" (cryptographically random). */
+export function randomDigits(length = 6): string {
+  return Array.from({ length }, () => randomInt(10)).join('');
 }
 
 export function newId(): string {

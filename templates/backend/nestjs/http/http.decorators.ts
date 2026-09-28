@@ -1,5 +1,5 @@
 {{#if AUTH}}
-import { createParamDecorator, SetMetadata{{#if SEC_AUTH_RATE_LIMIT}}, applyDecorators{{#if !SEC_RATE_LIMIT}}, UseGuards{{/if}}{{/if}}, type ExecutionContext } from '@nestjs/common';
+import { applyDecorators, createParamDecorator, SetMetadata{{#if SEC_AUTH_RATE_LIMIT}}{{#if !SEC_RATE_LIMIT}}, UseGuards{{/if}}{{/if}}, type ExecutionContext } from '@nestjs/common';
 {{#if SEC_AUTH_RATE_LIMIT}}
 import { Throttle{{#if !SEC_RATE_LIMIT}}, ThrottlerGuard{{/if}} } from '@nestjs/throttler';
 {{/if}}
@@ -50,7 +50,7 @@ export const Client = createParamDecorator((_data: unknown, context: ExecutionCo
 });
 {{#if SEC_AUTH_RATE_LIMIT}}
 
-/** Stricter rate limit for credential / email endpoints (AUTH_RATE_LIMIT_*). */
+/** Stricter rate limit for credential / code endpoints (AUTH_RATE_LIMIT_*). */
 export const AuthRateLimit = () =>
   applyDecorators(
 {{#if !SEC_RATE_LIMIT}}
@@ -58,5 +58,9 @@ export const AuthRateLimit = () =>
 {{/if}}
     Throttle({ default: { limit: config.authRateLimit.max, ttl: config.authRateLimit.windowMs } }),
   );
+{{else}}
+
+/** Auth rate limiting is turned off – kept as a no-op so routes read the same. */
+export const AuthRateLimit = () => applyDecorators();
 {{/if}}
 {{/if}}

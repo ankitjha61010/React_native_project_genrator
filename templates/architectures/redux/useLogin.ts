@@ -5,6 +5,7 @@ import { loginSchema, type LoginFormValues } from '{{IMPORT:auth.schema}}';
 import type { RootNavigation } from '{{IMPORT:navigation.types}}';
 import { selectAuthStatus, useAppDispatch, useAppSelector } from '{{IMPORT:store.index}}';
 import { loginThunk } from '{{IMPORT:store.authThunks}}';
+import { userMessage } from '{{IMPORT:api.errors}}';
 import { flash } from '{{IMPORT:utils.flashMessage}}';
 import { logger } from '{{IMPORT:utils.logger}}';
 
@@ -25,7 +26,9 @@ export function {{SYMBOL:auth.logic}}() {
       navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
     } catch (error) {
       logger.error('Login failed', error);
-      flash.error({ intlType: 'common', value: 'genericError' });
+      const message = userMessage(error);
+      if (message) flash.error({ message });
+      else flash.error({ intlType: 'common', value: 'genericError' });
     }
   });
 

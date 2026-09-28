@@ -1,13 +1,6 @@
-import type { PublicUser } from '{{IMPORT:domain.user}}';
-import type { AuthResult, AuthTokens } from '{{IMPORT:app.authTypes}}';
-import { userView } from '{{IMPORT:views.user}}';
+import { toSessionView, type AuthResult, type SessionView } from '{{IMPORT:app.authTypes}}';
 
-export interface AuthView {
-  user: PublicUser;
-  tokens: AuthTokens;
-}
-
-/** View layer (MVC): the response of register / login / refresh / change-password. */
+/** View layer (MVC): the response of every sign-in endpoint (register, login, refresh…). */
 export const authView = {
-  session: (result: AuthResult): AuthView => ({ user: userView.one(result.user), tokens: result.tokens }),
+  session: (result: AuthResult): SessionView => toSessionView(result),
 };

@@ -17,59 +17,64 @@ datasource db {
 }
 
 model User {
-{{#if POSTGRES}}
-  id                  String         @id @default(uuid()) @db.Uuid
+  id                  String    @id @default(uuid()) {{UUID}}
+{{#if AUTH}}
+  email               String?   @unique @db.VarChar(255)
 {{else}}
-  id                  String         @id @default(uuid()) @db.Char(36)
+  email               String    @unique @db.VarChar(255)
 {{/if}}
-  email               String         @unique @db.VarChar(255)
-  name                String         @db.VarChar(120)
+  name                String    @db.VarChar(120)
 {{#if AUTH}}
-  passwordHash        String         @map("password_hash") @db.VarChar(255)
-  role                String         @default("user") @db.VarChar(20)
-  emailVerifiedAt     DateTime?      @map("email_verified_at")
-  isActive            Boolean        @default(true) @map("is_active")
-  tokenVersion        Int            @default(0) @map("token_version")
-  lastLoginAt         DateTime?      @map("last_login_at")
+  passwordHash        String?   @map("password_hash") @db.VarChar(255)
+  role                String    @default("user") @db.VarChar(20)
+  emailVerifiedAt     DateTime? @map("email_verified_at")
+  countryCode         String?   @map("country_code") @db.VarChar(8)
+  phone               String?   @db.VarChar(20)
+  phoneVerifiedAt     DateTime? @map("phone_verified_at")
+  avatarUrl           String?   @map("avatar_url") @db.VarChar(1024)
+  location            String?   @db.VarChar(120)
+  bio                 String?   @db.VarChar(500)
+  isActive            Boolean   @default(true) @map("is_active")
+  tokenVersion        Int       @default(0) @map("token_version")
+  lastLoginAt         DateTime? @map("last_login_at")
+  lastSeenAt          DateTime? @map("last_seen_at")
 {{#if SEC_LOCKOUT}}
-  failedLoginAttempts Int            @default(0) @map("failed_login_attempts")
-  lockedUntil         DateTime?      @map("locked_until")
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime? @map("locked_until")
 {{/if}}
 {{/if}}
-  createdAt           DateTime       @default(now()) @map("created_at")
-  updatedAt           DateTime       @updatedAt @map("updated_at")
-{{#if AUTH}}
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
 {{#if AUTH_REFRESH}}
   refreshTokens       RefreshToken[]
 {{/if}}
-  userTokens          UserToken[]
+{{#if SOCIAL}}
+  socialAccounts      SocialAccount[]
+{{/if}}
+{{#if CHAT}}
+  memberships         ConversationMember[]
+  messages            Message[]
+{{/if}}
+{{#if NOTIFICATIONS}}
+  devices             Device[]
+  notifications       Notification[]
 {{/if}}
 
+{{#if AUTH}}
+  @@unique([countryCode, phone])
+{{/if}}
   @@map("users")
 }
 {{#if AUTH_REFRESH}}
 
 model RefreshToken {
-{{#if POSTGRES}}
-  id           String    @id @db.Uuid
-  userId       String    @map("user_id") @db.Uuid
-{{else}}
-  id           String    @id @db.Char(36)
-  userId       String    @map("user_id") @db.Char(36)
-{{/if}}
+  id           String    @id {{UUID}}
+  userId       String    @map("user_id") {{UUID}}
   tokenHash    String    @unique @map("token_hash") @db.Char(64)
-{{#if POSTGRES}}
-  familyId     String    @map("family_id") @db.Uuid
-{{else}}
-  familyId     String    @map("family_id") @db.Char(36)
-{{/if}}
+  familyId     String    @map("family_id") {{UUID}}
   expiresAt    DateTime  @map("expires_at")
   revokedAt    DateTime? @map("revoked_at")
-{{#if POSTGRES}}
-  replacedById String?   @map("replaced_by_id") @db.Uuid
-{{else}}
-  replacedById String?   @map("replaced_by_id") @db.Char(36)
-{{/if}}
+  replacedById String?   @map("replaced_by_id") {{UUID}}
   userAgent    String?   @map("user_agent") @db.VarChar(255)
   ip           String?   @db.VarChar(45)
   createdAt    DateTime  @default(now()) @map("created_at")
@@ -80,24 +85,134 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 {{/if}}
-{{#if AUTH}}
+{{#if CODES}}
 
-model UserToken {
-{{#if POSTGRES}}
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @map("user_id") @db.Uuid
-{{else}}
-  id        String    @id @default(uuid()) @db.Char(36)
-  userId    String    @map("user_id") @db.Char(36)
-{{/if}}
-  type      String    @db.VarChar(32)
-  tokenHash String    @unique @map("token_hash") @db.Char(64)
+model VerificationCode {
+  id        String    @id @default(uuid()) {{UUID}}
+  purpose   String    @db.VarChar(32)
+  target    String    @db.VarChar(255)
+  codeHash  String    @map("code_hash") @db.Char(64)
+  attempts  Int       @default(0)
   expiresAt DateTime  @map("expires_at")
   usedAt    DateTime? @map("used_at")
   createdAt DateTime  @default(now()) @map("created_at")
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId, type])
-  @@map("user_tokens")
+  @@index([purpose, target])
+  @@map("verification_codes")
+}
+{{/if}}
+{{#if SOCIAL}}
+
+model SocialAccount {
+  id             String   @id @default(uuid()) {{UUID}}
+  userId         String   @map("user_id") {{UUID}}
+  provider       String   @db.VarChar(20)
+  providerUserId String   @map("provider_user_id") @db.VarChar(255)
+  email          String?  @db.VarChar(255)
+  createdAt      DateTime @default(now()) @map("created_at")
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+  @@map("social_accounts")
+}
+{{/if}}
+{{#if CHAT}}
+
+model Conversation {
+  id            String               @id @default(uuid()) {{UUID}}
+  title         String?              @db.VarChar(120)
+  isGroup       Boolean              @default(false) @map("is_group")
+  avatarUrl     String?              @map("avatar_url") @db.VarChar(1024)
+  createdById   String               @map("created_by_id") {{UUID}}
+  lastMessageAt DateTime?            @map("last_message_at")
+  createdAt     DateTime             @default(now()) @map("created_at")
+  updatedAt     DateTime             @updatedAt @map("updated_at")
+  members       ConversationMember[]
+  messages      Message[]
+
+  @@map("conversations")
+}
+
+model ConversationMember {
+  conversationId String       @map("conversation_id") {{UUID}}
+  userId         String       @map("user_id") {{UUID}}
+  lastReadAt     DateTime?    @map("last_read_at")
+  clearedAt      DateTime?    @map("cleared_at")
+  joinedAt       DateTime     @default(now()) @map("joined_at")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+  @@index([userId])
+  @@map("conversation_members")
+}
+
+model Message {
+  id             String       @id @default(uuid()) {{UUID}}
+  conversationId String       @map("conversation_id") {{UUID}}
+  senderId       String       @map("sender_id") {{UUID}}
+  type           String       @db.VarChar(16)
+  text           String?      @db.Text
+  mediaUrl       String?      @map("media_url") @db.VarChar(1024)
+  thumbnailUrl   String?      @map("thumbnail_url") @db.VarChar(1024)
+  fileName       String?      @map("file_name") @db.VarChar(255)
+  fileSize       String?      @map("file_size") @db.VarChar(32)
+  duration       Int?
+  crop           Json?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  deletedAt      DateTime?    @map("deleted_at")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+  @@map("messages")
+}
+{{/if}}
+{{#if NOTIFICATIONS}}
+
+model Device {
+  id        String   @id @default(uuid()) {{UUID}}
+  userId    String   @map("user_id") {{UUID}}
+  token     String   @unique @db.VarChar(512)
+  platform  String   @db.VarChar(16)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("devices")
+}
+
+model Notification {
+  id          String    @id @default(uuid()) {{UUID}}
+  userId      String    @map("user_id") {{UUID}}
+  type        String    @db.VarChar(20)
+  title       String    @db.VarChar(200)
+  body        String    @db.VarChar(1000)
+  data        Json
+  readAt      DateTime? @map("read_at")
+  broadcastId String?   @map("broadcast_id") {{UUID}}
+  createdAt   DateTime  @default(now()) @map("created_at")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+model Broadcast {
+  id             String   @id @default(uuid()) {{UUID}}
+  title          String   @db.VarChar(200)
+  body           String   @db.VarChar(1000)
+  type           String   @db.VarChar(20)
+  data           Json
+  audience       String   @db.VarChar(16)
+  sentById       String   @map("sent_by_id") {{UUID}}
+  recipientCount Int      @default(0) @map("recipient_count")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("broadcasts")
 }
 {{/if}}

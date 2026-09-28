@@ -6,9 +6,13 @@
 
 # ── App ──────────────────────────────────────────────────────────────────────
 NODE_ENV=development
-PORT=3000
+PORT={{PORT}}
 HOST=0.0.0.0
-# Public URL of this API (used in links sent by email).
+{{#if MICROSERVICE}}
+# Public URL of the API gateway (links, uploaded file URLs).
+{{else}}
+# Public URL of this API (links, uploaded file URLs).
+{{/if}}
 APP_URL=http://localhost:3000
 # Routes are served under /<API_PREFIX>/<API_VERSION>, e.g. /api/v1/auth/login
 API_PREFIX=api
@@ -16,7 +20,7 @@ API_VERSION=v1
 # fatal | error | warn | info | debug | trace | silent
 LOG_LEVEL=info
 # Set to true when running behind a reverse proxy / load balancer (correct client IPs for rate limiting).
-TRUST_PROXY=false
+TRUST_PROXY={{TRUST_PROXY}}
 {{#if SEC_CORS}}
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
@@ -41,6 +45,11 @@ AUTH_RATE_LIMIT_WINDOW_MS=900000
 AUTH_RATE_LIMIT_MAX=10
 {{/if}}
 
+{{#if EVENTS}}
+# ── Events between services (Redis) ──────────────────────────────────────────
+REDIS_URL=redis://localhost:6379
+
+{{/if}}
 # ── Database ({{DATABASE_LABEL}} · {{ORM_NAME}}) ─────────────────────────────
 {{#if ENV_EXAMPLE}}
 {{#if POSTGRES}}
@@ -75,11 +84,58 @@ JWT_REFRESH_SECRET={{JWT_REFRESH_SECRET}}
 {{/if}}
 JWT_REFRESH_EXPIRES_IN=30d
 {{/if}}
-JWT_ISSUER={{APP_SLUG}}
-JWT_AUDIENCE={{APP_SLUG}}-app
-# Lifetime of one-time links sent by email.
-PASSWORD_RESET_TOKEN_TTL=1h
-EMAIL_VERIFICATION_TOKEN_TTL=24h
+JWT_ISSUER={{JWT_ISSUER}}
+JWT_AUDIENCE={{JWT_ISSUER}}-app
+{{#if CODES}}
+# 6-digit codes (email verification, password reset{{#if AUTH_OTP}}, SMS login{{/if}}).
+VERIFICATION_CODE_TTL=10m
+VERIFICATION_CODE_RESEND_AFTER=60s
+VERIFICATION_CODE_MAX_ATTEMPTS=5
+{{/if}}
+{{#if AUTH_EMAIL}}
+
+# ── Email ────────────────────────────────────────────────────────────────────
+# smtp://user:password@smtp.example.com:587 – empty: emails (and their codes) are only logged.
+SMTP_URL=
+MAIL_FROM={{DISPLAY_NAME}} <no-reply@example.com>
+{{/if}}
+{{#if AUTH_OTP}}
+
+# ── SMS (Twilio) ─────────────────────────────────────────────────────────────
+# Empty: SMS codes are only logged (development).
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_FROM=
+{{/if}}
+{{#if SOCIAL}}
+
+# ── Social sign-in ───────────────────────────────────────────────────────────
+{{#if SOCIAL_GOOGLE}}
+# Comma separated OAuth client ids (web client id used by the app + iOS/Android client ids).
+GOOGLE_CLIENT_IDS=
+{{/if}}
+{{#if SOCIAL_FACEBOOK}}
+FACEBOOK_APP_ID=
+FACEBOOK_APP_SECRET=
+{{/if}}
+{{#if SOCIAL_APPLE}}
+# The iOS bundle id (audience of Apple identity tokens).
+APPLE_CLIENT_IDS={{APP_PACKAGE}}
+{{/if}}
+{{/if}}
+{{#if UPLOADS}}
+
+# ── Uploads (avatars{{#if CHAT}}, chat media{{/if}}) ─────────────────────────────
+UPLOAD_DIR=uploads
+UPLOAD_MAX_MB=25
+{{/if}}
+{{#if NOTIFICATIONS}}
+
+# ── Push notifications (Firebase Cloud Messaging) ────────────────────────────
+# Path to the service account JSON (Firebase console → Project settings → Service accounts),
+# or the JSON itself. Empty: pushes are only logged.
+FIREBASE_SERVICE_ACCOUNT=
+{{/if}}
 {{#if HASH_CONFIGURABLE}}
 
 # ── Password hashing ─────────────────────────────────────────────────────────
@@ -100,13 +156,32 @@ ACCOUNT_LOCKOUT_MINUTES=15
 {{/if}}
 
 # ── Seed (npm run db:seed) ───────────────────────────────────────────────────
+# Creates (or promotes) this administrator.
 SEED_ADMIN_EMAIL=admin@example.com
+{{#if AUTH_EMAIL}}
 {{#if ENV_EXAMPLE}}
 SEED_ADMIN_PASSWORD=
 {{else}}
 SEED_ADMIN_PASSWORD=ChangeMe123!
 {{/if}}
+{{/if}}
+{{#if AUTH_OTP}}
+SEED_ADMIN_COUNTRY_CODE=
+SEED_ADMIN_PHONE=
+{{/if}}
 SEED_ADMIN_NAME=Administrator
+{{/if}}
+{{#if API_ENCRYPTION}}
+
+# ── API encryption (must match the app's API_ENCRYPTION_KEY / API_ENCRYPTION_IV) ──
+API_ENCRYPTION_ENABLED=true
+{{#if ENV_EXAMPLE}}
+API_ENCRYPTION_KEY=
+API_ENCRYPTION_IV=
+{{else}}
+API_ENCRYPTION_KEY={{API_ENCRYPTION_KEY}}
+API_ENCRYPTION_IV={{API_ENCRYPTION_IV}}
+{{/if}}
 {{/if}}
 {{#if SWAGGER}}
 

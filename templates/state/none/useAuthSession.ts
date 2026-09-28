@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AuthSession } from '{{IMPORT:auth.types}}';
+import { endServerSession } from '{{IMPORT:api.auth}}';
 import { authSessionStorage } from '{{IMPORT:storage.session}}';
 {{#if NOTIFICATIONS}}
 import { notificationInbox } from '{{IMPORT:notification.inbox}}';
@@ -31,6 +32,8 @@ export function useAuthSession() {
   }, []);
 
   const signOut = useCallback(async () => {
+    // Revoke the session on the server first – it needs the stored tokens.
+    await endServerSession();
     await authSessionStorage.clear();
 {{#if NOTIFICATIONS}}
     // The next user must not see this user's notifications.

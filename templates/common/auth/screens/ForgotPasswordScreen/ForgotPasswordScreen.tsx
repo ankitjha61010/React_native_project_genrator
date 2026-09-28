@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import React from 'react';
+import { StyleSheet } from 'react-native';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigation } from '@react-navigation/native';
+import { userMessage } from '{{IMPORT:api.errors}}';
+import { {{SYMBOL:auth.service}} } from '{{IMPORT:auth.service}}';
 import { AppButton } from '{{IMPORT:components.AppButton}}';
 import { AppInput } from '{{IMPORT:components.AppInput}}';
 import { AppScreen } from '{{IMPORT:components.AppScreen}}';
@@ -15,7 +17,7 @@ import type { Theme } from '{{IMPORT:theme.index}}';
 import type { IntlKey } from '{{IMPORT:i18n.index}}';
 
 const forgotSchema = z.object({
-  email: z.string().email('emailInvalid' as IntlKey<'auth'>),
+  email: z.string().trim().email('emailInvalid' as IntlKey<'auth'>),
 });
 
 type ForgotFormValues = z.infer<typeof forgotSchema>;
@@ -23,7 +25,6 @@ type ForgotFormValues = z.infer<typeof forgotSchema>;
 export function ForgotPasswordScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
   const styles = useStyles(createStyles);
-  const [sent, setSent] = useState(false);
 
   const { control, handleSubmit, formState: { isSubmitting } } = useForm<ForgotFormValues>({
     resolver: zodResolver(forgotSchema),
@@ -31,11 +32,14 @@ export function ForgotPasswordScreen(): React.JSX.Element {
   });
 
   const onSubmit = handleSubmit(async data => {
-    // Simulated forgot password request
-    await new Promise<void>(res => setTimeout(res, 800));
-    setSent(true);
-    flash.success({ message: 'Reset instructions sent to your email.' });
-    navigation.navigate('ResetPassword', { email: data.email });
+    try {
+      // Always succeeds on the server (it doesn't reveal which emails exist).
+      await {{SYMBOL:auth.service}}.forgotPassword(data.email);
+      flash.success({ intlType: 'auth', value: 'codeSent' });
+      navigation.navigate('ResetPassword', { email: data.email.trim().toLowerCase() });
+    } catch (error) {
+      flash.error({ message: userMessage(error) ?? 'Could not send the code, please try again.' });
+    }
   });
 
   return (

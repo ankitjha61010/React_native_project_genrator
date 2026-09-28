@@ -1,0 +1,51 @@
+import { Schema, model, type InferSchemaType, type Types } from 'mongoose';
+
+const conversationSchema = new Schema(
+  {
+    title: { type: String, default: null, maxlength: 120 },
+    isGroup: { type: Boolean, required: true, default: false },
+    avatarUrl: { type: String, default: null, maxlength: 1024 },
+    createdById: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    lastMessageAt: { type: Date, default: null },
+  },
+  { timestamps: true, collection: 'conversations' },
+);
+
+export type ConversationDocument = InferSchemaType<typeof conversationSchema> & { _id: Types.ObjectId; createdById: Types.ObjectId; createdAt: Date; updatedAt: Date };
+export const ConversationModel = model('Conversation', conversationSchema);
+
+const memberSchema = new Schema(
+  {
+    conversationId: { type: Schema.Types.ObjectId, ref: 'Conversation', required: true },
+    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    lastReadAt: { type: Date, default: null },
+    clearedAt: { type: Date, default: null },
+    joinedAt: { type: Date, required: true, default: Date.now },
+  },
+  { collection: 'conversation_members' },
+);
+memberSchema.index({ conversationId: 1, userId: 1 }, { unique: true });
+
+export type MemberDocument = InferSchemaType<typeof memberSchema> & { conversationId: Types.ObjectId; userId: Types.ObjectId };
+export const ConversationMemberModel = model('ConversationMember', memberSchema);
+
+const messageSchema = new Schema(
+  {
+    conversationId: { type: Schema.Types.ObjectId, ref: 'Conversation', required: true },
+    senderId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    type: { type: String, required: true, maxlength: 16 },
+    text: { type: String, default: null },
+    mediaUrl: { type: String, default: null, maxlength: 1024 },
+    thumbnailUrl: { type: String, default: null, maxlength: 1024 },
+    fileName: { type: String, default: null, maxlength: 255 },
+    fileSize: { type: String, default: null, maxlength: 32 },
+    duration: { type: Number, default: null },
+    crop: { type: Schema.Types.Mixed, default: null },
+    deletedAt: { type: Date, default: null },
+  },
+  { timestamps: { createdAt: true, updatedAt: false }, collection: 'messages' },
+);
+messageSchema.index({ conversationId: 1, createdAt: -1, _id: -1 });
+
+export type MessageDocument = InferSchemaType<typeof messageSchema> & { _id: Types.ObjectId; conversationId: Types.ObjectId; senderId: Types.ObjectId; createdAt: Date };
+export const MessageModel = model('Message', messageSchema);

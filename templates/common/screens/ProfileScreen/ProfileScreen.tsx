@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { StyleSheet, View, Image, TouchableOpacity, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { authApi } from '{{IMPORT:api.auth}}';
+import { userMessage } from '{{IMPORT:api.errors}}';
+import { authSessionStorage } from '{{IMPORT:storage.session}}';
 import { AppScreen } from '{{IMPORT:components.AppScreen}}';
 import { AppText } from '{{IMPORT:components.AppText}}';
 {{#if VECTOR_ICONS}}
@@ -28,29 +31,31 @@ export function ProfileScreen(): React.JSX.Element {
 {{#if THEME_CONTEXT}}
   const { themeMode, toggleTheme } = useTheme();
 {{/if}}
-  const { user, signOut } = useAuthSession();
+  const { user, signIn, signOut } = useAuthSession();
   const { pick } = useImagePicker();
   const legal = useLegalPages();
 
-  const [avatarUri, setAvatarUri] = useState<string | null>(
-    user?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200'
-  );
+  const [avatarUri, setAvatarUri] = useState<string | null>(user?.avatar ?? null);
   const [showImagePicker, setShowImagePicker] = useState(false);
+  const phone = user?.phone ? `${user.countryCode ?? ''} ${user.phone}`.trim() : '—';
 
+  /** Uploads the picked photo right away (POST /users/me/avatar). */
   const handleMediaOption = async (option: MediaPickerOption) => {
     setShowImagePicker(false);
-    if (option === 'camera_photo') {
-      const res = await pick('camera_photo');
-      if (res?.path) {
-        setAvatarUri(res.path);
-        flash.success({ intlType: 'common', value: 'ok' });
-      }
-    } else if (option === 'gallery_photo') {
-      const res = await pick('gallery_photo');
-      if (res?.path) {
-        setAvatarUri(res.path);
-        flash.success({ intlType: 'common', value: 'ok' });
-      }
+    if (option !== 'camera_photo' && option !== 'gallery_photo') return;
+    const res = await pick(option);
+    if (!res?.path) return;
+    const previous = avatarUri;
+    setAvatarUri(res.path);
+    try {
+      const updated = await authApi.uploadAvatar({ uri: res.path, fileName: res.filename ?? undefined, mimeType: res.mime });
+      const session = await authSessionStorage.load();
+      if (session) await signIn({ ...session, user: updated });
+      setAvatarUri(updated.avatar ?? null);
+      flash.success({ intlType: 'common', value: 'ok' });
+    } catch (error) {
+      setAvatarUri(previous);
+      flash.error({ message: userMessage(error) ?? 'Could not upload the photo, please try again.' });
     }
   };
 
@@ -80,13 +85,15 @@ export function ProfileScreen(): React.JSX.Element {
           </View>
 
           <AppText fontFamily="bold" fontSize="size20" style={styles.userName}>
-            {user?.name ?? 'Alex Johnson'}
+            {user?.name ?? ''}
           </AppText>
-          <AppText fontSize="size14" color="textSecondary" style={styles.userRole}>
-            Senior Mobile Engineer
-          </AppText>
+          {user?.bio ? (
+            <AppText fontSize="size14" color="textSecondary" style={styles.userRole}>
+              {user.bio}
+            </AppText>
+          ) : null}
           <AppText fontSize="size13" color="textSecondary">
-            {user?.email ?? 'alex.johnson@example.com'}
+            {user?.email || phone}
           </AppText>
         </FadeInView>
 
@@ -103,7 +110,7 @@ export function ProfileScreen(): React.JSX.Element {
 {{/if}}
                 <AppText fontSize="size14" color="textSecondary">Email</AppText>
               </View>
-              <AppText fontSize="size14" fontFamily="medium">{user?.email ?? 'alex.johnson@example.com'}</AppText>
+              <AppText fontSize="size14" fontFamily="medium">{user?.email || '—'}</AppText>
             </View>
 
             <View style={styles.divider} />
@@ -115,7 +122,7 @@ export function ProfileScreen(): React.JSX.Element {
 {{/if}}
                 <AppText fontSize="size14" color="textSecondary">Phone</AppText>
               </View>
-              <AppText fontSize="size14" fontFamily="medium">+1 (555) 234-5678</AppText>
+              <AppText fontSize="size14" fontFamily="medium">{phone}</AppText>
             </View>
 
             <View style={styles.divider} />
@@ -127,7 +134,7 @@ export function ProfileScreen(): React.JSX.Element {
 {{/if}}
                 <AppText fontSize="size14" color="textSecondary">Location</AppText>
               </View>
-              <AppText fontSize="size14" fontFamily="medium">San Francisco, CA</AppText>
+              <AppText fontSize="size14" fontFamily="medium">{user?.location || '—'}</AppText>
             </View>
           </View>
         </FadeInView>

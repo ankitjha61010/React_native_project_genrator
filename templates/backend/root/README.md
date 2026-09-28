@@ -84,7 +84,9 @@ All configuration lives in `.env` and is validated at startup by `env.ts` (confi
 | `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN` | Refresh token secret (different from the access secret) and lifetime |
 {{/if}}
 | `JWT_ISSUER`, `JWT_AUDIENCE` | `iss` / `aud` claims, checked on every token |
-| `PASSWORD_RESET_TOKEN_TTL`, `EMAIL_VERIFICATION_TOKEN_TTL` | Lifetime of emailed one-time links |
+{{#if CODES}}
+| `VERIFICATION_CODE_TTL`, `VERIFICATION_CODE_RESEND_AFTER`, `VERIFICATION_CODE_MAX_ATTEMPTS` | 6-digit codes (email / SMS) |
+{{/if}}
 {{#if HASH_CONFIGURABLE}}
 | `PASSWORD_HASH_ALGORITHM`, `BCRYPT_ROUNDS` | `argon2` or `bcrypt` for new hashes; old hashes keep working and are upgraded at login |
 {{/if}}
@@ -179,6 +181,9 @@ The API listens on `http://localhost:3000/api/v1`. The process shuts down gracef
 
 ## API
 
+The full contract – every endpoint, body, response shape{{#if REALTIME}} and Socket.IO event{{/if}} – is in
+**[docs/API.md](docs/API.md)**{{#if SWAGGER}}; try it in the Swagger UI at `http://localhost:3000/api/docs`{{/if}}.
+
 Every response has the same shape:
 
 ```json
@@ -189,83 +194,115 @@ Every response has the same shape:
 { "success": false, "message": "Validation failed", "code": "VALIDATION_ERROR", "errors": [{ "field": "email", "message": "must be a valid email" }] }
 ```
 
-`code` is stable and machine readable (`VALIDATION_ERROR`, `INVALID_CREDENTIALS`, `TOKEN_EXPIRED`, `FORBIDDEN`, `NOT_FOUND`…) – use it in the client instead of the message.
-Every response carries an `X-Request-Id` header (also in the logs).
+`code` is stable and machine readable – use it in the client instead of the message. Every response carries an
+`X-Request-Id` header (also in the logs).
 
-| Method | Path | Access | Description |
-| --- | --- | --- | --- |
-| GET | `/api/v1/health` | public | Liveness + database check (503 when degraded) |
+| Area | Routes |
+| --- | --- |
+| Health | `GET /api/v1/health` (503 when the database is down) |
 {{#if AUTH}}
-| POST | `/api/v1/auth/register` | public | Create an account, returns the session |
-| POST | `/api/v1/auth/login` | public | Email + password login |
-{{#if AUTH_REFRESH}}
-| POST | `/api/v1/auth/refresh` | refresh token | New {{#if AUTH_ROTATION}}token pair (rotation){{else}}access token{{/if}} |
-| POST | `/api/v1/auth/logout` | refresh token | End this session |
-| POST | `/api/v1/auth/logout-all` | bearer | End every session |
+| Auth | {{AUTH_METHODS_TEXT}}{{#if AUTH_REFRESH}} · refresh · logout / logout-all{{else}} · logout{{/if}} · me |
+| Users | own profile (`PATCH /users/me`, avatar upload, delete account), user search, admin CRUD |
 {{else}}
-| POST | `/api/v1/auth/logout` | bearer | Invalidate every token of the user |
+| Users | CRUD (no authentication – protect it before going live) |
 {{/if}}
-| GET | `/api/v1/auth/me` | bearer | Current user |
-| POST | `/api/v1/auth/change-password` | bearer | Change password (other sessions are signed out) |
-| POST | `/api/v1/auth/forgot-password` | public | Email a reset link (always 200) |
-| POST | `/api/v1/auth/reset-password` | public | Set a new password with the emailed token |
-| POST | `/api/v1/auth/verify-email` | public | Confirm the email with the emailed token |
-| POST | `/api/v1/auth/verify-email/request` | bearer | Send the verification email again |
-| PATCH | `/api/v1/users/me` | bearer | Update your profile |
-| GET | `/api/v1/users` | `users:read` | List users (`?page`, `?limit`, `?search`) |
-| GET | `/api/v1/users/:id` | `users:read` | Get a user |
-| PATCH | `/api/v1/users/:id` | `users:write` | Update name / role / active flag |
-| DELETE | `/api/v1/users/:id` | `users:delete` | Delete a user |
-{{else}}
-| GET | `/api/v1/users` | public | List users (`?page`, `?limit`, `?search`) |
-| POST | `/api/v1/users` | public | Create a user |
-| GET | `/api/v1/users/:id` | public | Get a user |
-| PATCH | `/api/v1/users/:id` | public | Update a user |
-| DELETE | `/api/v1/users/:id` | public | Delete a user |
+{{#if CHAT}}
+| Chat | conversations, messages (text / media), read receipts, uploads · live over Socket.IO |
+{{/if}}
+{{#if NOTIFICATIONS}}
+| Notifications | FCM devices, inbox (unread count, read, delete), admin broadcasts |
+{{/if}}
 
-> There is no authentication – protect these routes before exposing the API.
-{{/if}}
-{{#if SWAGGER}}
-
-**Interactive docs:** `http://localhost:3000/api/docs` (raw OpenAPI 3 document: `/api/docs/openapi.json`).
-Click *Authorize* and paste an access token to call protected routes. Disable with `SWAGGER_ENABLED=false`.
-{{/if}}
 {{#if AUTH}}
-
 ## Authentication
 
+- Sign-in: **{{AUTH_METHODS_TEXT}}**. Every method returns the same session `{ user, tokens{{#if PASSWORDLESS}}, isNewUser{{/if}} }`.
 {{#if AUTH_JWT_ONLY}}
-- `register` / `login` return `{ user, tokens: { accessToken, expiresIn, … } }`. Send `Authorization: Bearer <accessToken>`.
-- Tokens are revocable: every user has a *token version*. Logout, password change / reset, role change and
-  disabling the account bump it, which invalidates every token issued before.
+- Send `Authorization: Bearer <accessToken>`. Tokens are revocable: logout, password change / reset, role change and
+  disabling the account bump the user's *token version*, which invalidates every token issued before.
 {{/if}}
 {{#if AUTH_REFRESH}}
-- `register` / `login` return `{ user, tokens: { accessToken, refreshToken, … } }`. Send `Authorization: Bearer <accessToken>`.
-- The access token is short lived (`JWT_ACCESS_EXPIRES_IN`). When a request fails with `401 TOKEN_EXPIRED`, call
-  `POST /auth/refresh` with the refresh token and retry.
-- Refresh tokens are stored **hashed** in the database, so they can be revoked (logout, logout-all, password change).
+- Send `Authorization: Bearer <accessToken>`. The access token is short lived (`JWT_ACCESS_EXPIRES_IN`); on `401` call
+  `POST /auth/refresh` with the refresh token and retry. Refresh tokens are stored **hashed** and can be revoked.
 {{#if AUTH_ROTATION}}
-- **Rotation:** every refresh returns a *new* refresh token and revokes the old one. Presenting an already used
-  refresh token is treated as theft: the whole token family is revoked (`401 TOKEN_REUSED`) and the user has to log in again.
+- **Rotation:** every refresh returns a *new* refresh token. Presenting an already used one is treated as theft: the whole
+  token family is revoked (`401 TOKEN_REUSED`).
 {{/if}}
 {{/if}}
-- Passwords are hashed with **{{HASHING_NAME}}** – never stored or logged in plain text. Rules: at least 8
-  characters, letters and numbers (`assertPasswordPolicy`).
-- Login answers "invalid email or password" for both unknown emails and wrong passwords, with the same timing.
+{{#if CODES}}
+- **6-digit codes** ({{#if AUTH_EMAIL}}email verification, password reset{{/if}}{{#if AUTH_EMAIL}}{{#if AUTH_OTP}}, {{/if}}{{/if}}{{#if AUTH_OTP}}SMS login{{/if}}) are stored hashed, expire after
+  `VERIFICATION_CODE_TTL`, can be re-sent after `VERIFICATION_CODE_RESEND_AFTER` and die after `VERIFICATION_CODE_MAX_ATTEMPTS` wrong tries.
+{{/if}}
+{{#if AUTH_EMAIL}}
+- Passwords are hashed with **{{HASHING_NAME}}**. Login answers "invalid email or password" for unknown emails and wrong
+  passwords alike, with the same timing; forgot-password always answers 200 (no account enumeration).
 {{#if SEC_LOCKOUT}}
 - After `ACCOUNT_LOCKOUT_MAX_ATTEMPTS` failed logins the account is locked for `ACCOUNT_LOCKOUT_MINUTES` (`423 ACCOUNT_LOCKED`).
 {{/if}}
-- **Password reset / email verification** use one-time tokens (256 bit, stored as SHA-256, expiring). Forgot-password
-  always answers 200 so it can't be used to find registered emails.
-- **Roles & permissions:** roles (`user`, `admin`) grant permissions (`users:read`, …) in `roles.ts`. Protect routes
-  with a permission, not a role, so you can add roles without touching routes.
+- Sign-up accepts an optional mobile number (`countryCode` + `phone`, from the app's country picker). A number can belong
+  to one account only (`409 PHONE_TAKEN`); a changed number becomes unverified.
+{{/if}}
+- **Roles & permissions:** roles (`user`, `admin`) grant permissions (`users:read`{{#if NOTIFICATIONS}}, `notifications:broadcast`{{/if}}, …) in `roles.ts`.
+  Routes require a permission, not a role.
 
-### Sending real email
+### Providers (all optional in development)
 
-Until an email provider is configured, emails (with their links) are **written to the log in development** and
-skipped in production (`log-mailer.ts`). Implement the `Mailer` interface with your provider (SMTP, SendGrid, Resend…)
-and use it where `LogMailer` is created. Links point to `APP_URL/reset-password?token=…` and `APP_URL/verify-email?token=…` –
-point `APP_URL` at the page / deep link of your app that calls the API.
+| Feature | Configure | Without configuration |
+| --- | --- | --- |
+{{#if AUTH_EMAIL}}
+| Email (codes) | `SMTP_URL`, `MAIL_FROM` – any SMTP provider (SES, SendGrid, Mailgun…) | emails and their codes are written to the log |
+{{/if}}
+{{#if AUTH_OTP}}
+| SMS (OTP) | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` | SMS codes are written to the log |
+{{/if}}
+{{#if SOCIAL_GOOGLE}}
+| Google sign-in | `GOOGLE_CLIENT_IDS` = the web client id the app uses (+ iOS / Android ids) | sign-in answers `401 SOCIAL_NOT_CONFIGURED` |
+{{/if}}
+{{#if SOCIAL_FACEBOOK}}
+| Facebook sign-in | `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET` | sign-in answers `401 SOCIAL_NOT_CONFIGURED` |
+{{/if}}
+{{#if SOCIAL_APPLE}}
+| Apple sign-in | `APPLE_CLIENT_IDS` = the iOS bundle id (default `{{APP_PACKAGE}}`) | works with the default bundle id |
+{{/if}}
+{{#if NOTIFICATIONS}}
+| Push (FCM) | `FIREBASE_SERVICE_ACCOUNT` – path to the service account JSON (Firebase console → Project settings → Service accounts) | pushes are written to the log |
+{{/if}}
+| Uploads | `UPLOAD_DIR`, `UPLOAD_MAX_MB` – files are served under `/uploads` | – (local disk; use S3 / GCS with several servers) |
+
+In production, missing email / SMS providers are logged as warnings – the codes are **not** written to the log there.
+{{/if}}
+{{#if CHAT}}
+
+## Chat
+
+Direct and group conversations with text, photos, videos, voice notes and documents. Upload the file first
+(`POST /chat/upload`), then send a message with its `url` as `mediaUrl`. Members receive `chat:receive_message` over
+Socket.IO (connect with `auth: { token }`); typing indicators, online status and read receipts are Socket.IO events too.
+{{#if NOTIFICATIONS}}
+Members who are offline get a push notification that opens the conversation.
+{{/if}}
+{{/if}}
+{{#if NOTIFICATIONS}}
+
+## Notifications
+
+The app registers its FCM token (`POST /notifications/devices`) after login and removes it on logout. Use
+`NotificationsService.notify(userId, { type, title, body, data })` from any feature – it stores an inbox entry, emits
+`notification:new` and pushes to the user's devices. Admins send broadcasts with `POST /notifications/broadcast`.
+Tokens FCM rejects are deleted automatically.
+{{/if}}
+{{#if API_ENCRYPTION}}
+
+## API encryption
+
+With `API_ENCRYPTION_ENABLED=true`, JSON bodies are exchanged as `{ "data": "<AES-256-CBC base64>" }` using
+`API_ENCRYPTION_KEY` (32 chars) and `API_ENCRYPTION_IV` (16 chars) – set the **same** values in the app's `.env`.
+This only hides payloads from casual inspection; always use HTTPS.
+{{/if}}
+{{#if REALTIME}}
+
+> Online status and Socket.IO rooms live in the process memory. When running several instances, add the Socket.IO
+> Redis adapter so events reach every instance.
 {{/if}}
 
 ## Security

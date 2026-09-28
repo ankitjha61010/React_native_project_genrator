@@ -1,59 +1,19 @@
-{{#if SWAGGER}}
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-{{/if}}
-import { Transform, Type } from 'class-transformer';
+import { Transform } from 'class-transformer';
+import { {{#if AUTH}}IsBoolean, IsIn, IsInt, {{else}}IsEmail, {{/if}}IsNotEmpty, IsOptional, IsString{{#if AUTH}}, Matches, Max{{/if}}, MaxLength{{#if AUTH}}, Min{{/if}} } from 'class-validator';
 {{#if AUTH}}
-import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
-{{else}}
-import { IsEmail, IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
-{{/if}}
-import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from '{{IMPORT:core.pagination}}';
-{{#if AUTH}}
+import { Type } from 'class-transformer';
 import { ROLES, type Role } from '{{IMPORT:domain.roles}}';
 {{/if}}
-
-const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
-
-export class ListUsersQueryDto {
-{{#if SWAGGER}}
-  @ApiPropertyOptional({ default: 1, minimum: 1 })
-{{/if}}
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page: number = 1;
-
-{{#if SWAGGER}}
-  @ApiPropertyOptional({ default: DEFAULT_PAGE_SIZE, minimum: 1, maximum: MAX_PAGE_SIZE })
-{{/if}}
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(MAX_PAGE_SIZE)
-  limit: number = DEFAULT_PAGE_SIZE;
-
-{{#if SWAGGER}}
-  @ApiPropertyOptional({ description: 'Searches email and name' })
-{{/if}}
-  @IsOptional()
-  @Transform(trim)
-  @IsString()
-  @MaxLength(100)
-  search?: string;
-}
+import { trim } from '{{IMPORT:nest.commonDto}}';
 {{#if NO_AUTH}}
 
 export class CreateUserDto {
-{{#if SWAGGER}}
-  @ApiProperty({ example: 'jane@example.com' })
-{{/if}}
+  /** @example jane@example.com */
   @IsEmail()
   @MaxLength(255)
   email: string;
 
-{{#if SWAGGER}}
-  @ApiProperty({ example: 'Jane Doe' })
-{{/if}}
+  /** @example Jane Doe */
   @Transform(trim)
   @IsString()
   @IsNotEmpty()
@@ -63,9 +23,6 @@ export class CreateUserDto {
 {{/if}}
 
 export class UpdateUserDto {
-{{#if SWAGGER}}
-  @ApiPropertyOptional({ example: 'Jane Doe' })
-{{/if}}
   @IsOptional()
   @Transform(trim)
   @IsString()
@@ -74,16 +31,10 @@ export class UpdateUserDto {
   name?: string;
 {{#if AUTH}}
 
-{{#if SWAGGER}}
-  @ApiPropertyOptional({ enum: ROLES })
-{{/if}}
   @IsOptional()
   @IsIn(ROLES)
   role?: Role;
 
-{{#if SWAGGER}}
-  @ApiPropertyOptional()
-{{/if}}
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
@@ -91,30 +42,81 @@ export class UpdateUserDto {
 }
 {{#if AUTH}}
 
+/** The app's Edit Profile screen. Send `phone: null` to remove the number. */
 export class UpdateProfileDto {
-{{#if SWAGGER}}
-  @ApiProperty({ example: 'Jane Doe' })
-{{/if}}
+  @IsOptional()
   @Transform(trim)
   @IsString()
   @IsNotEmpty()
   @MaxLength(120)
-  name: string;
+  name?: string;
+
+  /** @example +91 */
+  @IsOptional()
+  @Matches(/^\+?\d{1,4}$/, { message: 'countryCode must be a dial code like +91' })
+  countryCode?: string | null;
+
+  /** @example 9876543210 */
+  @IsOptional()
+  @Matches(/^[\d\s-]{4,20}$/, { message: 'phone must be a valid mobile number' })
+  phone?: string | null;
+
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(120)
+  location?: string | null;
+
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(500)
+  bio?: string | null;
+}
+
+export class SearchUsersQueryDto {
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  q: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit: number = 20;
 }
 {{/if}}
-{{#if SWAGGER}}
 
 // ── responses (documentation) ────────────────────────────────────────────────
 
 export class UserResponseDto {
-  @ApiProperty() id: string;
-  @ApiProperty({ example: 'jane@example.com' }) email: string;
-  @ApiProperty({ example: 'Jane Doe' }) name: string;
+  id: string;
 {{#if AUTH}}
-  @ApiProperty({ enum: ROLES }) role: Role;
-  @ApiProperty() emailVerified: boolean;
+  email: string | null;
+  name: string;
+  avatar: string | null;
+  countryCode: string | null;
+  phone: string | null;
+  location: string | null;
+  bio: string | null;
+  role: Role;
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  hasPassword: boolean;
+{{else}}
+  email: string;
+  name: string;
 {{/if}}
-  @ApiProperty({ format: 'date-time' }) createdAt: string;
-  @ApiProperty({ format: 'date-time' }) updatedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+{{#if AUTH}}
+
+export class UserSummaryDto {
+  id: string;
+  name: string;
+  avatar: string | null;
 }
 {{/if}}

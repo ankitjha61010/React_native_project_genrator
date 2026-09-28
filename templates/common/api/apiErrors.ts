@@ -14,8 +14,18 @@ export type ApiErrorCode =
 {{/if}}
   | 'UNKNOWN';
 
+export interface FieldError {
+  field?: string;
+  message: string;
+}
+
 /** The single error type the rest of the app has to handle. */
 export class ApiError extends Error {
+  /** The backend's machine readable code, e.g. `INVALID_CREDENTIALS`, `EMAIL_TAKEN`. */
+  readonly serverCode?: string;
+  /** Per-field validation messages (422). */
+  readonly fields: FieldError[];
+
   constructor(
     message: string,
     readonly code: ApiErrorCode,
@@ -24,6 +34,9 @@ export class ApiError extends Error {
   ) {
     super(message);
     this.name = 'ApiError';
+    const body = data && typeof data === 'object' ? (data as { code?: unknown; errors?: unknown }) : {};
+    this.serverCode = typeof body.code === 'string' ? body.code : undefined;
+    this.fields = Array.isArray(body.errors) ? (body.errors as FieldError[]) : [];
   }
 }
 
@@ -61,4 +74,15 @@ export function toApiError(error: unknown): ApiError {
     return new ApiError(messageFrom(data) ?? error.message, codeForStatus(status), status, data);
   }
   return new ApiError(error instanceof Error ? error.message : 'Unknown error', 'UNKNOWN');
+}
+
+/**
+ * The message to show the user for a failed request: the backend's message for client errors
+ * (wrong password, email taken…), undefined otherwise (show a generic error).
+ * Also works for errors Redux serialized (thunks).
+ */
+export function userMessage(error: unknown): string | undefined {
+  if (error instanceof ApiError) return error.status && error.status < 500 ? error.message : undefined;
+  const serialized = error as { name?: unknown; message?: unknown } | null;
+  return serialized?.name === 'ApiError' && typeof serialized.message === 'string' ? serialized.message : undefined;
 }

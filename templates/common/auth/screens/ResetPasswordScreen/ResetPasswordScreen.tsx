@@ -4,6 +4,8 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { userMessage } from '{{IMPORT:api.errors}}';
+import { {{SYMBOL:auth.service}} } from '{{IMPORT:auth.service}}';
 import { AppButton } from '{{IMPORT:components.AppButton}}';
 import { AppInput } from '{{IMPORT:components.AppInput}}';
 import { AppScreen } from '{{IMPORT:components.AppScreen}}';
@@ -16,9 +18,13 @@ import type { IntlKey } from '{{IMPORT:i18n.index}}';
 
 const resetSchema = z
   .object({
-    code: z.string().min(4, 'codeMin' as IntlKey<'auth'>),
-    newPassword: z.string().min(6, 'passwordMin' as IntlKey<'auth'>),
-    confirmPassword: z.string().min(6, 'passwordMin' as IntlKey<'auth'>),
+    code: z.string().trim().regex(/^\d{4,8}$/, 'codeMin' as IntlKey<'auth'>),
+    newPassword: z
+      .string()
+      .min(8, 'passwordMin' as IntlKey<'auth'>)
+      .regex(/[a-z]/i, 'passwordWeak' as IntlKey<'auth'>)
+      .regex(/\d/, 'passwordWeak' as IntlKey<'auth'>),
+    confirmPassword: z.string().min(1, 'passwordRequired' as IntlKey<'auth'>),
   })
   .refine(data => data.newPassword === data.confirmPassword, {
     message: 'passwordMismatch' as IntlKey<'auth'>,
@@ -38,10 +44,15 @@ export function ResetPasswordScreen(): React.JSX.Element {
     defaultValues: { code: '', newPassword: '', confirmPassword: '' },
   });
 
-  const onSubmit = handleSubmit(async () => {
-    await new Promise<void>(res => setTimeout(res, 800));
-    flash.success({ message: 'Password reset successfully! Please log in.' });
-    navigation.navigate('Login');
+  const onSubmit = handleSubmit(async data => {
+    try {
+      await {{SYMBOL:auth.service}}.resetPassword({ email, code: data.code.trim(), newPassword: data.newPassword });
+      flash.success({ intlType: 'auth', value: 'passwordResetDone' });
+      navigation.navigate('Login');
+    } catch (error) {
+      // e.g. "Wrong code, 3 attempts left".
+      flash.error({ message: userMessage(error) ?? 'Could not reset the password, please try again.' });
+    }
   });
 
   return (

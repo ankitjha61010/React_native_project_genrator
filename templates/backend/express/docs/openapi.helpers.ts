@@ -1,7 +1,7 @@
 import type { ResponseConfig } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 
-/** Shared schemas & helpers for the per-feature `*.docs.ts` files. */
+/** Shared schemas & helpers for the OpenAPI document. */
 
 const fieldErrorSchema = z.object({ field: z.string().optional(), message: z.string() });
 
@@ -25,11 +25,9 @@ export const pageMetaSchema = z
   })
   .meta({ id: 'PageMeta' });
 
-/** `{ success: true, message, data }` around a schema. */
-export function envelope(data: z.ZodType, id: string, meta?: z.ZodType) {
-  return z
-    .object({ success: z.literal(true), message: z.string(), data, ...(meta ? { meta } : {}) })
-    .meta({ id });
+/** `{ success: true, message, data, meta? }` around a schema. */
+export function envelope(data: z.ZodType, meta?: z.ZodType) {
+  return z.object({ success: z.literal(true), message: z.string(), data, ...(meta ? { meta } : {}) });
 }
 
 export function json(schema: z.ZodType) {
@@ -47,16 +45,13 @@ const ERROR_DESCRIPTIONS: Record<number, string> = {
   423: 'Account temporarily locked',
   429: 'Too many requests',
   500: 'Internal server error',
+  503: 'Service degraded',
 };
 
 export function errorResponses(...statuses: number[]): Record<number, ResponseConfig> {
   return Object.fromEntries(
     [...statuses, 500].map(status => [status, { description: ERROR_DESCRIPTIONS[status] ?? 'Error', ...json(errorResponseSchema) }]),
   );
-}
-
-export function ok(description: string, schema: z.ZodType): ResponseConfig {
-  return { description, ...json(schema) };
 }
 {{#if AUTH}}
 

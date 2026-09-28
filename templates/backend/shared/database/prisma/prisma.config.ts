@@ -8,7 +8,9 @@ export default defineConfig({
   schema: 'prisma/schema.prisma',
   migrations: {
     path: 'prisma/migrations',
+{{#if USERS_API}}
     seed: 'tsx {{SEED_TS}}',
+{{/if}}
   },
   datasource: {
     url: env('DATABASE_URL'),

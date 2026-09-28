@@ -6,12 +6,21 @@ import { config } from '{{IMPORT:config.env}}';
 import type { Logger } from '{{IMPORT:core.logger}}';
 import type { HealthCheck } from '{{IMPORT:port.healthCheck}}';
 {{#if AUTH_REFRESH}}
-import { RefreshTokenOrmEntity } from '{{IMPORT:typeorm.refreshToken}}';
+import { RefreshTokenOrmEntity } from '{{IMPORT:typeorm.auth}}';
+{{/if}}
+{{#if CODES}}
+import { VerificationCodeOrmEntity } from '{{IMPORT:typeorm.auth}}';
+{{/if}}
+{{#if SOCIAL}}
+import { SocialAccountOrmEntity } from '{{IMPORT:typeorm.auth}}';
+{{/if}}
+{{#if CHAT}}
+import { ConversationMemberOrmEntity, ConversationOrmEntity, MessageOrmEntity } from '{{IMPORT:typeorm.chat}}';
+{{/if}}
+{{#if NOTIFICATIONS}}
+import { BroadcastOrmEntity, DeviceOrmEntity, NotificationOrmEntity } from '{{IMPORT:typeorm.notifications}}';
 {{/if}}
 import { UserOrmEntity } from '{{IMPORT:typeorm.user}}';
-{{#if AUTH}}
-import { UserTokenOrmEntity } from '{{IMPORT:typeorm.userToken}}';
-{{/if}}
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -26,7 +35,28 @@ export function createDataSource(url: string): DataSource {
     charset: 'utf8mb4',
 {{/if}}
     url,
-    entities: [UserOrmEntity{{#if AUTH_REFRESH}}, RefreshTokenOrmEntity{{/if}}{{#if AUTH}}, UserTokenOrmEntity{{/if}}],
+    entities: [
+      UserOrmEntity,
+{{#if AUTH_REFRESH}}
+      RefreshTokenOrmEntity,
+{{/if}}
+{{#if CODES}}
+      VerificationCodeOrmEntity,
+{{/if}}
+{{#if SOCIAL}}
+      SocialAccountOrmEntity,
+{{/if}}
+{{#if CHAT}}
+      ConversationOrmEntity,
+      ConversationMemberOrmEntity,
+      MessageOrmEntity,
+{{/if}}
+{{#if NOTIFICATIONS}}
+      DeviceOrmEntity,
+      NotificationOrmEntity,
+      BroadcastOrmEntity,
+{{/if}}
+    ],
     // Schema changes only through migrations – never `synchronize` in a real database.
     migrations: [path.join(here, 'migrations', '*.{ts,js}')],
     synchronize: false,

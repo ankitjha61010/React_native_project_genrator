@@ -1,6 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useNavigation } from '@react-navigation/native';
 import { useForm } from 'react-hook-form';
+import { userMessage } from '{{IMPORT:api.errors}}';
 import { loginSchema, type LoginFormValues } from '{{IMPORT:auth.schema}}';
 import { authService } from '{{IMPORT:auth.service}}';
 import { useAuthSession } from '{{IMPORT:hooks.useAuthSession}}';
@@ -25,7 +26,10 @@ export function {{SYMBOL:auth.logic}}() {
       navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
     } catch (error) {
       logger.error('Login failed', error);
-      flash.error({ intlType: 'common', value: 'genericError' });
+      // The backend's message, e.g. "Invalid email or password".
+      const message = userMessage(error);
+      if (message) flash.error({ message });
+      else flash.error({ intlType: 'common', value: 'genericError' });
     }
   });
 

@@ -3,16 +3,9 @@ import { config } from '{{IMPORT:config.env}}';
 {{#if SWAGGER}}
 import { createDocsRouter } from '{{IMPORT:ex.docs.router}}';
 {{/if}}
-{{#if !MODULE_FACTORIES}}
-{{#if AUTH}}
-import { AuthController } from '{{IMPORT:ex.auth.controller}}';
-import { createAuthRouter } from '{{IMPORT:ex.auth.routes}}';
-import { createAuthenticate } from '{{IMPORT:ex.mw.authenticate}}';
-{{/if}}
-import { HealthController } from '{{IMPORT:ex.health.controller}}';
-import { createHealthRouter } from '{{IMPORT:ex.health.routes}}';
-import { UsersController } from '{{IMPORT:ex.users.controller}}';
-import { createUsersRouter } from '{{IMPORT:ex.users.routes}}';
+import type { Services } from '{{IMPORT:app.container}}';
+{{#if API_ENCRYPTION}}
+import { apiEncryption } from '{{IMPORT:http.encryption}}';
 {{/if}}
 import { errorHandler } from '{{IMPORT:ex.mw.errorHandler}}';
 import { notFoundHandler } from '{{IMPORT:ex.mw.notFound}}';
@@ -21,10 +14,11 @@ import { globalRateLimit } from '{{IMPORT:ex.mw.rateLimit}}';
 {{/if}}
 import { requestLogger } from '{{IMPORT:ex.mw.requestLogger}}';
 import { applySecurity } from '{{IMPORT:ex.mw.security}}';
-import type { Container } from '{{IMPORT:ex.container}}';
+import { mountRoutes } from '{{IMPORT:ex.route}}';
+import { routeGroups } from '{{IMPORT:ex.routes}}';
 
 /** Builds the Express app (no `listen` – used by server.ts and the tests). */
-export function createApp(container: Container): Express {
+export function createApp(services: Services): Express {
   const app = express();
 
   app.use(requestLogger);
@@ -32,27 +26,17 @@ export function createApp(container: Container): Express {
 {{#if SEC_RATE_LIMIT}}
   app.use(globalRateLimit);
 {{/if}}
+{{#if UPLOADS}}
+  // Uploaded files (avatars, chat media). Never executed, never listed.
+  app.use(config.uploads.publicPath, express.static(config.uploads.dir, { index: false, dotfiles: 'deny', maxAge: '7d' }));
+{{/if}}
 
   // Every route lives under /<API_PREFIX>/<API_VERSION>, e.g. /api/v1/auth/login.
   const api = express.Router();
-{{#if MODULE_FACTORIES}}
-  api.use('/health', container.health.router);
-{{#if AUTH}}
-  api.use('/auth', container.auth.router);
+{{#if API_ENCRYPTION}}
+  api.use(apiEncryption);
 {{/if}}
-  api.use('/users', container.users.router);
-{{else}}
-{{#if AUTH}}
-  const authenticate = createAuthenticate(token => container.auth.authenticate{{CALL}}(token));
-{{/if}}
-  api.use('/health', createHealthRouter(new HealthController(container.health)));
-{{#if AUTH}}
-  api.use('/auth', createAuthRouter(new AuthController(container.auth), authenticate));
-  api.use('/users', createUsersRouter(new UsersController(container.users), authenticate));
-{{else}}
-  api.use('/users', createUsersRouter(new UsersController(container.users)));
-{{/if}}
-{{/if}}
+  mountRoutes(api, routeGroups, services);
   app.use(config.api.basePath, api);
 {{#if SWAGGER}}
 

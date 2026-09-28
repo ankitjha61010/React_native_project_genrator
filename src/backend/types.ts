@@ -35,6 +35,34 @@ export interface BackendSecurity {
   accountLockout: boolean;
 }
 
+/** How users sign in (only used when `auth` isn't `none`; at least one is on). */
+export interface BackendAuthMethods {
+  /** Email + password: register, login, forgot / reset password, email verification. */
+  email: boolean;
+  /** Mobile number + one-time SMS code (users are created on first login). */
+  mobileOtp: boolean;
+  google: boolean;
+  facebook: boolean;
+  apple: boolean;
+}
+
+/** Optional feature modules (need authentication). */
+export interface BackendModules {
+  /** Conversations, messages, media upload, Socket.IO (typing, presence, read receipts). */
+  chat: boolean;
+  /** Push devices (FCM), notification inbox, admin broadcasts. */
+  notifications: boolean;
+}
+
+/**
+ * One service of the microservices deployment (undefined = the monolith).
+ * - identity: auth + users; publishes user changes.
+ * - chat / notifications: their feature + a local replica of the users (kept in sync by events).
+ */
+export type ServiceRole = 'identity' | 'chat' | 'notifications';
+
+export type BackendDeployment = 'monolith' | 'microservices';
+
 export interface BackendOptions {
   appName: string;
   displayName: string;
@@ -45,7 +73,27 @@ export interface BackendOptions {
   database: BackendDatabase;
   orm: BackendOrm;
   auth: BackendAuth;
+  authMethods: BackendAuthMethods;
   hashing: PasswordHashing;
+  modules: BackendModules;
+  /** AES request / response encryption, compatible with the generated app's apiEncryption. */
+  apiEncryption: boolean;
+  /** iOS bundle id / Android application id of the app (audience of Apple sign-in tokens). */
+  appPackage: string;
+  /** Full-stack: the AES key / IV written to both .env files (generated when missing). */
+  encryptionSecrets?: { key: string; iv: string };
+  /** Monolith (one API) or gateway + services. */
+  deployment?: BackendDeployment;
+  /** Set by the microservices generator for each service. */
+  service?: ServiceRole;
+  /** Microservices: the notifications service exists (chat pushes through it). */
+  remotePush?: boolean;
+  /** Microservices: HTTP port of this service. */
+  port?: number;
+  /** Microservices: JWT secret shared by all services (generated once). */
+  sharedJwtSecret?: string;
+  /** Microservices: the system's name – JWT issuer / audience, the same in every service. */
+  sharedName?: string;
   swagger: boolean;
   security: BackendSecurity;
   installDependencies: boolean;
@@ -61,3 +109,7 @@ export const DEFAULT_SECURITY: BackendSecurity = {
   sanitize: true,
   accountLockout: true,
 };
+
+export const DEFAULT_AUTH_METHODS: BackendAuthMethods = { email: true, mobileOtp: false, google: false, facebook: false, apple: false };
+
+export const DEFAULT_MODULES: BackendModules = { chat: false, notifications: false };

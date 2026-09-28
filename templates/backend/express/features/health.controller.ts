@@ -1,22 +1,26 @@
-import type { Request, Response } from 'express';
-{{#if STYLE_SERVICE}}
-import type { HealthService } from '{{IMPORT:app.healthService}}';
-{{else}}
-import type { CheckHealthUseCase } from '{{IMPORT:uc.checkHealth}}';
-{{/if}}
-import { respond } from '{{IMPORT:ex.respond}}';
+import { z } from 'zod';
+import { route, type RouteGroup } from '{{IMPORT:ex.route}}';
 
-{{#if STYLE_USECASE}}
-export interface HealthUseCases {
-  check: CheckHealthUseCase;
-}
+const healthSchema = z
+  .object({ status: z.enum(['ok', 'degraded']), uptime: z.number(), timestamp: z.iso.datetime(), checks: z.record(z.string(), z.enum(['up', 'down'])) })
+  .meta({ id: 'HealthReport' });
 
-{{/if}}
-export class HealthController {
-  constructor(private readonly health: {{#if STYLE_SERVICE}}HealthService{{else}}HealthUseCases{{/if}}) {}
-
-  check = async (_req: Request, res: Response) => {
-    const report = await this.health.check{{CALL}}();
-    respond(res, report, { status: report.status === 'ok' ? 200 : 503, message: report.status === 'ok' ? 'Healthy' : 'Degraded' });
-  };
-}
+export const healthRoutes: RouteGroup = {
+  prefix: '/health',
+  tag: 'Health',
+  routes: [
+    route({
+      method: 'get',
+      path: '',
+      summary: 'Liveness / readiness (database connectivity) – 503 when degraded',
+      message: 'Health status',
+      response: healthSchema,
+      errors: [503],
+      async handler({ res }, { health }) {
+        const report = await health.check();
+        if (report.status !== 'ok') res.status(503);
+        return report;
+      },
+    }),
+  ],
+};

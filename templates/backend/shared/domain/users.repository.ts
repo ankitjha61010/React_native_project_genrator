@@ -4,31 +4,56 @@ import type { Role } from '{{IMPORT:domain.roles}}';
 {{/if}}
 import type { User } from '{{IMPORT:domain.user}}';
 
+{{#if AUTH}}
+export interface CreateUserData {
+  email?: string | null;
+  name: string;
+  passwordHash?: string | null;
+  role?: Role;
+  emailVerifiedAt?: Date | null;
+  countryCode?: string | null;
+  phone?: string | null;
+  phoneVerifiedAt?: Date | null;
+  avatarUrl?: string | null;
+}
+
+export type UpdateUserData = Partial<Omit<User, 'id' | 'createdAt' | 'updatedAt'>>;
+{{else}}
 export interface CreateUserData {
   email: string;
   name: string;
-{{#if AUTH}}
-  passwordHash: string;
-  role?: Role;
-  emailVerifiedAt?: Date | null;
-{{/if}}
 }
 
-export type UpdateUserData = Partial<Omit<User, 'id' | 'email' | 'createdAt' | 'updatedAt'>>;
+export type UpdateUserData = Partial<Pick<User, 'name'>>;
+{{/if}}
 
 /**
- * Data access contract for users. Services / use-cases depend on this interface only;
- * the ORM implementation lives in the infrastructure layer.
+ * Data access contract for users. Services depend on this interface only; the ORM
+ * implementation lives in the data layer.
  */
 export interface UsersRepository {
   findById(id: string): Promise<User | null>;
   /** `email` must already be normalized. */
   findByEmail(email: string): Promise<User | null>;
+{{#if AUTH}}
+  findByPhone(countryCode: string, phone: string): Promise<User | null>;
+  findManyByIds(ids: string[]): Promise<User[]>;
+  /** Active users matching the name / email, for "start a chat" pickers. */
+  search(term: string, options: { excludeId: string; limit: number }): Promise<User[]>;
+{{/if}}
+{{#if NOTIFICATIONS}}
+  /** Ids of active users, optionally with one role (broadcast audiences). */
+  activeUserIds(role?: Role): Promise<string[]>;
+{{/if}}
   list(query: PageQuery): Promise<{ items: User[]; total: number }>;
-  /** Throws ConflictError when the email is taken. */
+  /** Throws ConflictError when the email{{#if AUTH}} / phone number{{/if}} is taken. */
   create(data: CreateUserData): Promise<User>;
-  /** Throws NotFoundError when the user doesn't exist. */
+  /** Throws NotFoundError when the user doesn't exist{{#if AUTH}}, ConflictError when the email / phone is taken{{/if}}. */
   update(id: string, data: UpdateUserData): Promise<User>;
   /** Throws NotFoundError when the user doesn't exist. */
   delete(id: string): Promise<void>;
+{{#if REPLICA}}
+  /** Inserts or overwrites a copy of a user published by the identity service. */
+  saveReplica(user: User): Promise<void>;
+{{/if}}
 }

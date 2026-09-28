@@ -1,22 +1,25 @@
 /**
- * Centralized Chat API Endpoints.
- * Change any dummy URL or path here to point to your live chat server.
+ * Chat API paths (relative to API_BASE_URL, e.g. http://localhost:3000/api/v1).
+ * They match the generated backend's /chat routes – see its docs/API.md.
  */
 export const CHAT_ENDPOINTS = {
-  // Conversations / Rooms
-  GET_CONVERSATIONS: '/api/v1/chat/conversations',
-  CREATE_CONVERSATION: '/api/v1/chat/conversations',
-  GET_CONVERSATION_DETAILS: (id: string) => `/api/v1/chat/conversations/${id}`,
-  DELETE_CONVERSATION: (id: string) => `/api/v1/chat/conversations/${id}`,
+  // Conversations
+  GET_CONVERSATIONS: '/chat/conversations',
+  CREATE_CONVERSATION: '/chat/conversations',
+  GET_CONVERSATION_DETAILS: (id: string) => `/chat/conversations/${encodeURIComponent(id)}`,
+  DELETE_CONVERSATION: (id: string) => `/chat/conversations/${encodeURIComponent(id)}`,
 
   // Messages
-  GET_MESSAGES: (conversationId: string) => `/api/v1/chat/conversations/${conversationId}/messages`,
-  SEND_MESSAGE: (conversationId: string) => `/api/v1/chat/conversations/${conversationId}/messages`,
-  MARK_READ: (conversationId: string) => `/api/v1/chat/conversations/${conversationId}/read`,
+  GET_MESSAGES: (conversationId: string) => `/chat/conversations/${encodeURIComponent(conversationId)}/messages`,
+  SEND_MESSAGE: (conversationId: string) => `/chat/conversations/${encodeURIComponent(conversationId)}/messages`,
+  MARK_READ: (conversationId: string) => `/chat/conversations/${encodeURIComponent(conversationId)}/read`,
   DELETE_MESSAGE: (conversationId: string, messageId: string) =>
-    `/api/v1/chat/conversations/${conversationId}/messages/${messageId}`,
+    `/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}`,
 
-  // Media Uploads
-  UPLOAD_MEDIA: '/api/v1/chat/upload',
-  UPLOAD_VOICE_NOTE: '/api/v1/chat/upload-voice',
+  // Media uploads (multipart field `file`)
+  UPLOAD_MEDIA: '/chat/upload',
+  UPLOAD_VOICE_NOTE: '/chat/upload-voice',
+
+  // People to start a chat with
+  SEARCH_USERS: '/users/search',
 } as const;

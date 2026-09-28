@@ -2,32 +2,22 @@ import request from 'supertest';
 import { createTestApp, type TestApp } from '../support/test-app.js';
 
 const api = '/api/v1';
+{{#if AUTH}}
+const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
+{{/if}}
 
 describe('users API', () => {
   let app: TestApp;
 {{#if AUTH}}
-  let userToken: string;
-  let adminToken: string;
-  let userId: string;
-
-  const register = async (email: string) => {
-    const res = await request(app.server).post(`${api}/auth/register`).send({ email, password: 'Sup3rSecret', name: email.split('@')[0] }).expect(201);
-    return { id: res.body.data.user.id as string, token: res.body.data.tokens.accessToken as string };
-  };
+  let user: { id: string; token: string };
+  let admin: { id: string; token: string };
 {{/if}}
 
   beforeAll(async () => {
     app = await createTestApp();
 {{#if AUTH}}
-    const user = await register('user@example.com');
-    userToken = user.token;
-    userId = user.id;
-
-    const admin = await register('admin@example.com');
-    await app.usersRepository.update(admin.id, { role: 'admin' });
-    // Log in again so the access token carries the new role.
-    const login = await request(app.server).post(`${api}/auth/login`).send({ email: 'admin@example.com', password: 'Sup3rSecret' }).expect(200);
-    adminToken = login.body.data.tokens.accessToken;
+    user = await app.signUp('Jane User');
+    admin = await app.signUp('Ada Admin', 'admin');
 {{/if}}
   });
 
@@ -36,44 +26,60 @@ describe('users API', () => {
   });
 {{#if AUTH}}
 
-  it('requires authentication', async () => {
-    await request(app.server).get(`${api}/users`).expect(401);
+  it('PATCH /users/me updates the profile (Edit Profile screen)', async () => {
+    const res = await request(app.server)
+      .patch(`${api}/users/me`)
+      .set(bearer(user.token))
+      .send({ name: 'Jane Doe', countryCode: '+91', phone: '98765 43210', location: 'Pune', bio: 'Hello' })
+      .expect(200);
+    expect(res.body.data).toMatchObject({ name: 'Jane Doe', countryCode: '+91', phone: '9876543210', location: 'Pune', bio: 'Hello', phoneVerified: false });
   });
 
-  it('forbids listing users without the users:read permission', async () => {
-    const res = await request(app.server).get(`${api}/users`).set('Authorization', `Bearer ${userToken}`).expect(403);
+  it('POST /users/me/avatar uploads a picture (multipart)', async () => {
+    const res = await request(app.server)
+      .post(`${api}/users/me/avatar`)
+      .set(bearer(user.token))
+      .attach('avatar', Buffer.from([0xff, 0xd8, 0xff, 0xe0]), { filename: 'me.jpg', contentType: 'image/jpeg' })
+      .expect(200);
+    expect(res.body.data.avatar).toMatch(/^http:\/\/localhost:3000\/uploads\/avatars\//);
+
+    const wrong = await request(app.server).post(`${api}/users/me/avatar`).set(bearer(user.token)).attach('avatar', Buffer.from('%PDF'), { filename: 'x.pdf', contentType: 'application/pdf' }).expect(400);
+    expect(wrong.body.code).toBe('INVALID_FILE_TYPE');
+    const missing = await request(app.server).post(`${api}/users/me/avatar`).set(bearer(user.token)).expect(422);
+    expect(missing.body.errors[0].field).toBe('avatar');
+  });
+
+  it('GET /users/search finds other users', async () => {
+    const res = await request(app.server).get(`${api}/users/search?q=ada`).set(bearer(user.token)).expect(200);
+    expect(res.body.data).toEqual([{ id: admin.id, name: 'Ada Admin', avatar: null }]);
+  });
+
+  it('requires authentication and the users:read permission', async () => {
+    await request(app.server).get(`${api}/users`).expect(401);
+    const res = await request(app.server).get(`${api}/users`).set(bearer(user.token)).expect(403);
     expect(res.body).toMatchObject({ success: false, code: 'FORBIDDEN' });
   });
 
   it('lets an admin list users with pagination meta', async () => {
-    const res = await request(app.server).get(`${api}/users?page=1&limit=1`).set('Authorization', `Bearer ${adminToken}`).expect(200);
+    const res = await request(app.server).get(`${api}/users?page=1&limit=1`).set(bearer(admin.token)).expect(200);
     expect(res.body.data).toHaveLength(1);
     expect(res.body.meta).toMatchObject({ page: 1, limit: 1, total: 2, totalPages: 2, hasNextPage: true });
   });
 
   it('validates query parameters', async () => {
-    const res = await request(app.server).get(`${api}/users?limit=1000`).set('Authorization', `Bearer ${adminToken}`).expect(422);
+    const res = await request(app.server).get(`${api}/users?limit=1000`).set(bearer(admin.token)).expect(422);
     expect(res.body.errors[0].field).toBe('query.limit');
   });
 
-  it('lets users update their own profile', async () => {
-    const res = await request(app.server).patch(`${api}/users/me`).set('Authorization', `Bearer ${userToken}`).send({ name: 'Renamed' }).expect(200);
-    expect(res.body.data.name).toBe('Renamed');
-  });
-
-  it('lets an admin change a role, which signs that user out', async () => {
-    const res = await request(app.server)
-      .patch(`${api}/users/${userId}`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ role: 'admin' })
-      .expect(200);
-    expect(res.body.data.role).toBe('admin');
-    await request(app.server).get(`${api}/auth/me`).set('Authorization', `Bearer ${userToken}`).expect(401);
-  });
-
   it('returns 404 for an unknown user', async () => {
-    const res = await request(app.server).get(`${api}/users/unknown-id`).set('Authorization', `Bearer ${adminToken}`).expect(404);
+    const res = await request(app.server).get(`${api}/users/unknown-id`).set(bearer(admin.token)).expect(404);
     expect(res.body.code).toBe('USER_NOT_FOUND');
+  });
+
+  it('DELETE /users/me deletes the account', async () => {
+    const temp = await app.signUp('Temp');
+    await request(app.server).delete(`${api}/users/me`).set(bearer(temp.token)).expect(200);
+    await request(app.server).get(`${api}/auth/me`).set(bearer(temp.token)).expect(401);
   });
 {{else}}
 

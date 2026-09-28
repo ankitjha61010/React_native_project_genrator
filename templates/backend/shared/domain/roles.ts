@@ -9,7 +9,7 @@ export type Role = (typeof ROLES)[number];
 
 export const DEFAULT_ROLE: Role = 'user';
 
-export const PERMISSIONS = ['users:read', 'users:write', 'users:delete'] as const;
+export const PERMISSIONS = ['users:read', 'users:write', 'users:delete'{{#if NOTIFICATIONS}}, 'notifications:broadcast'{{/if}}] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {

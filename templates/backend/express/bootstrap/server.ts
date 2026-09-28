@@ -1,8 +1,14 @@
 import { config } from '{{IMPORT:config.env}}';
 import { logger } from '{{IMPORT:core.logger}}';
 import { createDatabase } from '{{IMPORT:db.connection}}';
+import { createInfrastructure, createServices } from '{{IMPORT:app.container}}';
+{{#if SOCKET_SERVER}}
+import { attachSocketServer, SocketHub } from '{{IMPORT:realtime.server}}';
+{{/if}}
+{{#if REPLICA}}
+import { startEventHandlers } from '{{IMPORT:events.handlers}}';
+{{/if}}
 import { createApp } from '{{IMPORT:ex.app}}';
-import { createContainer, createInfrastructure } from '{{IMPORT:ex.container}}';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -10,8 +16,12 @@ async function main(): Promise<void> {
   const database = createDatabase(config.database.url, logger);
   await database.connect();
 
-  const app = createApp(createContainer(createInfrastructure(database)));
-  const server = app.listen(config.port, config.host, () => {
+  const infra = createInfrastructure(database);
+  const services = createServices(infra);
+{{#if REPLICA}}
+  await startEventHandlers(infra, services, logger);
+{{/if}}
+  const server = createApp(services).listen(config.port, config.host, () => {
     logger.info(`{{DISPLAY_NAME}} API listening on http://${config.host}:${config.port}${config.api.basePath} (${config.env})`);
 {{#if SWAGGER}}
     if (config.swagger.enabled) logger.info(`API docs: http://localhost:${config.port}/${config.api.prefix}/${config.swagger.path}`);
@@ -20,6 +30,23 @@ async function main(): Promise<void> {
   // Slightly above typical load balancer idle timeouts.
   server.keepAliveTimeout = 65_000;
   server.headersTimeout = 66_000;
+{{#if SOCKET_SERVER}}
+
+  // Socket.IO on the same port (the app connects to the API origin).
+  if (!(infra.realtime instanceof SocketHub)) throw new Error('Realtime must be the SocketHub');
+  const io = attachSocketServer(server, infra.realtime, {
+    authenticate: token => services.sessions.authenticate(token),
+    users: infra.repositories.users,
+{{#if CHAT}}
+    isMember: (userId, conversationId) => services.chat.isMember(userId, conversationId),
+    markRead: (userId, conversationId) => services.chat.markRead(userId, conversationId),
+{{/if}}
+    logger,
+  });
+{{/if}}
+
+  // Socket.IO's close() also closes the HTTP server.
+  const closeHttp = (done: (error?: Error) => void) => {{#if SOCKET_SERVER}}void io.close(done){{else}}server.close(done){{/if}};
 
   let shuttingDown = false;
   const shutdown = (signal: string) => {
@@ -30,9 +57,11 @@ async function main(): Promise<void> {
       logger.error('Graceful shutdown timed out, forcing exit');
       process.exit(1);
     }, SHUTDOWN_TIMEOUT_MS).unref();
-
-    server.close(async error => {
+    closeHttp(async error => {
       if (error) logger.error({ err: error }, 'Error while closing the HTTP server');
+{{#if EVENTS}}
+      await infra.eventBus.close();
+{{/if}}
       await database.disconnect().catch(err => logger.error({ err }, 'Error while disconnecting the database'));
       process.exit(error ? 1 : 0);
     });

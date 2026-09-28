@@ -15,15 +15,39 @@ export interface RefreshToken {
 }
 
 {{/if}}
-export type UserTokenType = 'email_verification' | 'password_reset';
+{{#if CODES}}
+/** What a 6-digit code proves. */
+export type CodePurpose = {{CODE_PURPOSES}};
 
-/** One-time token sent by email (verification / password reset). Stored hashed. */
-export interface UserToken {
+/**
+ * A one-time code sent by email or SMS. Only its hash is stored, and it dies after a few
+ * wrong attempts, so short codes can't be brute-forced.
+ */
+export interface VerificationCode {
   id: string;
-  userId: string;
-  type: UserTokenType;
-  tokenHash: string;
+  purpose: CodePurpose;
+  /** Normalized email, or "+<countryCode><phone>". */
+  target: string;
+  codeHash: string;
+  attempts: number;
   expiresAt: Date;
   usedAt: Date | null;
   createdAt: Date;
 }
+{{/if}}
+{{#if SOCIAL}}
+
+export const SOCIAL_PROVIDERS = [{{SOCIAL_PROVIDER_LIST}}] as const;
+export type SocialProvider = (typeof SOCIAL_PROVIDERS)[number];
+
+/** Links a user to an account at Google / Facebook / Apple. */
+export interface SocialAccount {
+  id: string;
+  userId: string;
+  provider: SocialProvider;
+  /** The provider's user id (`sub`). */
+  providerUserId: string;
+  email: string | null;
+  createdAt: Date;
+}
+{{/if}}

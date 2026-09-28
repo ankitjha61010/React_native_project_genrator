@@ -5,10 +5,19 @@ import { AppLogger } from '{{IMPORT:nest.logger}}';
 import { logger } from '{{IMPORT:core.logger}}';
 import { AppModule } from '{{IMPORT:nest.appModule}}';
 import { configureApp } from '{{IMPORT:nest.setup}}';
+{{#if REPLICA}}
+import type { Infrastructure, Services } from '{{IMPORT:app.container}}';
+import { startEventHandlers } from '{{IMPORT:events.handlers}}';
+import { INFRASTRUCTURE, SERVICES } from '{{IMPORT:nest.tokens}}';
+{{/if}}
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false, logger: new AppLogger() });
   configureApp(app);
+{{#if REPLICA}}
+  // Keeps the local copy of the users in sync, handles events of the other services.
+  await startEventHandlers(app.get<Infrastructure>(INFRASTRUCTURE), app.get<Services>(SERVICES), logger);
+{{/if}}
   // Closes the HTTP server and the database on SIGTERM / SIGINT.
   app.enableShutdownHooks();
 

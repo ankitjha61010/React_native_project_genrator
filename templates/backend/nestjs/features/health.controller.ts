@@ -1,19 +1,13 @@
-import { Controller, Get{{#if STYLE_USECASE}}, Inject{{/if}}, Res } from '@nestjs/common';
+import { Controller, Get, Res } from '@nestjs/common';
 {{#if SWAGGER}}
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiTags } from '@nestjs/swagger';
 {{/if}}
 import type { Response } from 'express';
-{{#if STYLE_SERVICE}}
 import { HealthService } from '{{IMPORT:app.healthService}}';
-{{else}}
-import type { HealthUseCases } from '{{IMPORT:nest.health.providers}}';
-import { HEALTH_USE_CASES } from '{{IMPORT:nest.tokens}}';
-{{/if}}
 {{#if AUTH}}
-import { Public, ResponseMessage } from '{{IMPORT:nest.decorators}}';
-{{else}}
-import { ResponseMessage } from '{{IMPORT:nest.decorators}}';
+import { Public } from '{{IMPORT:nest.decorators}}';
 {{/if}}
+import { Endpoint } from '{{IMPORT:nest.endpoint}}';
 
 {{#if SWAGGER}}
 @ApiTags('Health')
@@ -23,15 +17,12 @@ import { ResponseMessage } from '{{IMPORT:nest.decorators}}';
 {{/if}}
 @Controller('health')
 export class HealthController {
-  constructor({{#if STYLE_SERVICE}}private readonly health: HealthService{{else}}@Inject(HEALTH_USE_CASES) private readonly health: HealthUseCases{{/if}}) {}
+  constructor(private readonly health: HealthService) {}
 
   @Get()
-{{#if SWAGGER}}
-  @ApiOperation({ summary: 'Liveness / readiness (database connectivity) – 503 when degraded' })
-{{/if}}
-  @ResponseMessage('Health status')
+  @Endpoint({ summary: 'Liveness / readiness (database connectivity) – 503 when degraded', message: 'Health status', errors: [503] })
   async check(@Res({ passthrough: true }) res: Response) {
-    const report = await this.health.check{{CALL}}();
+    const report = await this.health.check();
     if (report.status !== 'ok') res.status(503);
     return report;
   }

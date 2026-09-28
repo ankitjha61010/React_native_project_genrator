@@ -69,6 +69,8 @@ export function prepareGeneration(options: ProjectOptions): PreparedGeneration {
     STORAGE_ASYNC: options.storage === 'async-storage',
     AUTH_EMAIL: options.authEmail,
     AUTH_MOBILE: options.authMobile,
+    /** Country picker + phone field exist (sign-up / mobile login). */
+    PHONE_INPUT: options.authEmail || options.authMobile,
     SOCIAL_GOOGLE: social.google,
     SOCIAL_FACEBOOK: social.facebook,
     SOCIAL_APPLE: social.apple,
@@ -86,6 +88,10 @@ export function prepareGeneration(options: ProjectOptions): PreparedGeneration {
     APP_NAME: options.appName,
     DISPLAY_NAME: options.displayName,
     PACKAGE_NAME: options.packageName,
+    /** The backend URL (full-stack: the generated backend on localhost). */
+    API_BASE_URL: options.apiBaseUrl ?? 'https://api.example.com/api/v1',
+    API_ENCRYPTION_KEY: options.apiEncryptionSecrets?.key ?? 'change-me-to-your-32-char-aeskey',
+    API_ENCRYPTION_IV: options.apiEncryptionSecrets?.iv ?? 'change-me-16char',
     APP_SLUG: options.appName.toLowerCase(),
     ARCHITECTURE_ID: architecture.id,
     ARCHITECTURE_NAME: architecture.name,

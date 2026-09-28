@@ -1,25 +1,19 @@
 import { config } from '{{IMPORT:config.env}}';
 import { logger } from '{{IMPORT:core.logger}}';
 import { createDatabase } from '{{IMPORT:db.connection}}';
+import { createRepositories } from '{{IMPORT:db.repositories}}';
 {{#if AUTH}}
-import { normalizeEmail } from '{{IMPORT:domain.user}}';
+import { normalizeEmail{{#if AUTH_OTP}}, normalizePhone{{/if}}, type User } from '{{IMPORT:domain.user}}';
+{{/if}}
+{{#if AUTH_EMAIL}}
 import { createPasswordHasher } from '{{IMPORT:impl.passwordHasher}}';
 import { assertPasswordPolicy } from '{{IMPORT:app.authTypes}}';
-{{/if}}
-{{#if PRISMA}}
-import { PrismaUsersRepository } from '{{IMPORT:repo.users}}';
-{{/if}}
-{{#if TYPEORM}}
-import { TypeOrmUsersRepository } from '{{IMPORT:repo.users}}';
-{{/if}}
-{{#if MONGOOSE}}
-import { MongooseUsersRepository } from '{{IMPORT:repo.users}}';
 {{/if}}
 
 /**
  * Seeds the database (safe to run repeatedly): `npm run db:seed`.
 {{#if AUTH}}
- * Creates the administrator from SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD.
+ * Creates – or promotes – the administrator from SEED_ADMIN_*.
 {{else}}
  * Creates a few demo users.
 {{/if}}
@@ -28,38 +22,59 @@ const database = createDatabase(config.database.url, logger);
 await database.connect();
 
 try {
-{{#if PRISMA}}
-  const users = new PrismaUsersRepository(database.client);
-{{/if}}
-{{#if TYPEORM}}
-  const users = new TypeOrmUsersRepository(database.dataSource);
-{{/if}}
-{{#if MONGOOSE}}
-  const users = new MongooseUsersRepository();
-{{/if}}
+  const { users } = createRepositories(database);
 {{#if AUTH}}
-  const { adminEmail, adminPassword, adminName } = config.seed;
-
-  if (!adminEmail || !adminPassword) {
-    logger.warn('SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD are not set – no administrator created');
-  } else if (await users.findByEmail(normalizeEmail(adminEmail))) {
-    logger.info({ email: adminEmail }, 'Administrator already exists');
-  } else {
-    assertPasswordPolicy(adminPassword, config.password, 'SEED_ADMIN_PASSWORD');
-{{#if HASH_ARGON2}}
-    const hasher = createPasswordHasher();
-{{else}}
-    const hasher = createPasswordHasher(config.password);
+  const { adminEmail, adminName{{#if AUTH_EMAIL}}, adminPassword{{/if}}{{#if AUTH_OTP}}, adminCountryCode, adminPhone{{/if}} } = config.seed;
+  const email = adminEmail ? normalizeEmail(adminEmail) : null;
+{{#if AUTH_OTP}}
+  const phone = adminCountryCode && adminPhone ? normalizePhone(adminCountryCode, adminPhone) : null;
 {{/if}}
-    await users.create({
-      email: normalizeEmail(adminEmail),
+
+  let admin: User | null = email ? await users.findByEmail(email) : null;
+{{#if AUTH_OTP}}
+  if (!admin && phone) admin = await users.findByPhone(phone.countryCode, phone.phone);
+{{/if}}
+
+  if (admin) {
+    if (admin.role !== 'admin') await users.update(admin.id, { role: 'admin' });
+    logger.info({ userId: admin.id }, 'Administrator ready');
+  } else if (!email{{#if AUTH_OTP}} && !phone{{/if}}) {
+    logger.warn('SEED_ADMIN_EMAIL{{#if AUTH_OTP}} / SEED_ADMIN_PHONE{{/if}} not set – no administrator created');
+  } else {
+{{#if AUTH_EMAIL}}
+    let passwordHash: string | null = null;
+    if (adminPassword) {
+      assertPasswordPolicy(adminPassword, config.password, 'SEED_ADMIN_PASSWORD');
+{{#if HASH_ARGON2}}
+      passwordHash = await createPasswordHasher().hash(adminPassword);
+{{else}}
+      passwordHash = await createPasswordHasher(config.password).hash(adminPassword);
+{{/if}}
+    }
+{{/if}}
+    admin = await users.create({
+      email,
+      emailVerifiedAt: email ? new Date() : null,
+{{#if AUTH_EMAIL}}
+      passwordHash,
+{{/if}}
+{{#if AUTH_OTP}}
+      countryCode: phone?.countryCode ?? null,
+      phone: phone?.phone ?? null,
+      phoneVerifiedAt: phone ? new Date() : null,
+{{/if}}
       name: adminName,
-      passwordHash: await hasher.hash(adminPassword),
       role: 'admin',
-      emailVerifiedAt: new Date(),
     });
-    logger.info({ email: adminEmail }, 'Administrator created');
+    logger.info({ userId: admin.id }, 'Administrator created');
   }
+{{#if SOCIAL}}
+{{#if !AUTH_EMAIL}}
+{{#if !AUTH_OTP}}
+  // Social sign-in only: the administrator signs in with the provider account of SEED_ADMIN_EMAIL.
+{{/if}}
+{{/if}}
+{{/if}}
 {{else}}
   const demo = [
     { email: 'ada@example.com', name: 'Ada Lovelace' },

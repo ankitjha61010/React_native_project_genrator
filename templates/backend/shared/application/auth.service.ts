@@ -1,334 +1,332 @@
-{{#if AUTH_REFRESH}}
-import { newId, parseDuration, randomToken, safeEqual, sha256 } from '{{IMPORT:core.crypto}}';
-{{else}}
-import { parseDuration, randomToken, sha256 } from '{{IMPORT:core.crypto}}';
-{{/if}}
+{{#if AUTH_EMAIL}}
 {{#if SEC_LOCKOUT}}
 import { AccountLockedError, BadRequestError, ConflictError, ForbiddenError, NotFoundError, UnauthorizedError } from '{{IMPORT:core.errors}}';
 {{else}}
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, UnauthorizedError } from '{{IMPORT:core.errors}}';
 {{/if}}
-import type { Logger } from '{{IMPORT:core.logger}}';
-import type { UserTokenType } from '{{IMPORT:domain.authTokens}}';
-import { normalizeEmail, type User } from '{{IMPORT:domain.user}}';
-{{#if AUTH_REFRESH}}
-import type { RefreshTokensRepository } from '{{IMPORT:contract.refreshTokens}}';
+{{else}}
+import { ForbiddenError, NotFoundError } from '{{IMPORT:core.errors}}';
 {{/if}}
-import type { UserTokensRepository } from '{{IMPORT:contract.userTokens}}';
+import type { Logger } from '{{IMPORT:core.logger}}';
+{{#if CODES}}
+import { {{#if AUTH_EMAIL}}normalizeEmail, {{/if}}normalizePhone, type User } from '{{IMPORT:domain.user}}';
+{{else}}
+import type { User } from '{{IMPORT:domain.user}}';
+{{/if}}
+{{#if SOCIAL}}
+import type { SocialAccountsRepository } from '{{IMPORT:contract.auth}}';
+{{/if}}
 import type { UsersRepository } from '{{IMPORT:contract.users}}';
+{{#if AUTH_EMAIL}}
 import type { Mailer } from '{{IMPORT:port.mailer}}';
 import type { PasswordHasher } from '{{IMPORT:port.passwordHasher}}';
-import type { TokenService } from '{{IMPORT:port.tokenService}}';
-import {
-  assertPasswordPolicy,
-  type AccessTokens,
-  type AuthResult,
-  type AuthSettings,
-  type AuthTokens,
-  type ChangePasswordInput,
-  type ClientContext,
-  type LoginInput,
-  type RegisterInput,
+{{/if}}
+{{#if AUTH_OTP}}
+import type { SmsSender } from '{{IMPORT:port.smsSender}}';
+{{/if}}
+{{#if SOCIAL}}
+import type { SocialVerifier } from '{{IMPORT:port.socialVerifier}}';
+{{/if}}
+{{#if CODES}}
+import type { SentCode, VerificationCodes } from '{{IMPORT:app.authCodes}}';
+{{/if}}
+import type { Sessions } from '{{IMPORT:app.authSessions}}';
+{{#if AUTH_EMAIL}}
+import { assertPasswordPolicy } from '{{IMPORT:app.authTypes}}';
+{{/if}}
+import type {
+  AuthResult,
+  AuthSettings,
+{{#if AUTH_EMAIL}}
+  ChangePasswordInput,
+{{/if}}
+  ClientContext,
+{{#if AUTH_EMAIL}}
+  LoginInput,
+  RegisterInput,
+  ResetPasswordInput,
+{{/if}}
+{{#if AUTH_OTP}}
+  PhoneInput,
+  VerifyOtpInput,
+{{/if}}
+{{#if SOCIAL}}
+  SocialLoginInput,
+{{/if}}
 } from '{{IMPORT:app.authTypes}}';
 
+export interface AuthDependencies {
+  users: UsersRepository;
+  sessions: Sessions;
+{{#if CODES}}
+  codes: VerificationCodes;
+{{/if}}
+{{#if AUTH_EMAIL}}
+  hasher: PasswordHasher;
+  mailer: Mailer;
+{{/if}}
+{{#if AUTH_OTP}}
+  sms: SmsSender;
+{{/if}}
+{{#if SOCIAL}}
+  socialAccounts: SocialAccountsRepository;
+  socialVerifier: SocialVerifier;
+{{/if}}
+  settings: AuthSettings;
+  logger: Logger;
+}
+{{#if AUTH_EMAIL}}
+
 const INVALID_CREDENTIALS = () => new UnauthorizedError('Invalid email or password', 'INVALID_CREDENTIALS');
-const INVALID_SESSION = () => new UnauthorizedError('Your session is no longer valid, please log in again', 'SESSION_REVOKED');
+{{/if}}
 
 /**
- * Authentication: registration, login, {{#if AUTH_REFRESH}}token refresh{{#if AUTH_ROTATION}} with rotation{{/if}}, {{/if}}logout, password change / reset
- * and email verification. Framework independent – the HTTP layer only calls these methods.
+ * How users get in: {{AUTH_METHODS_TEXT}}. Framework independent – controllers only
+ * call these methods. Tokens are handled by `Sessions`{{#if CODES}}, one-time codes by `VerificationCodes`{{/if}}.
  */
 export class AuthService {
+{{#if AUTH_EMAIL}}
   private dummyHash: Promise<string> | undefined;
 
-  constructor(
-    private readonly users: UsersRepository,
-{{#if AUTH_REFRESH}}
-    private readonly refreshTokens: RefreshTokensRepository,
 {{/if}}
-    private readonly userTokens: UserTokensRepository,
-    private readonly hasher: PasswordHasher,
-    private readonly tokens: TokenService,
-    private readonly mailer: Mailer,
-    private readonly settings: AuthSettings,
-    private readonly logger: Logger,
-  ) {}
+  constructor(private readonly deps: AuthDependencies) {}
+{{#if AUTH_EMAIL}}
+
+  // ── email + password ───────────────────────────────────────────────────────
 
   async register(input: RegisterInput, client: ClientContext = {}): Promise<AuthResult> {
-    assertPasswordPolicy(input.password, this.settings.password);
+    const { users, hasher, settings, logger } = this.deps;
+    assertPasswordPolicy(input.password, settings.password);
     const email = normalizeEmail(input.email);
-    if (await this.users.findByEmail(email)) {
-      throw new ConflictError('Email is already registered', 'EMAIL_TAKEN');
-    }
-    const user = await this.users.create({ email, name: input.name.trim(), passwordHash: await this.hasher.hash(input.password) });
-    this.logger.info({ userId: user.id }, 'User registered');
+    if (await users.findByEmail(email)) throw new ConflictError('Email is already registered', 'EMAIL_TAKEN');
+    const phone = input.phone && input.countryCode ? await this.assertPhoneAvailable(input.countryCode, input.phone) : null;
 
-    await this.sendEmailVerification(user).catch(error => this.logger.error({ err: error, userId: user.id }, 'Sending the verification email failed'));
-    return { user, tokens: await this.issueTokens(user, client) };
+    const user = await users.create({ email, name: input.name.trim(), passwordHash: await hasher.hash(input.password), countryCode: phone?.countryCode ?? null, phone: phone?.phone ?? null });
+    logger.info({ userId: user.id }, 'User registered');
+    await this.sendEmailVerification(user).catch(error => logger.error({ err: error, userId: user.id }, 'Sending the verification email failed'));
+    return this.signIn(user, client);
   }
 
   async login(input: LoginInput, client: ClientContext = {}): Promise<AuthResult> {
-    const user = await this.users.findByEmail(normalizeEmail(input.email));
-    if (!user) {
+    const { users, hasher } = this.deps;
+    const user = await users.findByEmail(normalizeEmail(input.email));
+    if (!user?.passwordHash) {
       // Same work as a real check, so response times don't reveal which emails exist.
-      await this.hasher.verify(await this.getDummyHash(), input.password);
+      await hasher.verify(await this.getDummyHash(), input.password);
       throw INVALID_CREDENTIALS();
     }
 {{#if SEC_LOCKOUT}}
-    if (user.lockedUntil && user.lockedUntil > new Date()) {
-      throw new AccountLockedError(user.lockedUntil);
-    }
+    if (user.lockedUntil && user.lockedUntil > new Date()) throw new AccountLockedError(user.lockedUntil);
 {{/if}}
-
-    if (!(await this.hasher.verify(user.passwordHash, input.password))) {
+    if (!(await hasher.verify(user.passwordHash, input.password))) {
 {{#if SEC_LOCKOUT}}
       await this.recordFailedLogin(user, client);
 {{else}}
-      this.logger.warn({ userId: user.id, ip: client.ip }, 'Failed login');
+      this.deps.logger.warn({ userId: user.id, ip: client.ip }, 'Failed login');
 {{/if}}
       throw INVALID_CREDENTIALS();
     }
-    if (!user.isActive) {
-      throw new ForbiddenError('This account has been disabled', 'ACCOUNT_DISABLED');
+    // Transparently upgrade old hashes (other algorithm / cost).
+    const rehash = hasher.needsRehash(user.passwordHash) ? { passwordHash: await hasher.hash(input.password) } : {};
+    return this.signIn(await users.update(user.id, { ...rehash{{#if SEC_LOCKOUT}}, failedLoginAttempts: 0, lockedUntil: null{{/if}} }), client);
+  }
+
+  /** Changes (or, for accounts without one, sets) the password. Other sessions are signed out. */
+  async changePassword(userId: string, input: ChangePasswordInput, client: ClientContext = {}): Promise<AuthResult> {
+    const { users, hasher, sessions, settings, logger } = this.deps;
+    const user = await this.getCurrentUser(userId);
+    if (user.passwordHash) {
+      if (!input.currentPassword || !(await hasher.verify(user.passwordHash, input.currentPassword))) {
+        throw new BadRequestError('Current password is incorrect', 'INVALID_CURRENT_PASSWORD');
+      }
+      if (input.currentPassword === input.newPassword) throw new BadRequestError('The new password must be different', 'PASSWORD_UNCHANGED');
+    }
+    assertPasswordPolicy(input.newPassword, settings.password, 'newPassword');
+
+    await sessions.revokeAll(user.id);
+    const updated = await users.update(user.id, { passwordHash: await hasher.hash(input.newPassword) });
+    logger.info({ userId: user.id }, 'Password changed');
+    return this.signIn(updated, client);
+  }
+
+  /** Emails a 6-digit code. Always succeeds, whether the email exists or not (no account enumeration). */
+  async requestPasswordReset(email: string): Promise<void> {
+    const { users, codes, mailer, settings } = this.deps;
+    const user = await users.findByEmail(normalizeEmail(email));
+    if (!user?.email || !user.isActive) return;
+    const to = user.email;
+    await codes.trySend('password_reset', to, code =>
+      mailer.send({ to, subject: `${settings.appName}: reset your password`, text: `Hi ${user.name},\n\nYour password reset code is ${code}.\nIt expires in ${settings.codes.ttl}. If you didn't ask for it, ignore this email.` }),
+    );
+  }
+
+  async resetPassword(input: ResetPasswordInput): Promise<void> {
+    const { users, codes, hasher, sessions, settings, logger } = this.deps;
+    const email = normalizeEmail(input.email);
+    await codes.verify('password_reset', email, input.code);
+    const user = await users.findByEmail(email);
+    if (!user) throw new BadRequestError('The code is invalid or has expired, please request a new one', 'INVALID_CODE');
+    assertPasswordPolicy(input.newPassword, settings.password, 'newPassword');
+
+    await sessions.revokeAll(user.id);
+    await users.update(user.id, { passwordHash: await hasher.hash(input.newPassword){{#if SEC_LOCKOUT}}, failedLoginAttempts: 0, lockedUntil: null{{/if}} });
+    logger.info({ userId: user.id }, 'Password reset');
+  }
+
+  async requestEmailVerification(userId: string): Promise<SentCode> {
+    const user = await this.getCurrentUser(userId);
+    if (!user.email) throw new BadRequestError('The account has no email address', 'NO_EMAIL');
+    if (user.emailVerifiedAt) throw new ConflictError('Email is already verified', 'EMAIL_ALREADY_VERIFIED');
+    return this.sendEmailVerification(user);
+  }
+
+  async verifyEmail(userId: string, code: string): Promise<User> {
+    const user = await this.getCurrentUser(userId);
+    if (!user.email) throw new BadRequestError('The account has no email address', 'NO_EMAIL');
+    await this.deps.codes.verify('email_verification', user.email, code);
+    return this.deps.users.update(user.id, { emailVerifiedAt: new Date() });
+  }
+{{/if}}
+{{#if AUTH_OTP}}
+
+  // ── mobile number + SMS code ───────────────────────────────────────────────
+
+  /** Texts a 6-digit login code. Works for new and existing numbers. */
+  async sendOtp(input: PhoneInput): Promise<SentCode> {
+    const { countryCode, phone } = normalizePhone(input.countryCode, input.phone);
+    const to = `${countryCode}${phone}`;
+    return this.deps.codes.send('phone_login', to, code => this.deps.sms.send(to, `${code} is your ${this.deps.settings.appName} verification code.`));
+  }
+
+  /** Signs in with the SMS code; creates the account on the first login. */
+  async verifyOtp(input: VerifyOtpInput, client: ClientContext = {}): Promise<AuthResult> {
+    const { users, codes, logger } = this.deps;
+    const { countryCode, phone } = normalizePhone(input.countryCode, input.phone);
+    await codes.verify('phone_login', `${countryCode}${phone}`, input.otp);
+
+    const existing = await users.findByPhone(countryCode, phone);
+    if (existing) {
+      const user = existing.phoneVerifiedAt ? existing : await users.update(existing.id, { phoneVerifiedAt: new Date() });
+      return this.signIn(user, client);
+    }
+    const user = await users.create({ name: input.name?.trim() || `User ${phone.slice(-4)}`, countryCode, phone, phoneVerifiedAt: new Date() });
+    logger.info({ userId: user.id }, 'User registered (mobile)');
+    return { ...(await this.signIn(user, client)), isNewUser: true };
+  }
+{{/if}}
+{{#if SOCIAL}}
+
+  // ── social sign-in ────────────────────────────────────────────────────────
+
+  /**
+   * Verifies the provider token, then signs in the linked account – or links an account
+   * with the same verified email – or creates a new one.
+   */
+  async socialLogin(input: SocialLoginInput, client: ClientContext = {}): Promise<AuthResult> {
+    const { users, socialAccounts, socialVerifier, logger } = this.deps;
+    const profile = await socialVerifier.verify(input);
+
+    const linked = await socialAccounts.find(profile.provider, profile.providerUserId);
+    if (linked) {
+      const user = await users.findById(linked.userId);
+      if (!user) throw new NotFoundError('User not found', 'USER_NOT_FOUND');
+      return this.signIn(user, client);
     }
 
-    const updated = await this.users.update(user.id, {
-      lastLoginAt: new Date(),
-{{#if SEC_LOCKOUT}}
-      failedLoginAttempts: 0,
-      lockedUntil: null,
+    // Only a provider-verified email may be matched to an existing account.
+    const byEmail = profile.email && profile.emailVerified ? await users.findByEmail(profile.email.toLowerCase()) : null;
+    const user =
+      byEmail ??
+      (await users.create({
+        email: profile.emailVerified ? (profile.email?.toLowerCase() ?? null) : null,
+        emailVerifiedAt: profile.emailVerified ? new Date() : null,
+        name: profile.name ?? input.name?.trim() ?? 'User',
+        avatarUrl: profile.avatarUrl,
+      }));
+    await socialAccounts.create({ userId: user.id, provider: profile.provider, providerUserId: profile.providerUserId, email: profile.email });
+    logger.info({ userId: user.id, provider: profile.provider, linked: !!byEmail }, 'Social sign-in');
+    return { ...(await this.signIn(user, client)), isNewUser: !byEmail };
+  }
 {{/if}}
-      // Transparently upgrade old hashes (other algorithm / cost).
-      ...(this.hasher.needsRehash(user.passwordHash) ? { passwordHash: await this.hasher.hash(input.password) } : {}),
-    });
-    return { user: updated, tokens: await this.issueTokens(updated, client) };
+
+  // ── session & account ─────────────────────────────────────────────────────
+
+  /** The user behind an access token (auth guard / middleware / socket handshake). */
+  authenticate(accessToken: string): Promise<User> {
+    return this.deps.sessions.authenticate(accessToken);
   }
 {{#if AUTH_REFRESH}}
 
-{{#if AUTH_ROTATION}}
-  /** Exchanges a refresh token for a new token pair; the used refresh token is revoked (rotation). */
-{{else}}
-  /** Exchanges a refresh token for a new access token (the refresh token stays valid until it expires). */
-{{/if}}
-  async refresh(refreshToken: string, client: ClientContext = {}): Promise<AuthResult> {
-    const payload = this.tokens.verifyRefreshToken(refreshToken);
-    const stored = await this.refreshTokens.findById(payload.jti);
-    if (!stored || stored.userId !== payload.sub || !safeEqual(stored.tokenHash, sha256(refreshToken))) {
-      throw new UnauthorizedError('Invalid refresh token', 'INVALID_TOKEN');
-    }
-    if (stored.revokedAt) {
-{{#if AUTH_ROTATION}}
-      // A rotated token was used again: it was probably stolen. Kill the whole family.
-      await this.refreshTokens.revokeFamily(stored.familyId);
-      this.logger.warn({ userId: stored.userId, familyId: stored.familyId, ip: client.ip }, 'Refresh token reuse detected');
-      throw new UnauthorizedError('Refresh token reuse detected, please log in again', 'TOKEN_REUSED');
-{{else}}
-      throw new UnauthorizedError('Refresh token has been revoked', 'TOKEN_REVOKED');
-{{/if}}
-    }
-    if (stored.expiresAt <= new Date()) {
-      throw new UnauthorizedError('Refresh token expired', 'TOKEN_EXPIRED');
-    }
-    const user = await this.users.findById(stored.userId);
-    if (!user || !user.isActive) {
-      await this.refreshTokens.revoke(stored.id);
-      throw INVALID_SESSION();
-    }
-{{#if AUTH_ROTATION}}
-
-    const next = await this.createRefreshToken(user, client, stored.familyId);
-    await this.refreshTokens.revoke(stored.id, next.id);
-    return { user, tokens: { ...this.createAccessToken(user), refreshToken: next.token, refreshTokenExpiresAt: next.expiresAt.toISOString() } };
-{{else}}
-    return { user, tokens: { ...this.createAccessToken(user), refreshToken, refreshTokenExpiresAt: stored.expiresAt.toISOString() } };
-{{/if}}
+  refresh(refreshToken: string, client: ClientContext = {}): Promise<AuthResult> {
+    return this.deps.sessions.refresh(refreshToken, client);
   }
 
-  /**
-   * Ends the session of this refresh token (other devices stay signed in). Works without a
-   * valid access token, so an app can always log out.
-   */
-  async logout(refreshToken: string): Promise<void> {
-    try {
-      const payload = this.tokens.verifyRefreshToken(refreshToken);
-      const stored = await this.refreshTokens.findById(payload.jti);
-      if (stored && safeEqual(stored.tokenHash, sha256(refreshToken))) await this.refreshTokens.revoke(stored.id);
-    } catch {
-      // Invalid / expired token – nothing to revoke.
-    }
+  /** Ends this device's session. Works without a valid access token, so an app can always log out. */
+  logout(refreshToken: string): Promise<void> {
+    return this.deps.sessions.logout(refreshToken);
   }
 
   /** Signs the user out on every device. */
-  async logoutAll(userId: string): Promise<void> {
-    await this.revokeAllSessions(userId);
+  logoutAll(userId: string): Promise<void> {
+    return this.deps.sessions.revokeAll(userId);
   }
 {{else}}
 
-  /**
-   * Plain JWT mode has no server-side session per device: logging out invalidates every
-   * token of the user (their token version is bumped).
-   */
-  async logout(userId: string): Promise<void> {
-    await this.revokeAllSessions(userId);
+  /** Plain JWT has no per-device session: logging out invalidates every token of the user. */
+  logout(userId: string): Promise<void> {
+    return this.deps.sessions.revokeAll(userId);
   }
 {{/if}}
 
-  /** Resolves the user behind an access token (used by the auth guard / middleware). */
-  async authenticate(accessToken: string): Promise<User> {
-    const payload = this.tokens.verifyAccessToken(accessToken);
-    const user = await this.users.findById(payload.sub);
-    if (!user || !user.isActive || user.tokenVersion !== payload.tv) throw INVALID_SESSION();
-    return user;
-  }
-
   async getCurrentUser(userId: string): Promise<User> {
-    const user = await this.users.findById(userId);
+    const user = await this.deps.users.findById(userId);
     if (!user) throw new NotFoundError('User not found', 'USER_NOT_FOUND');
     return user;
   }
 
-  /** Changes the password, signs out every other session and returns fresh tokens. */
-  async changePassword(userId: string, input: ChangePasswordInput, client: ClientContext = {}): Promise<AuthResult> {
-    const user = await this.getCurrentUser(userId);
-    if (!(await this.hasher.verify(user.passwordHash, input.currentPassword))) {
-      throw new BadRequestError('Current password is incorrect', 'INVALID_CURRENT_PASSWORD');
-    }
-    if (input.currentPassword === input.newPassword) {
-      throw new BadRequestError('The new password must be different', 'PASSWORD_UNCHANGED');
-    }
-    assertPasswordPolicy(input.newPassword, this.settings.password, 'newPassword');
-
-    await this.revokeAllSessions(user.id);
-    const updated = await this.users.update(user.id, { passwordHash: await this.hasher.hash(input.newPassword) });
-    this.logger.info({ userId: user.id }, 'Password changed');
-    return { user: updated, tokens: await this.issueTokens(updated, client) };
-  }
-
-  /** Always succeeds, whether the email exists or not (no account enumeration). */
-  async requestPasswordReset(email: string): Promise<void> {
-    const user = await this.users.findByEmail(normalizeEmail(email));
-    if (!user || !user.isActive) return;
-    const token = await this.createOneTimeToken(user.id, 'password_reset', this.settings.passwordResetTtl);
-    await this.mailer.send({
-      to: user.email,
-      subject: 'Reset your password',
-      text: `Hi ${user.name},\n\nReset your password: ${this.settings.appUrl}/reset-password?token=${token}\n\nThe link expires in ${this.settings.passwordResetTtl}. If you didn't ask for it, ignore this email.`,
-    });
-  }
-
-  async resetPassword(token: string, newPassword: string): Promise<void> {
-    const record = await this.userTokens.findValid('password_reset', sha256(token), new Date());
-    if (!record) throw new BadRequestError('This link is invalid or has expired', 'INVALID_TOKEN');
-    assertPasswordPolicy(newPassword, this.settings.password, 'newPassword');
-
-    await this.userTokens.markUsed(record.id);
-    await this.revokeAllSessions(record.userId);
-    await this.users.update(record.userId, {
-      passwordHash: await this.hasher.hash(newPassword),
-{{#if SEC_LOCKOUT}}
-      failedLoginAttempts: 0,
-      lockedUntil: null,
-{{/if}}
-    });
-    this.logger.info({ userId: record.userId }, 'Password reset');
-  }
-
-  async requestEmailVerification(userId: string): Promise<void> {
-    const user = await this.getCurrentUser(userId);
-    if (user.emailVerifiedAt) throw new ConflictError('Email is already verified', 'EMAIL_ALREADY_VERIFIED');
-    await this.sendEmailVerification(user);
-  }
-
-  async verifyEmail(token: string): Promise<User> {
-    const record = await this.userTokens.findValid('email_verification', sha256(token), new Date());
-    if (!record) throw new BadRequestError('This link is invalid or has expired', 'INVALID_TOKEN');
-    await this.userTokens.markUsed(record.id);
-    return this.users.update(record.userId, { emailVerifiedAt: new Date() });
-  }
-
   // ── helpers ────────────────────────────────────────────────────────────────
 
-{{#if AUTH_REFRESH}}
-  private async issueTokens(user: User, client: ClientContext): Promise<AuthTokens> {
-    const refresh = await this.createRefreshToken(user, client);
-    return { ...this.createAccessToken(user), refreshToken: refresh.token, refreshTokenExpiresAt: refresh.expiresAt.toISOString() };
+  private async signIn(user: User, client: ClientContext): Promise<AuthResult> {
+    if (!user.isActive) throw new ForbiddenError('This account has been disabled', 'ACCOUNT_DISABLED');
+    const updated = await this.deps.users.update(user.id, { lastLoginAt: new Date() });
+    return { user: updated, tokens: await this.deps.sessions.issue(updated, client) };
   }
-{{else}}
-  private async issueTokens(user: User, _client: ClientContext): Promise<AuthTokens> {
-    return this.createAccessToken(user);
-  }
-{{/if}}
+{{#if AUTH_EMAIL}}
 
-  private createAccessToken(user: User): AccessTokens {
-    const access = this.tokens.signAccessToken({ sub: user.id, role: user.role, tv: user.tokenVersion });
-    return {
-      tokenType: 'Bearer',
-      accessToken: access.token,
-      expiresIn: access.expiresIn,
-      accessTokenExpiresAt: access.expiresAt.toISOString(),
-    };
-  }
-{{#if AUTH_REFRESH}}
-
-  private async createRefreshToken(user: User, client: ClientContext, familyId = newId()) {
-    const id = newId();
-    const signed = this.tokens.signRefreshToken({ sub: user.id, jti: id, fam: familyId });
-    await this.refreshTokens.create({
-      id,
-      userId: user.id,
-      tokenHash: sha256(signed.token),
-      familyId,
-      expiresAt: signed.expiresAt,
-      userAgent: client.userAgent?.slice(0, 255) ?? null,
-      ip: client.ip ?? null,
-    });
-    return { id, token: signed.token, expiresAt: signed.expiresAt };
-  }
-{{/if}}
-
-  /** Invalidates every access token (token version) {{#if AUTH_REFRESH}}and refresh token {{/if}}of the user. */
-  private async revokeAllSessions(userId: string): Promise<void> {
-    const user = await this.getCurrentUser(userId);
-    await this.users.update(userId, { tokenVersion: user.tokenVersion + 1 });
-{{#if AUTH_REFRESH}}
-    await this.refreshTokens.revokeAllForUser(userId);
-{{/if}}
+  private async assertPhoneAvailable(countryCode: string, phone: string) {
+    const normalized = normalizePhone(countryCode, phone);
+    if (await this.deps.users.findByPhone(normalized.countryCode, normalized.phone)) {
+      throw new ConflictError('Mobile number is already registered', 'PHONE_TAKEN');
+    }
+    return normalized;
   }
 
-  private async sendEmailVerification(user: User): Promise<void> {
-    const token = await this.createOneTimeToken(user.id, 'email_verification', this.settings.emailVerificationTtl);
-    await this.mailer.send({
-      to: user.email,
-      subject: 'Verify your email address',
-      text: `Hi ${user.name},\n\nConfirm your email address: ${this.settings.appUrl}/verify-email?token=${token}\n\nThe link expires in ${this.settings.emailVerificationTtl}.`,
-    });
-  }
-
-  /** Creates a one-time token (only its hash is stored) and returns the raw token. */
-  private async createOneTimeToken(userId: string, type: UserTokenType, ttl: string): Promise<string> {
-    await this.userTokens.invalidateAll(userId, type);
-    const token = randomToken();
-    await this.userTokens.create({ userId, type, tokenHash: sha256(token), expiresAt: new Date(Date.now() + parseDuration(ttl)) });
-    return token;
+  private sendEmailVerification(user: User): Promise<SentCode> {
+    const { codes, mailer, settings } = this.deps;
+    const to = user.email!;
+    return codes.send('email_verification', to, code =>
+      mailer.send({ to, subject: `${settings.appName}: confirm your email`, text: `Hi ${user.name},\n\nYour verification code is ${code}.\nIt expires in ${settings.codes.ttl}.` }),
+    );
   }
 {{#if SEC_LOCKOUT}}
 
   private async recordFailedLogin(user: User, client: ClientContext): Promise<void> {
+    const { users, settings, logger } = this.deps;
     const attempts = user.failedLoginAttempts + 1;
-    const { maxAttempts, minutes } = this.settings.lockout;
-    if (attempts >= maxAttempts) {
-      const lockedUntil = new Date(Date.now() + minutes * 60_000);
-      await this.users.update(user.id, { failedLoginAttempts: 0, lockedUntil });
-      this.logger.warn({ userId: user.id, ip: client.ip, lockedUntil }, 'Account locked after repeated failed logins');
+    if (attempts >= settings.lockout.maxAttempts) {
+      const lockedUntil = new Date(Date.now() + settings.lockout.minutes * 60_000);
+      await users.update(user.id, { failedLoginAttempts: 0, lockedUntil });
+      logger.warn({ userId: user.id, ip: client.ip, lockedUntil }, 'Account locked after repeated failed logins');
     } else {
-      await this.users.update(user.id, { failedLoginAttempts: attempts });
-      this.logger.warn({ userId: user.id, ip: client.ip, attempts }, 'Failed login');
+      await users.update(user.id, { failedLoginAttempts: attempts });
+      logger.warn({ userId: user.id, ip: client.ip, attempts }, 'Failed login');
     }
   }
 {{/if}}
 
   private getDummyHash(): Promise<string> {
-    this.dummyHash ??= this.hasher.hash('timing-attack-protection-password-1');
+    this.dummyHash ??= this.deps.hasher.hash('timing-attack-protection-password-1');
     return this.dummyHash;
   }
+{{/if}}
 }

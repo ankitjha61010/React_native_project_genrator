@@ -42,6 +42,12 @@ export const testEnv: Record<string, string> = {
   ACCOUNT_LOCKOUT_MINUTES: '15',
 {{/if}}
 {{/if}}
+{{#if API_ENCRYPTION}}
+  // Tests talk plain JSON; encryption itself is covered by encryption.spec.ts.
+  API_ENCRYPTION_ENABLED: 'false',
+  API_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef',
+  API_ENCRYPTION_IV: 'abcdef9876543210',
+{{/if}}
 {{#if SWAGGER}}
   SWAGGER_ENABLED: 'true',
   SWAGGER_PATH: 'docs',

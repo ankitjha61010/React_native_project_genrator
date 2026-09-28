@@ -22,10 +22,10 @@ describe('GET /api/v1/health', () => {
   });
 
   it('answers 503 when the database is down', async () => {
-    app.health.healthy = false;
+    app.healthCheck.healthy = false;
     const res = await request(app.server).get('/api/v1/health').expect(503);
     expect(res.body.data).toMatchObject({ status: 'degraded', checks: { database: 'down' } });
-    app.health.healthy = true;
+    app.healthCheck.healthy = true;
   });
 
   it('answers unknown routes with the error envelope', async () => {

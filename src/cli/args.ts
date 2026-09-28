@@ -37,6 +37,12 @@ export interface CliFlags {
   swagger?: boolean;
   /** Comma separated, `all` or `none`. */
   security?: string;
+  /** Backend sign-in methods: comma list of email,mobile,google,facebook,apple. */
+  authMethods?: string;
+  /** Backend modules: comma list of chat,notifications, or `none`. */
+  modules?: string;
+  /** Backend deployment: monolith | microservices. */
+  deployment?: string;
   storage?: string;
   install: boolean;
   pods: boolean;
@@ -117,6 +123,9 @@ export function parseArgs(argv: string[], version: string): CliFlags {
       '--security <items>',
       'backend security: all | none | comma list of helmet,cors,rate-limit,auth-rate-limit,body-limit,sanitize,account-lockout',
     )
+    .option('--auth-methods <items>', 'backend sign-in methods: comma list of email,mobile,google,facebook,apple')
+    .option('--modules <items>', 'backend modules: comma list of chat,notifications, or none')
+    .addOption(new Option('--deployment <id>', 'backend deployment').choices(['monolith', 'microservices']))
     .option('--dry-run', 'show what would be generated without writing anything', false)
     .option('-y, --yes', 'use defaults for everything not passed as a flag (non-interactive)', false)
     .option('-f, --force', 'overwrite the target directory if it exists', false)

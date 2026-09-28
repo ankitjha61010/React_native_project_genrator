@@ -1,6 +1,7 @@
 import { getMessaging, getToken, onTokenRefresh } from '@react-native-firebase/messaging';
 import { isFirebaseConfigured } from '{{IMPORT:firebase.service}}';
 import { logger } from '{{IMPORT:utils.logger}}';
+import { notificationsApi } from './notificationsApi';
 
 /** The FCM registration token of this device, or null if unavailable. */
 export async function getFcmToken(): Promise<string | null> {
@@ -24,9 +25,14 @@ export function onFcmTokenRefresh(listener: (token: string) => void): () => void
 }
 
 /**
- * TODO: send the token to your backend so it can target this device.
- * Keep it idempotent – it runs on every app start and on every token refresh.
+ * Registers the token with the backend (POST /notifications/devices) so it can push to this
+ * device. Idempotent – it runs on every app start and on every token refresh.
  */
 export async function syncFcmToken(token: string): Promise<void> {
-  logger.info('FCM token', token);
+  try {
+    await notificationsApi.registerDevice(token);
+    logger.debug('FCM token registered');
+  } catch (error) {
+    logger.warn('Registering the FCM token failed', error);
+  }
 }

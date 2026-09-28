@@ -138,7 +138,8 @@ export function toAppNotification(input: {
 }): AppNotification {
   const data = stringData(input.data);
   return {
-    id: input.id ?? data.notificationId ?? `local-${Date.now()}`,
+    // The backend's id first, so the server inbox and received pushes don't show twice.
+    id: data.notificationId ?? input.id ?? `local-${Date.now()}`,
     type: isNotificationType(data.type) ? data.type : NotificationType.GENERAL,
     title: input.title ?? data.title ?? '',
     body: input.body ?? data.body ?? '',

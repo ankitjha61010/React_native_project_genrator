@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -7,7 +7,11 @@ import {
   Image,
   RefreshControl,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+{{#if SOCKET}}
+import { socketService } from '{{IMPORT:socket.service}}';
+import { SOCKET_EVENTS } from '{{IMPORT:socket.events}}';
+{{/if}}
 import { AppText } from '{{IMPORT:components.AppText}}';
 {{#if VECTOR_ICONS}}
 import { AppIcon } from '{{IMPORT:components.AppIcon}}';
@@ -24,21 +28,42 @@ export function ChatListScreen(): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadChats = async () => {
+  const loadChats = useCallback(async () => {
     try {
-      const data = await chatService.fetchConversations();
-      setConversations(data);
+      setConversations(await chatService.fetchConversations());
     } catch {
-      // Handle error
+      // Keep the current list (offline); pull to refresh retries.
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
+
+  // Fresh unread counts whenever the list is shown again (e.g. back from a chat).
+  useFocusEffect(
+    useCallback(() => {
+      loadChats();
+    }, [loadChats]),
+  );
+{{#if SOCKET}}
+
+  // A new message anywhere: its conversation moves to the top with the new unread count.
+  useEffect(() => socketService.on(SOCKET_EVENTS.RECEIVE_MESSAGE, () => loadChats()), [loadChats]);
+{{/if}}
 
   useEffect(() => {
-    loadChats();
-  }, []);
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity onPress={() => navigation.navigate('NewChat')} hitSlop={10} accessibilityRole="button" accessibilityLabel="New chat" style={styles.newChat}>
+{{#if VECTOR_ICONS}}
+          <AppIcon name="square-edit-outline" size={24} tintColor={styles.newChatIcon.color} />
+{{else}}
+          <AppText color="primary" fontFamily="semiBold" text="New" />
+{{/if}}
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, styles]);
 
   const renderItem = ({ item }: { item: Conversation }) => {
     const lastMsg = item.lastMessage;
@@ -118,6 +143,9 @@ export function ChatListScreen(): React.JSX.Element {
               <AppIcon name="chat-outline" size={56} tintColor="#AAAAAA" />
 {{/if}}
               <AppText color="textSecondary" style={styles.emptyText}>No conversations yet</AppText>
+              <TouchableOpacity onPress={() => navigation.navigate('NewChat')} accessibilityRole="button">
+                <AppText color="primary" fontFamily="semiBold" text="Start a chat" />
+              </TouchableOpacity>
             </View>
           ) : undefined
         }
@@ -131,6 +159,12 @@ const createStyles = (theme: Theme) =>
     container: {
       flex: 1,
       backgroundColor: theme.colors.background,
+    },
+    newChat: {
+      paddingHorizontal: 16,
+    },
+    newChatIcon: {
+      color: theme.colors.primary,
     },
     chatRow: {
       flexDirection: 'row',

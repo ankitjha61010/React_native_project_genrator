@@ -38,6 +38,12 @@ export interface ProjectOptions {
   storage: StorageEngine;
   /** Encrypt API request bodies / decrypt responses with AES (crypto-js). */
   apiEncryption: boolean;
+  /** Folder name of the project (default: appName). Full-stack: `mobile`. */
+  directoryName?: string;
+  /** API_BASE_URL written to .env (full-stack: the generated backend). */
+  apiBaseUrl?: string;
+  /** Full-stack: the backend's API_ENCRYPTION_KEY / IV, so both sides match out of the box. */
+  apiEncryptionSecrets?: { key: string; iv: string };
   /** Right-to-left layout support (adds Arabic as a sample RTL language). */
   rtl: boolean;
   /** Light/dark ThemeProvider + `useTheme().setThemeMode()` (persisted). */

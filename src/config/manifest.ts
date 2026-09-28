@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { TEMPLATES_DIR } from '../utils/paths.js';
 import type { GroupId, ManifestEntry, RenderContext, StateManagement } from '../core/types.js';
 
 /**
@@ -16,6 +19,12 @@ const analytics = (ctx: RenderContext) => ctx.options.analytics;
 const notifications = (ctx: RenderContext) => ctx.options.notifications;
 const drawer = (ctx: RenderContext) => ctx.options.drawer;
 const headerButtons = (ctx: RenderContext) => ctx.options.drawer || ctx.options.notifications;
+
+/** Country flags for the phone number picker (templates/common/assets/flags/*.png). */
+const COUNTRY_FLAGS = fs
+  .readdirSync(path.join(TEMPLATES_DIR, 'common/assets/flags'))
+  .filter(file => file.endsWith('.png'))
+  .sort();
 
 /** GolosText – bundled in `assets/fonts` and registered natively (see native/fonts.ts). */
 export const APP_FONTS = ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'].map(w => `GolosText-${w}.ttf`);
@@ -40,6 +49,8 @@ const socket = (ctx: RenderContext) => ctx.options.socket;
 const chat = (ctx: RenderContext) => ctx.options.chat;
 const authEmail = (ctx: RenderContext) => ctx.options.authEmail;
 const authMobile = (ctx: RenderContext) => ctx.options.authMobile;
+/** Phone number fields exist at sign-up (email auth) and on the mobile login screen. */
+const phoneInput = (ctx: RenderContext) => ctx.options.authEmail || ctx.options.authMobile;
 const hasSocialAuth = (ctx: RenderContext) => ctx.options.socialAuth !== 'none';
 
 export const COMMON_MANIFEST: ManifestEntry[] = [
@@ -75,6 +86,13 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
   ...entries('assets', APP_FONTS.map(font => [`assets.font.${font}`, `fonts/${font}`] as [string, string])).map(e => ({
     ...e,
     binary: true,
+  })),
+  // Country picker (phone number fields): flags + dial codes.
+  ...entries('assets', [['assets.countries', 'flags/countries.ts']]).map(e => ({ ...e, when: phoneInput })),
+  ...entries('assets', COUNTRY_FLAGS.map(file => [`assets.flag.${file}`, `flags/${file}`] as [string, string])).map(e => ({
+    ...e,
+    binary: true,
+    when: phoneInput,
   })),
 
   ...entries('theme', [
@@ -124,6 +142,7 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['api.config', 'apiConfig.ts'],
     ['api.errors', 'apiErrors.ts'],
     ['api.client', 'apiClient.ts'],
+    ['api.auth', 'authApi.ts'],
   ]),
   { ...entries('api', [['api.encryption', 'apiEncryption.ts']])[0]!, when: encrypted },
 
@@ -142,6 +161,7 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     // Notification types + tap routing: the one place to change notification behaviour.
     ['notification.types', 'notificationTypes.ts'],
     ['notification.inbox', 'notificationInbox.ts'],
+    ['notification.api', 'notificationsApi.ts'],
     ['notification.router', 'notificationRouter.ts'],
     ['notification.useNotifications', 'useNotifications.ts'],
   ]).map(e => ({ ...e, when: notifications })),
@@ -167,6 +187,10 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['components.MediaEditorModal', 'MediaEditorModal/MediaEditorModal.tsx'],
     ['components.LegalLinks', 'LegalLinks/LegalLinks.tsx'],
   ]),
+  ...entries('components', [
+    ['components.CountryPicker', 'CountryPicker/CountryPicker.tsx'],
+    ['components.PhoneInput', 'PhoneInput/PhoneInput.tsx'],
+  ]).map(e => ({ ...e, when: phoneInput })),
   { ...entries('components', [['components.AppIcon', 'AppIcon/AppIcon.tsx']])[0]!, when: vectorIcons },
 
   ...entries('navigation', [
@@ -234,6 +258,7 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['chat.service', 'services/chatService.ts'],
     ['chat.ChatListScreen', 'screens/ChatListScreen/ChatListScreen.tsx'],
     ['chat.ChatRoomScreen', 'screens/ChatRoomScreen/ChatRoomScreen.tsx'],
+    ['chat.NewChatScreen', 'screens/NewChatScreen/NewChatScreen.tsx'],
     ['chat.ChatBubble', 'components/ChatBubble/ChatBubble.tsx'],
     ['chat.ChatInputBar', 'components/ChatInputBar/ChatInputBar.tsx'],
     ['chat.ChatMediaPreview', 'components/ChatMediaPreview/ChatMediaPreview.tsx'],

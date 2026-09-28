@@ -9,9 +9,12 @@ import { BACKEND_ARCHITECTURES, getBackendArchitecture } from './architectures.j
 import { AUTH_LABELS, DATABASE_LABELS, FRAMEWORK_LABELS, HASHING_LABELS, ORM_LABELS } from './context.js';
 import {
   DEFAULT_SECURITY,
+  type BackendAuthMethods,
+  type BackendModules,
   type BackendArchitectureId,
   type BackendAuth,
   type BackendDatabase,
+  type BackendDeployment,
   type BackendFramework,
   type BackendOptions,
   type BackendOrm,
@@ -46,6 +49,23 @@ const SECURITY_CHOICES: Array<{ key: keyof BackendSecurity; name: string; descri
   { key: 'sanitize', name: 'Input sanitization', description: 'Strips $-operators, dotted keys and __proto__ from body / query' },
 ];
 
+const AUTH_METHOD_ITEMS: Record<string, keyof BackendAuthMethods> = { email: 'email', mobile: 'mobileOtp', otp: 'mobileOtp', google: 'google', facebook: 'facebook', apple: 'apple' };
+const MODULE_ITEMS: Record<string, keyof BackendModules> = { chat: 'chat', notifications: 'notifications' };
+
+/** `--flag a,b` → option keys (undefined when the flag isn't given). */
+function parseList<K extends string>(value: string | undefined, items: Record<string, K>, flag: string): K[] | undefined {
+  if (value === undefined) return undefined;
+  return value
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
+    .map(item => {
+      const key = items[item];
+      if (!key) throw new GeneratorError(`Invalid ${flag} item "${item}".`, { reason: `Allowed: ${Object.keys(items).join(', ')}` });
+      return key;
+    });
+}
+
 /** Backend project names: package-name friendly (letters, digits, dashes). */
 export function validateBackendName(name: string): true | string {
   const value = name.trim();
@@ -76,6 +96,11 @@ function parseSecurityFlag(value: string | undefined): BackendSecurity | undefin
   return security;
 }
 
+function describeMethods(m: BackendAuthMethods): string {
+  const names = [m.email && 'email + password', m.mobileOtp && 'mobile OTP', m.google && 'Google', m.facebook && 'Facebook', m.apple && 'Apple'].filter(Boolean);
+  return names.join(', ');
+}
+
 export function describeBackend(o: BackendOptions): string[] {
   const arch = getBackendArchitecture(o.architecture);
   const s = o.security;
@@ -87,7 +112,11 @@ export function describeBackend(o: BackendOptions): string[] {
     `Architecture:   ${arch.name}`,
     `Database:       ${DATABASE_LABELS[o.database]} (${ORM_LABELS[o.orm]})`,
     `Authentication: ${AUTH_LABELS[o.auth]}`,
-    ...(auth ? [`Hashing:        ${HASHING_LABELS[o.hashing]}`] : []),
+    ...(auth ? [`Sign-in:        ${describeMethods(o.authMethods)}`] : []),
+    ...(auth && o.authMethods.email ? [`Hashing:        ${HASHING_LABELS[o.hashing]}`] : []),
+    ...(auth ? [`Modules:        chat ${on(o.modules.chat)} · notifications ${on(o.modules.notifications)}`] : []),
+    ...(auth ? [`Deployment:     ${o.deployment === 'microservices' ? 'microservices (gateway + services, Redis)' : 'monolith'}`] : []),
+    `Encryption:     ${on(o.apiEncryption)}`,
     `Swagger:        ${on(o.swagger)}`,
     `Rate limiting:  ${on(s.rateLimit)} global · ${on(auth && s.authRateLimit)} auth routes`,
     `Security:       helmet ${on(s.helmet)} · CORS ${on(s.cors)} · body limit ${on(s.bodyLimit)} · sanitize ${on(s.sanitize)}${auth ? ` · lockout ${on(s.accountLockout)}` : ''}`,
@@ -95,11 +124,15 @@ export function describeBackend(o: BackendOptions): string[] {
   ];
 }
 
+/** Full-stack: what the app decides for the backend (these questions are not asked). */
+export type BackendPreset = Pick<BackendOptions, 'appName' | 'displayName' | 'projectDir' | 'authMethods' | 'modules' | 'apiEncryption' | 'appPackage' | 'installDependencies' | 'initGit'>;
+
 /**
  * Backend wizard. Flags are used as-is; everything else is asked (or defaulted with --yes).
- * Ends with a summary: generate, go back and modify, or cancel.
+ * Ends with a summary: generate, go back and modify, or cancel – except with a `preset`
+ * (full-stack), whose caller shows one summary for both projects.
  */
-export async function collectBackendOptions(flags: CliFlags, previous?: BackendOptions): Promise<BackendOptions> {
+export async function collectBackendOptions(flags: CliFlags, previous?: BackendOptions, preset?: BackendPreset): Promise<BackendOptions> {
   const interactive = !flags.yes;
   const ask = <T>(flagValue: T | undefined, question: () => Promise<T>, fallback: T, label: string, format: (v: T) => string = String): Promise<T> => {
     if (flagValue !== undefined) {
@@ -110,8 +143,10 @@ export async function collectBackendOptions(flags: CliFlags, previous?: BackendO
   };
 
   // Name + location
-  let appName = flags.name?.trim();
-  if (appName) {
+  let appName = preset?.appName ?? flags.name?.trim();
+  if (preset) {
+    // Given by the app.
+  } else if (appName) {
     const valid = validateBackendName(appName);
     if (valid !== true) throw new GeneratorError(`Invalid --name: ${valid}`);
   } else if (interactive) {
@@ -119,7 +154,10 @@ export async function collectBackendOptions(flags: CliFlags, previous?: BackendO
   } else {
     throw new GeneratorError('--name is required with --yes.');
   }
-  const parentDir = resolveUserPath(flags.directory ?? (interactive && !previous ? await input({ message: 'Where should the project be created?', default: './' }) : previous ? path.dirname(previous.projectDir) : './'));
+  const parentDir = preset
+    ? path.dirname(preset.projectDir)
+    : resolveUserPath(flags.directory ?? (interactive && !previous ? await input({ message: 'Where should the project be created?', default: './' }) : previous ? path.dirname(previous.projectDir) : './'));
+  if (!appName) throw new GeneratorError('--name is required with --yes.');
 
   const framework = await ask(
     oneOf(flags.backendFramework, BACKEND_FRAMEWORKS, '--backend-framework'),
@@ -161,14 +199,17 @@ export async function collectBackendOptions(flags: CliFlags, previous?: BackendO
     auth = oneOf(flags.backendAuth, BACKEND_AUTHS, '--backend-auth')!;
     log.success(`Authentication: ${chalk.cyan(AUTH_LABELS[auth])}`);
   } else if (interactive) {
-    const wantsAuth = await select({
-      message: 'Do you want authentication?',
-      default: previous ? previous.auth !== 'none' : true,
-      choices: [
-        { name: '1. Yes', value: true },
-        { name: '2. No', value: false },
-      ],
-    });
+    // The app has sign-in screens, so a full-stack backend always has authentication.
+    const wantsAuth = preset
+      ? true
+      : await select({
+          message: 'Do you want authentication?',
+          default: previous ? previous.auth !== 'none' : true,
+          choices: [
+            { name: '1. Yes', value: true },
+            { name: '2. No', value: false },
+          ],
+        });
     auth = wantsAuth
       ? await select<BackendAuth>({
           message: 'Authentication Type',
@@ -184,9 +225,34 @@ export async function collectBackendOptions(flags: CliFlags, previous?: BackendO
     auth = 'refresh-rotation';
   }
 
-  // Password hashing
+  // Sign-in methods
+  let authMethods: BackendAuthMethods = { email: false, mobileOtp: false, google: false, facebook: false, apple: false };
+  if (preset) {
+    authMethods = { ...preset.authMethods };
+  } else if (auth !== 'none') {
+    const fromFlag = parseList(flags.authMethods, AUTH_METHOD_ITEMS, '--auth-methods');
+    const picked =
+      fromFlag ??
+      (interactive
+        ? await checkbox<keyof BackendAuthMethods>({
+            message: 'How can users sign in? (space to toggle)',
+            required: true,
+            choices: [
+              { name: 'Email + password', value: 'email', checked: previous?.authMethods.email ?? true, description: 'Register, login, forgot / reset password with emailed codes' },
+              { name: 'Mobile number + OTP', value: 'mobileOtp', checked: previous?.authMethods.mobileOtp ?? false, description: 'SMS code (Twilio); the account is created on the first login' },
+              { name: 'Google', value: 'google', checked: previous?.authMethods.google ?? false, description: 'ID token verified with Google' },
+              { name: 'Facebook', value: 'facebook', checked: previous?.authMethods.facebook ?? false, description: 'Access token verified with the Graph API' },
+              { name: 'Apple', value: 'apple', checked: previous?.authMethods.apple ?? false, description: 'Identity token verified with Apple' },
+            ],
+          })
+        : (['email'] as const));
+    for (const method of picked) authMethods[method] = true;
+    if (fromFlag) log.success(`Sign-in methods: ${chalk.cyan(fromFlag.join(', '))}`);
+  }
+
+  // Password hashing (email + password accounts only)
   let hashing: PasswordHashing = 'none';
-  if (auth !== 'none') {
+  if (authMethods.email) {
     hashing = await ask(
       oneOf(flags.passwordHashing, PASSWORD_HASHINGS, '--password-hashing'),
       () =>
@@ -248,6 +314,51 @@ export async function collectBackendOptions(flags: CliFlags, previous?: BackendO
     );
   }
 
+  // Feature modules
+  let modules: BackendModules = { chat: false, notifications: false };
+  if (preset) {
+    modules = { ...preset.modules };
+  } else if (auth !== 'none') {
+    const fromFlag = flags.modules === 'none' ? [] : parseList(flags.modules, MODULE_ITEMS, '--modules');
+    const picked =
+      fromFlag ??
+      (interactive
+        ? await checkbox<keyof BackendModules>({
+            message: 'Which modules do you want? (space to toggle)',
+            choices: [
+              { name: 'Chat', value: 'chat', checked: previous?.modules.chat ?? false, description: 'Conversations, messages, media upload, Socket.IO (typing, online, read receipts)' },
+              { name: 'Notifications', value: 'notifications', checked: previous?.modules.notifications ?? false, description: 'Push (FCM) devices, notification inbox, admin broadcasts' },
+            ],
+          })
+        : []);
+    for (const module of picked) modules[module] = true;
+    if (fromFlag) log.success(`Modules: ${chalk.cyan(fromFlag.join(', ') || 'none')}`);
+  }
+
+  // Deployment (microservices need accounts: the identity service is the core)
+  const deployment: BackendDeployment =
+    auth === 'none'
+      ? 'monolith'
+      : await ask(
+          oneOf(flags.deployment, ['monolith', 'microservices'] as const, '--deployment'),
+          () =>
+            select<BackendDeployment>({
+              message: 'Deployment',
+              default: previous?.deployment ?? 'monolith',
+              choices: [
+                { name: '1. Monolith', value: 'monolith', description: 'One API project (simplest to run and deploy – recommended to start)' },
+                {
+                  name: '2. Microservices',
+                  value: 'microservices',
+                  description: 'API gateway + identity / chat / notifications services, one database each, Redis events',
+                },
+              ],
+            }),
+          'monolith',
+          'Deployment',
+          v => (v === 'microservices' ? 'microservices (gateway + services)' : 'monolith'),
+        );
+
   // Security & rate limiting
   let security = parseSecurityFlag(flags.security);
   if (security) {
@@ -257,7 +368,7 @@ export async function collectBackendOptions(flags: CliFlags, previous?: BackendO
     const picked = await checkbox<keyof BackendSecurity>({
       message: 'Security & rate limiting (space to toggle, enter to confirm)',
       pageSize: SECURITY_CHOICES.length,
-      choices: SECURITY_CHOICES.filter(c => !c.authOnly || auth !== 'none').map(c => ({
+      choices: SECURITY_CHOICES.filter(c => (!c.authOnly || auth !== 'none') && (c.key !== 'accountLockout' || authMethods.email)).map(c => ({
         name: c.name,
         value: c.key,
         checked: current[c.key],
@@ -269,6 +380,23 @@ export async function collectBackendOptions(flags: CliFlags, previous?: BackendO
     security = { ...DEFAULT_SECURITY };
   }
   if (auth === 'none') security = { ...security, authRateLimit: false, accountLockout: false };
+  if (!authMethods.email) security = { ...security, accountLockout: false };
+
+  const apiEncryption = await ask(
+    preset ? preset.apiEncryption : flags.encryption,
+    () =>
+      select({
+        message: 'Encrypt API request / response bodies (AES, same as the app\'s API encryption)?',
+        default: previous?.apiEncryption ?? false,
+        choices: [
+          { name: '1. No', value: false, description: 'Plain JSON over HTTPS (recommended)' },
+          { name: '2. Yes', value: true, description: 'Bodies become { data: "<AES-256-CBC base64>" }; HTTPS is still required' },
+        ],
+      }),
+    false,
+    'API encryption',
+    v => (v ? 'yes' : 'no'),
+  );
 
   const swagger = await ask(
     flags.swagger,
@@ -286,26 +414,33 @@ export async function collectBackendOptions(flags: CliFlags, previous?: BackendO
     v => (v ? 'yes' : 'no'),
   );
 
-  const installDependencies = flags.install && (interactive ? await confirm({ message: 'Install dependencies now (npm install)?', default: previous?.installDependencies ?? true }) : true);
-  const initGit = flags.git && (interactive ? await confirm({ message: 'Initialize a git repository?', default: previous?.initGit ?? true }) : true);
+  const installDependencies = preset
+    ? preset.installDependencies
+    : flags.install && (interactive ? await confirm({ message: 'Install dependencies now (npm install)?', default: previous?.installDependencies ?? true }) : true);
+  const initGit = preset ? preset.initGit : flags.git && (interactive ? await confirm({ message: 'Initialize a git repository?', default: previous?.initGit ?? true }) : true);
 
   const options: BackendOptions = {
     appName,
-    displayName: appName.replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-    projectDir: path.join(parentDir, appName),
+    displayName: preset?.displayName ?? appName.replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+    projectDir: preset?.projectDir ?? path.join(parentDir, appName),
     framework,
     architecture,
     database,
     orm,
     auth,
+    authMethods,
     hashing,
+    modules,
+    apiEncryption,
+    deployment,
+    appPackage: preset?.appPackage ?? (flags.package?.trim() || `com.example.${appName.toLowerCase().replace(/[^a-z0-9]/g, '')}`),
     swagger,
     security,
     installDependencies,
     initGit,
   };
 
-  if (!interactive) return options;
+  if (!interactive || preset) return options;
 
   // Final confirmation
   log.title('Backend configuration');

@@ -12,7 +12,7 @@ export type AuthStackParamList = {
 {{/if}}
 {{#if AUTH_MOBILE}}
   MobileLogin: undefined;
-  OtpVerify: { phone: string };
+  OtpVerify: { countryCode: string; phone: string; resendIn?: number };
 {{/if}}
 };
 
@@ -58,6 +58,7 @@ export type MainStackParamList = {
     isOnline?: boolean;
     isGroup?: boolean;
   };
+  NewChat: undefined;
 {{/if}}
 };
 

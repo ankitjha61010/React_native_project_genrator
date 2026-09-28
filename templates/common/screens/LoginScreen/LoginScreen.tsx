@@ -25,8 +25,6 @@ export function LoginScreen(): React.JSX.Element {
       </FadeInView>
 
       <View style={styles.footer}>
-        {/* DEMO behaviour – remove once a real login endpoint is connected. */}
-        <AppText fontSize="size12" color="textSecondary" intlType="auth" value="loginDemoNotice" align="center" />
         <LegalLinks style={styles.legal} />
       </View>
     </AppScreen>

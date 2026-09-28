@@ -1,0 +1,7 @@
+dist
+coverage
+node_modules
+{{#if PRISMA}}
+src/generated
+prisma/migrations
+{{/if}}

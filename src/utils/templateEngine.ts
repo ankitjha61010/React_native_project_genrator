@@ -26,7 +26,7 @@ export class TemplateError extends Error {
 
 const BLOCK_RE = /\{\{#if (!?)([A-Z0-9_]+)\}\}|\{\{else\}\}|\{\{\/if\}\}/g;
 // Variables are UPPER_CASE only, so JSX like `style={{flex}}` is never mistaken for one.
-const TOKEN_RE = /\{\{(?:(IMPORT|SYMBOL):([A-Za-z0-9_.-]+)|([A-Z][A-Z0-9_]*))\}\}/g;
+const TOKEN_RE = /\{\{(?:(IMPORT|SYMBOL):([A-Za-z0-9_./:-]+)|([A-Z][A-Z0-9_]*))\}\}/g;
 
 function renderConditionals(source: string, flags: Record<string, boolean>, name?: string): string {
   type Frame = { active: boolean; parentActive: boolean; seenElse: boolean; condition: boolean };

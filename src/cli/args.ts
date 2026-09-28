@@ -26,6 +26,17 @@ export interface CliFlags {
   socket?: boolean;
   chat?: boolean;
   drawer?: boolean;
+  /** frontend | backend | fullstack */
+  type?: string;
+  backendFramework?: string;
+  backendArchitecture?: string;
+  backendDatabase?: string;
+  backendOrm?: string;
+  backendAuth?: string;
+  passwordHashing?: string;
+  swagger?: boolean;
+  /** Comma separated, `all` or `none`. */
+  security?: string;
   storage?: string;
   install: boolean;
   pods: boolean;
@@ -91,6 +102,21 @@ export function parseArgs(argv: string[], version: string): CliFlags {
         REACT_NATIVE_PROFILES.flatMap(p => [p.reactNative, p.reactNative.split('.').slice(0, 2).join('.')]),
       ),
     )
+    .addOption(new Option('--type <type>', 'what to generate').choices(['frontend', 'backend', 'fullstack']))
+    .addOption(new Option('--backend-framework <id>', 'backend framework').choices(['nestjs', 'express']))
+    .addOption(
+      new Option('--backend-architecture <id>', 'backend architecture').choices(['feature-based', 'layered', 'clean', 'mvc', 'modular', 'enterprise']),
+    )
+    .addOption(new Option('--backend-database <id>', 'backend database').choices(['postgresql', 'mysql', 'mongodb']))
+    .addOption(new Option('--backend-orm <id>', 'ORM / ODM').choices(['prisma', 'typeorm', 'mongoose']))
+    .addOption(new Option('--backend-auth <id>', 'backend authentication').choices(['none', 'jwt', 'access-refresh', 'refresh-rotation']))
+    .addOption(new Option('--password-hashing <id>', 'password hashing').choices(['bcrypt', 'argon2', 'configurable']))
+    .option('--swagger', 'generate Swagger / OpenAPI docs (backend)')
+    .option('--no-swagger', 'no API docs (backend)')
+    .option(
+      '--security <items>',
+      'backend security: all | none | comma list of helmet,cors,rate-limit,auth-rate-limit,body-limit,sanitize,account-lockout',
+    )
     .option('--dry-run', 'show what would be generated without writing anything', false)
     .option('-y, --yes', 'use defaults for everything not passed as a flag (non-interactive)', false)
     .option('-f, --force', 'overwrite the target directory if it exists', false)
@@ -101,6 +127,7 @@ Examples:
   $ npx rn-architecture-generator
   $ npx rn-architecture-generator --dry-run
   $ npx rn-architecture-generator --name FastRoute --package com.example.fastroute --architecture feature-based -y
+  $ npx rn-architecture-generator --type backend --name my-api --backend-framework nestjs --backend-architecture clean -y
 `,
     );
 

@@ -1,0 +1,25 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "import", "node", "vitest"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "rules": {
+    "typescript/no-explicit-any": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-unsafe-type-assertion": "off",
+    "import/no-unassigned-import": ["warn", { "allow": ["reflect-metadata"] }],
+{{#if MONGOOSE}}
+    "no-underscore-dangle": ["warn", { "allow": ["_id"] }],
+{{/if}}
+{{#if NEST}}
+    "typescript/no-extraneous-class": ["warn", { "allowWithDecorator": true }],
+{{/if}}
+    "no-console": "error"
+  },
+  "env": {
+    "node": true
+  },
+  "ignorePatterns": ["dist", "coverage"{{#if PRISMA}}, "src/generated"{{/if}}]
+}

@@ -1,0 +1,117 @@
+{{#if ENV_EXAMPLE}}
+# Copy to .env and fill in the values. Never commit .env – it holds secrets.
+{{else}}
+# Local development values. Generated with random JWT secrets – never commit this file.
+{{/if}}
+
+# ── App ──────────────────────────────────────────────────────────────────────
+NODE_ENV=development
+PORT=3000
+HOST=0.0.0.0
+# Public URL of this API (used in links sent by email).
+APP_URL=http://localhost:3000
+# Routes are served under /<API_PREFIX>/<API_VERSION>, e.g. /api/v1/auth/login
+API_PREFIX=api
+API_VERSION=v1
+# fatal | error | warn | info | debug | trace | silent
+LOG_LEVEL=info
+# Set to true when running behind a reverse proxy / load balancer (correct client IPs for rate limiting).
+TRUST_PROXY=false
+{{#if SEC_CORS}}
+
+# ── CORS ─────────────────────────────────────────────────────────────────────
+# Comma separated list of allowed browser origins. Native mobile apps don't send an Origin header
+# and are always allowed. Empty = no browser origin allowed.
+CORS_ORIGINS=http://localhost:8081,http://localhost:3000
+{{/if}}
+{{#if SEC_BODY_LIMIT}}
+
+# ── Request limits ───────────────────────────────────────────────────────────
+BODY_LIMIT=1mb
+{{/if}}
+{{#if SEC_RATE_LIMIT}}
+
+# ── Rate limiting (per client IP) ────────────────────────────────────────────
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX=100
+{{/if}}
+{{#if SEC_AUTH_RATE_LIMIT}}
+# Stricter limit for login / register / password reset.
+AUTH_RATE_LIMIT_WINDOW_MS=900000
+AUTH_RATE_LIMIT_MAX=10
+{{/if}}
+
+# ── Database ({{DATABASE_LABEL}} · {{ORM_NAME}}) ─────────────────────────────
+{{#if ENV_EXAMPLE}}
+{{#if POSTGRES}}
+DATABASE_URL=postgresql://USER:PASSWORD@localhost:5432/{{DB_NAME}}?schema=public
+{{/if}}
+{{#if MYSQL}}
+DATABASE_URL=mysql://USER:PASSWORD@localhost:3306/{{DB_NAME}}
+{{/if}}
+{{#if MONGO}}
+DATABASE_URL=mongodb://USER:PASSWORD@localhost:27017/{{DB_NAME}}?authSource=admin
+{{/if}}
+{{else}}
+DATABASE_URL={{DATABASE_URL}}
+{{/if}}
+{{#if AUTH}}
+
+# ── Authentication ({{AUTH_NAME}}) ───────────────────────────────────────────
+# At least 32 random characters each, different from each other. Generate: openssl rand -base64 48
+{{#if ENV_EXAMPLE}}
+JWT_ACCESS_SECRET=
+{{else}}
+JWT_ACCESS_SECRET={{JWT_ACCESS_SECRET}}
+{{/if}}
+{{#if AUTH_JWT_ONLY}}
+JWT_ACCESS_EXPIRES_IN=1d
+{{else}}
+JWT_ACCESS_EXPIRES_IN=15m
+{{#if ENV_EXAMPLE}}
+JWT_REFRESH_SECRET=
+{{else}}
+JWT_REFRESH_SECRET={{JWT_REFRESH_SECRET}}
+{{/if}}
+JWT_REFRESH_EXPIRES_IN=30d
+{{/if}}
+JWT_ISSUER={{APP_SLUG}}
+JWT_AUDIENCE={{APP_SLUG}}-app
+# Lifetime of one-time links sent by email.
+PASSWORD_RESET_TOKEN_TTL=1h
+EMAIL_VERIFICATION_TOKEN_TTL=24h
+{{#if HASH_CONFIGURABLE}}
+
+# ── Password hashing ─────────────────────────────────────────────────────────
+# argon2 | bcrypt. Existing hashes keep working after a switch and are upgraded at the next login.
+PASSWORD_HASH_ALGORITHM=argon2
+BCRYPT_ROUNDS=12
+{{/if}}
+{{#if HASH_BCRYPT}}
+
+# ── Password hashing (bcrypt) ────────────────────────────────────────────────
+BCRYPT_ROUNDS=12
+{{/if}}
+{{#if SEC_LOCKOUT}}
+
+# ── Account lockout ──────────────────────────────────────────────────────────
+ACCOUNT_LOCKOUT_MAX_ATTEMPTS=5
+ACCOUNT_LOCKOUT_MINUTES=15
+{{/if}}
+
+# ── Seed (npm run db:seed) ───────────────────────────────────────────────────
+SEED_ADMIN_EMAIL=admin@example.com
+{{#if ENV_EXAMPLE}}
+SEED_ADMIN_PASSWORD=
+{{else}}
+SEED_ADMIN_PASSWORD=ChangeMe123!
+{{/if}}
+SEED_ADMIN_NAME=Administrator
+{{/if}}
+{{#if SWAGGER}}
+
+# ── API documentation ────────────────────────────────────────────────────────
+# Served at /<API_PREFIX>/<SWAGGER_PATH> (e.g. /api/docs). Disable in production if the API is private.
+SWAGGER_ENABLED=true
+SWAGGER_PATH=docs
+{{/if}}

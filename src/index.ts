@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { select } from '@inquirer/prompts';
 import chalk from 'chalk';
+import { DATABASE_LABELS } from './backend/context.js';
 import { generateBackend, renderBackend } from './backend/generator.js';
 import { describeMicroservices, generateMicroservices, planMicroservices } from './backend/microservices.js';
 import { collectBackendOptions, describeBackend } from './backend/prompts.js';
@@ -84,7 +85,8 @@ async function runBackend(flags: CliFlags): Promise<void> {
     warnings.forEach(w => log.warn(w));
     log.newline();
     log.info(chalk.cyan(`cd ${rel.startsWith('..') ? options.projectDir : rel}`));
-    log.info(chalk.cyan('docker compose up -d') + chalk.dim('            # database server + Redis'));
+    if (options.docker) log.info(chalk.cyan('docker compose up -d db redis') + chalk.dim('   # database server + Redis'));
+    else log.dim(`# start ${DATABASE_LABELS[options.database]} + Redis, create the databases (see README.md)`);
     log.info(chalk.cyan('npm install && npm run install:all && npm run setup'));
     log.info(chalk.cyan('npm run dev') + chalk.dim('                     # gateway + every service'));
     log.newline();
@@ -103,7 +105,8 @@ async function runBackend(flags: CliFlags): Promise<void> {
   log.newline();
   log.info(chalk.cyan(`cd ${relative}`));
   if (!summary.dependenciesInstalled) log.info(chalk.cyan('npm install'));
-  log.dim('# set DATABASE_URL in .env (a development .env with fresh secrets was created)');
+  if (options.docker) log.info(chalk.cyan(`docker compose up -d db${options.redis ? ' redis' : ''}`) + chalk.dim(`   # ${DATABASE_LABELS[options.database]}${options.redis ? ' + Redis' : ''}`));
+  else log.dim(`# start ${DATABASE_LABELS[options.database]}${options.redis ? ' + Redis' : ''} and set DATABASE_URL${options.redis ? ' / REDIS_URL' : ''} in .env (a development .env with fresh secrets was created)`);
   if (orm !== 'mongoose') log.info(chalk.cyan('npm run db:deploy'));
   if (options.auth !== 'none' || orm === 'mongoose') log.info(chalk.cyan('npm run db:seed'));
   log.info(chalk.cyan('npm run dev'));
@@ -149,11 +152,12 @@ async function runFullstack(flags: CliFlags): Promise<void> {
   warnings.forEach(w => log.warn(w));
   log.newline();
   log.info(chalk.cyan(`cd ${relative}`));
-  if (options.backend.deployment === 'microservices') {
-    log.info(chalk.cyan('docker compose -f backend/docker-compose.yml up -d') + chalk.dim('   # database server + Redis'));
+  const b = options.backend;
+  if (b.docker) log.info(chalk.cyan(`docker compose -f backend/docker-compose.yml up -d db${b.redis ? ' redis' : ''}`) + chalk.dim(`   # ${DATABASE_LABELS[b.database]}${b.redis ? ' + Redis' : ''}`));
+  else log.dim(`# start ${DATABASE_LABELS[b.database]}${b.redis ? ' + Redis' : ''} yourself – see README.md`);
+  if (b.deployment === 'microservices') {
     log.info(chalk.cyan('cd backend && npm install && npm run install:all && npm run setup && npm run dev'));
   } else {
-    log.info(chalk.cyan('docker compose up -d db') + chalk.dim('        # or set DATABASE_URL in backend/.env'));
     log.info(chalk.cyan(`cd backend && npm install${options.backend.orm === 'mongoose' ? '' : ' && npm run db:deploy'} && npm run db:seed && npm run dev`));
   }
   log.info(chalk.cyan('cd mobile && npm start') + chalk.dim('         # then npm run android / npm run ios'));

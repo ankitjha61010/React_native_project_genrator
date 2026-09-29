@@ -1,39 +1,60 @@
 import { OpenAPIRegistry, OpenApiGeneratorV31, type RouteConfig } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 import { config } from '{{IMPORT:config.env}}';
-import { {{#if AUTH}}BEARER, {{/if}}envelope, errorResponses, json, pageMetaSchema } from '{{IMPORT:ex.docs.helpers}}';
-import { routeGroups } from '{{IMPORT:ex.routes}}';
+{{#if AUTH_API}}
+import { authDocs } from '{{IMPORT:ex.auth.docs}}';
+{{/if}}
+{{#if CHAT}}
+import { chatDocs } from '{{IMPORT:ex.chat.docs}}';
+{{/if}}
+{{#if DEVICES}}
+import { devicesDocs } from '{{IMPORT:ex.devices.docs}}';
+{{/if}}
+import { healthDocs } from '{{IMPORT:ex.health.docs}}';
+{{#if LEGAL}}
+import { legalDocs } from '{{IMPORT:ex.legal.docs}}';
+{{/if}}
+{{#if NOTIFICATIONS}}
+import { notificationsDocs } from '{{IMPORT:ex.notifications.docs}}';
+{{/if}}
+import { {{#if AUTH}}BEARER, {{/if}}envelope, errorResponses, json, pageMetaSchema, type ApiDocGroup } from '{{IMPORT:ex.docs.helpers}}';
+{{#if USERS_API}}
+import { usersDocs } from '{{IMPORT:ex.users.docs}}';
+{{/if}}
 
-/** Builds the OpenAPI 3.1 document from the route definitions (nothing to keep in sync by hand). */
+/** Every documented feature – add a new feature's docs here. */
+const groups: ApiDocGroup[] = [healthDocs{{#if AUTH_API}}, authDocs{{/if}}{{#if USERS_API}}, usersDocs{{/if}}{{#if CHAT}}, chatDocs{{/if}}{{#if DEVICES}}, devicesDocs{{/if}}{{#if NOTIFICATIONS}}, notificationsDocs{{/if}}{{#if LEGAL}}, legalDocs{{/if}}];
+
+/** Builds the OpenAPI 3.1 document shown by Swagger UI. */
 export function buildOpenApiDocument() {
   const registry = new OpenAPIRegistry();
 {{#if AUTH}}
   registry.registerComponent('securitySchemes', 'bearerAuth', { type: 'http', scheme: 'bearer', bearerFormat: 'JWT', description: 'Access token from a sign-in endpoint' });
 {{/if}}
 
-  for (const group of routeGroups) {
-    for (const spec of group.routes) {
-      const data = spec.response ?? z.null();
-      const body = spec.paginated ? envelope(z.array(data), pageMetaSchema) : envelope(data);
+  for (const { tag, endpoints } of groups) {
+    for (const doc of endpoints) {
+      const data = doc.response ?? z.null();
+      const body = doc.paginated ? envelope(z.array(data), pageMetaSchema) : envelope(data);
       const request: RouteConfig['request'] = {
-        ...(spec.params ? { params: spec.params as z.ZodObject } : {}),
-        ...(spec.query ? { query: spec.query as z.ZodObject } : {}),
-        ...(spec.body ? { body: json(spec.body) } : {}),
+        ...(doc.params ? { params: doc.params } : {}),
+        ...(doc.query ? { query: doc.query } : {}),
+        ...(doc.body ? { body: json(doc.body) } : {}),
 {{#if UPLOADS}}
-        ...(spec.upload ? { body: { content: { 'multipart/form-data': { schema: z.object({ [spec.upload]: z.string().meta({ format: 'binary' }) }) } } } } : {}),
+        ...(doc.upload ? { body: { content: { 'multipart/form-data': { schema: z.object({ [doc.upload]: z.string().meta({ format: 'binary' }) }) } } } } : {}),
 {{/if}}
       };
       registry.registerPath({
-        method: spec.method,
+        method: doc.method,
         // Express `:id` → OpenAPI `{id}`
-        path: `${group.prefix}${spec.path}`.replace(/:(\w+)/g, '{$1}') || '/',
-        tags: [group.tag],
-        summary: spec.summary,
+        path: doc.path.replace(/:(\w+)/g, '{$1}'),
+        tags: [tag],
+        summary: doc.summary,
 {{#if AUTH}}
-        ...(spec.auth || spec.permission ? { security: BEARER } : {}),
+        ...(doc.auth ? { security: BEARER } : {}),
 {{/if}}
         request,
-        responses: { [spec.status ?? 200]: { description: spec.message, ...json(body) }, ...errorResponses(...(spec.errors ?? [])) },
+        responses: { [doc.status ?? 200]: { description: 'Success', ...json(body) }, ...errorResponses(...(doc.errors ?? [])) },
       });
     }
   }

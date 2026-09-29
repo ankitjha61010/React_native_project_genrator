@@ -6,6 +6,10 @@ export const StorageKeys = {
   LANGUAGE: '@{{APP_SLUG}}/language',
   PENDING_NOTIFICATION_TAP: '@{{APP_SLUG}}/pending-notification-tap',
   NOTIFICATION_INBOX: '@{{APP_SLUG}}/notification-inbox',
+{{#if NOTIFICATIONS}}
+  /** Identifies this app install (POST /devices). */
+  DEVICE_ID: '@{{APP_SLUG}}/device-id',
+{{/if}}
 {{#if THEME_CONTEXT}}
   THEME_MODE: '@{{APP_SLUG}}/theme-mode',
 {{/if}}

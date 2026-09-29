@@ -18,7 +18,7 @@ export class Init1767225600000 implements MigrationInterface {
     await queryRunner.query(`CREATE INDEX "IDX_3ddc983c5f7bcf132fd8732c3f" ON "refresh_tokens"  ("user_id") `);
     await queryRunner.query(`CREATE INDEX "IDX_d5e27da0cd39bc3bb2811fc8ba" ON "refresh_tokens"  ("family_id") `);
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
     await queryRunner.query(`CREATE TABLE "verification_codes" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "purpose" character varying(32) NOT NULL, "target" character varying(255) NOT NULL, "code_hash" character(64) NOT NULL, "attempts" integer NOT NULL DEFAULT '0', "expires_at" TIMESTAMP WITH TIME ZONE NOT NULL, "used_at" TIMESTAMP WITH TIME ZONE, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_18741b6b8bf1680dbf5057421d7" PRIMARY KEY ("id"))`);
     await queryRunner.query(`CREATE INDEX "IDX_54284002da260979b2d18f5b5f" ON "verification_codes"  ("purpose", "target") `);
 {{/if}}
@@ -28,15 +28,15 @@ export class Init1767225600000 implements MigrationInterface {
     await queryRunner.query(`CREATE UNIQUE INDEX "IDX_4508a993f9340ca4e7547db4ff" ON "social_accounts"  ("provider", "provider_user_id") `);
 {{/if}}
 {{#if CHAT}}
-    await queryRunner.query(`CREATE TABLE "conversations" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "title" character varying(120), "is_group" boolean NOT NULL DEFAULT false, "avatar_url" character varying(1024), "created_by_id" uuid NOT NULL, "last_message_at" TIMESTAMP WITH TIME ZONE, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_ee34f4f7ced4ec8681f26bf04ef" PRIMARY KEY ("id"))`);
-    await queryRunner.query(`CREATE TABLE "conversation_members" ("conversation_id" uuid NOT NULL, "user_id" uuid NOT NULL, "last_read_at" TIMESTAMP WITH TIME ZONE, "cleared_at" TIMESTAMP WITH TIME ZONE, "joined_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_5fa9076068b6f2a26fb793d2439" PRIMARY KEY ("conversation_id", "user_id"))`);
+    await queryRunner.query(`CREATE TABLE "conversations" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), {{#if GROUP_CHAT}}"title" character varying(120), "is_group" boolean NOT NULL DEFAULT false, "avatar_url" character varying(1024), {{/if}}"created_by_id" uuid NOT NULL, "last_message_at" TIMESTAMP WITH TIME ZONE, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_ee34f4f7ced4ec8681f26bf04ef" PRIMARY KEY ("id"))`);
+    await queryRunner.query(`CREATE TABLE "conversation_members" ("conversation_id" uuid NOT NULL, "user_id" uuid NOT NULL, {{#if GROUP_CHAT}}"role" character varying(16) NOT NULL DEFAULT 'member', {{/if}}"last_read_at" TIMESTAMP WITH TIME ZONE, "cleared_at" TIMESTAMP WITH TIME ZONE, "joined_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_5fa9076068b6f2a26fb793d2439" PRIMARY KEY ("conversation_id", "user_id"))`);
     await queryRunner.query(`CREATE INDEX "IDX_a46c76be8f62c4b00a835cdc37" ON "conversation_members"  ("user_id") `);
     await queryRunner.query(`CREATE TABLE "messages" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "conversation_id" uuid NOT NULL, "sender_id" uuid NOT NULL, "type" character varying(16) NOT NULL, "text" text, "media_url" character varying(1024), "thumbnail_url" character varying(1024), "file_name" character varying(255), "file_size" character varying(32), "duration" integer, "crop" jsonb, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "deleted_at" TIMESTAMP WITH TIME ZONE, CONSTRAINT "PK_18325f38ae6de43878487eff986" PRIMARY KEY ("id"))`);
     await queryRunner.query(`CREATE INDEX "IDX_22133395bd13b970ccd0c34ab2" ON "messages"  ("sender_id") `);
     await queryRunner.query(`CREATE INDEX "IDX_8584a1974e1ca95f4861d975ff" ON "messages"  ("conversation_id", "created_at") `);
 {{/if}}
 {{#if NOTIFICATIONS}}
-    await queryRunner.query(`CREATE TABLE "devices" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "user_id" uuid NOT NULL, "token" character varying(512) NOT NULL, "platform" character varying(16) NOT NULL, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "UQ_653b03d2083d8c66240b8df066e" UNIQUE ("token"), CONSTRAINT "PK_b1514758245c12daf43486dd1f0" PRIMARY KEY ("id"))`);
+    await queryRunner.query(`CREATE TABLE "devices" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "user_id" uuid NOT NULL, "device_id" character varying(128) NOT NULL, "token" character varying(512), "platform" character varying(16) NOT NULL, "device_name" character varying(120), "os_version" character varying(32), "app_version" character varying(32), "last_active_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "UQ_devices_device_id" UNIQUE ("device_id"), CONSTRAINT "UQ_653b03d2083d8c66240b8df066e" UNIQUE ("token"), CONSTRAINT "PK_b1514758245c12daf43486dd1f0" PRIMARY KEY ("id"))`);
     await queryRunner.query(`CREATE INDEX "IDX_5e9bee993b4ce35c3606cda194" ON "devices"  ("user_id") `);
     await queryRunner.query(`CREATE TABLE "notifications" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "user_id" uuid NOT NULL, "type" character varying(20) NOT NULL, "title" character varying(200) NOT NULL, "body" character varying(1000) NOT NULL, "data" jsonb NOT NULL, "read_at" TIMESTAMP WITH TIME ZONE, "broadcast_id" uuid, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_6a72c3c0f683f6462415e653c3a" PRIMARY KEY ("id"))`);
     await queryRunner.query(`CREATE INDEX "IDX_5323ccd23482802bd9759e88ee" ON "notifications"  ("user_id", "read_at") `);
@@ -65,19 +65,19 @@ export class Init1767225600000 implements MigrationInterface {
 {{#if AUTH_REFRESH}}
     await queryRunner.query(`CREATE TABLE \`refresh_tokens\` (\`id\` char(36) NOT NULL, \`user_id\` varchar(36) NOT NULL, \`token_hash\` char(64) NOT NULL, \`family_id\` char(36) NOT NULL, \`expires_at\` datetime NOT NULL, \`revoked_at\` datetime NULL, \`replaced_by_id\` char(36) NULL, \`user_agent\` varchar(255) NULL, \`ip\` varchar(45) NULL, \`created_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), INDEX \`IDX_3ddc983c5f7bcf132fd8732c3f\` (\`user_id\`), INDEX \`IDX_d5e27da0cd39bc3bb2811fc8ba\` (\`family_id\`), UNIQUE INDEX \`IDX_a7838d2ba25be1342091b6695f\` (\`token_hash\`), PRIMARY KEY (\`id\`)) ENGINE=InnoDB`);
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
     await queryRunner.query(`CREATE TABLE \`verification_codes\` (\`id\` varchar(36) NOT NULL, \`purpose\` varchar(32) NOT NULL, \`target\` varchar(255) NOT NULL, \`code_hash\` char(64) NOT NULL, \`attempts\` int NOT NULL DEFAULT '0', \`expires_at\` datetime NOT NULL, \`used_at\` datetime NULL, \`created_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), INDEX \`IDX_54284002da260979b2d18f5b5f\` (\`purpose\`, \`target\`), PRIMARY KEY (\`id\`)) ENGINE=InnoDB`);
 {{/if}}
 {{#if SOCIAL}}
     await queryRunner.query(`CREATE TABLE \`social_accounts\` (\`id\` varchar(36) NOT NULL, \`user_id\` varchar(36) NOT NULL, \`provider\` varchar(20) NOT NULL, \`provider_user_id\` varchar(255) NOT NULL, \`email\` varchar(255) NULL, \`created_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), INDEX \`IDX_05a0f282d3bed93ca048a7e54d\` (\`user_id\`), UNIQUE INDEX \`IDX_4508a993f9340ca4e7547db4ff\` (\`provider\`, \`provider_user_id\`), PRIMARY KEY (\`id\`)) ENGINE=InnoDB`);
 {{/if}}
 {{#if CHAT}}
-    await queryRunner.query(`CREATE TABLE \`conversations\` (\`id\` varchar(36) NOT NULL, \`title\` varchar(120) NULL, \`is_group\` tinyint NOT NULL DEFAULT 0, \`avatar_url\` varchar(1024) NULL, \`created_by_id\` char(36) NOT NULL, \`last_message_at\` datetime NULL, \`created_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), \`updated_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6), PRIMARY KEY (\`id\`)) ENGINE=InnoDB`);
-    await queryRunner.query(`CREATE TABLE \`conversation_members\` (\`conversation_id\` varchar(36) NOT NULL, \`user_id\` varchar(36) NOT NULL, \`last_read_at\` datetime NULL, \`cleared_at\` datetime NULL, \`joined_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), INDEX \`IDX_a46c76be8f62c4b00a835cdc37\` (\`user_id\`), PRIMARY KEY (\`conversation_id\`, \`user_id\`)) ENGINE=InnoDB`);
+    await queryRunner.query(`CREATE TABLE \`conversations\` (\`id\` varchar(36) NOT NULL, {{#if GROUP_CHAT}}\`title\` varchar(120) NULL, \`is_group\` tinyint NOT NULL DEFAULT 0, \`avatar_url\` varchar(1024) NULL, {{/if}}\`created_by_id\` char(36) NOT NULL, \`last_message_at\` datetime NULL, \`created_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), \`updated_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6), PRIMARY KEY (\`id\`)) ENGINE=InnoDB`);
+    await queryRunner.query(`CREATE TABLE \`conversation_members\` (\`conversation_id\` varchar(36) NOT NULL, \`user_id\` varchar(36) NOT NULL, {{#if GROUP_CHAT}}\`role\` varchar(16) NOT NULL DEFAULT 'member', {{/if}}\`last_read_at\` datetime NULL, \`cleared_at\` datetime NULL, \`joined_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), INDEX \`IDX_a46c76be8f62c4b00a835cdc37\` (\`user_id\`), PRIMARY KEY (\`conversation_id\`, \`user_id\`)) ENGINE=InnoDB`);
     await queryRunner.query(`CREATE TABLE \`messages\` (\`id\` varchar(36) NOT NULL, \`conversation_id\` varchar(36) NOT NULL, \`sender_id\` varchar(36) NOT NULL, \`type\` varchar(16) NOT NULL, \`text\` text NULL, \`media_url\` varchar(1024) NULL, \`thumbnail_url\` varchar(1024) NULL, \`file_name\` varchar(255) NULL, \`file_size\` varchar(32) NULL, \`duration\` int NULL, \`crop\` json NULL, \`created_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), \`deleted_at\` datetime NULL, INDEX \`IDX_22133395bd13b970ccd0c34ab2\` (\`sender_id\`), INDEX \`IDX_8584a1974e1ca95f4861d975ff\` (\`conversation_id\`, \`created_at\`), PRIMARY KEY (\`id\`)) ENGINE=InnoDB`);
 {{/if}}
 {{#if NOTIFICATIONS}}
-    await queryRunner.query(`CREATE TABLE \`devices\` (\`id\` varchar(36) NOT NULL, \`user_id\` varchar(36) NOT NULL, \`token\` varchar(512) NOT NULL, \`platform\` varchar(16) NOT NULL, \`created_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), \`updated_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6), INDEX \`IDX_5e9bee993b4ce35c3606cda194\` (\`user_id\`), UNIQUE INDEX \`IDX_653b03d2083d8c66240b8df066\` (\`token\`), PRIMARY KEY (\`id\`)) ENGINE=InnoDB`);
+    await queryRunner.query(`CREATE TABLE \`devices\` (\`id\` varchar(36) NOT NULL, \`user_id\` varchar(36) NOT NULL, \`device_id\` varchar(128) NOT NULL, \`token\` varchar(512) NULL, \`platform\` varchar(16) NOT NULL, \`device_name\` varchar(120) NULL, \`os_version\` varchar(32) NULL, \`app_version\` varchar(32) NULL, \`last_active_at\` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP, \`created_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), \`updated_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6), INDEX \`IDX_5e9bee993b4ce35c3606cda194\` (\`user_id\`), UNIQUE INDEX \`IDX_2667f40edb344d6f274a0d42b6\` (\`device_id\`), UNIQUE INDEX \`IDX_653b03d2083d8c66240b8df066\` (\`token\`), PRIMARY KEY (\`id\`)) ENGINE=InnoDB`);
     await queryRunner.query(`CREATE TABLE \`notifications\` (\`id\` varchar(36) NOT NULL, \`user_id\` varchar(36) NOT NULL, \`type\` varchar(20) NOT NULL, \`title\` varchar(200) NOT NULL, \`body\` varchar(1000) NOT NULL, \`data\` json NOT NULL, \`read_at\` datetime NULL, \`broadcast_id\` char(36) NULL, \`created_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), INDEX \`IDX_5323ccd23482802bd9759e88ee\` (\`user_id\`, \`read_at\`), INDEX \`IDX_310667f935698fcd8cb319113a\` (\`user_id\`, \`created_at\`), PRIMARY KEY (\`id\`)) ENGINE=InnoDB`);
     await queryRunner.query(`CREATE TABLE \`broadcasts\` (\`id\` varchar(36) NOT NULL, \`title\` varchar(200) NOT NULL, \`body\` varchar(1000) NOT NULL, \`type\` varchar(20) NOT NULL, \`data\` json NOT NULL, \`audience\` varchar(16) NOT NULL, \`sent_by_id\` char(36) NOT NULL, \`recipient_count\` int NOT NULL DEFAULT '0', \`created_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), PRIMARY KEY (\`id\`)) ENGINE=InnoDB`);
 {{/if}}
@@ -139,7 +139,7 @@ export class Init1767225600000 implements MigrationInterface {
     await queryRunner.query(`DROP INDEX "public"."IDX_05a0f282d3bed93ca048a7e54d"`);
     await queryRunner.query(`DROP TABLE "social_accounts"`);
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
     await queryRunner.query(`DROP INDEX "public"."IDX_54284002da260979b2d18f5b5f"`);
     await queryRunner.query(`DROP TABLE "verification_codes"`);
 {{/if}}
@@ -176,6 +176,7 @@ export class Init1767225600000 implements MigrationInterface {
     await queryRunner.query(`DROP INDEX \`IDX_5323ccd23482802bd9759e88ee\` ON \`notifications\``);
     await queryRunner.query(`DROP TABLE \`notifications\``);
     await queryRunner.query(`DROP INDEX \`IDX_653b03d2083d8c66240b8df066\` ON \`devices\``);
+    await queryRunner.query(`DROP INDEX \`IDX_2667f40edb344d6f274a0d42b6\` ON \`devices\``);
     await queryRunner.query(`DROP INDEX \`IDX_5e9bee993b4ce35c3606cda194\` ON \`devices\``);
     await queryRunner.query(`DROP TABLE \`devices\``);
 {{/if}}
@@ -192,7 +193,7 @@ export class Init1767225600000 implements MigrationInterface {
     await queryRunner.query(`DROP INDEX \`IDX_05a0f282d3bed93ca048a7e54d\` ON \`social_accounts\``);
     await queryRunner.query(`DROP TABLE \`social_accounts\``);
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
     await queryRunner.query(`DROP INDEX \`IDX_54284002da260979b2d18f5b5f\` ON \`verification_codes\``);
     await queryRunner.query(`DROP TABLE \`verification_codes\``);
 {{/if}}

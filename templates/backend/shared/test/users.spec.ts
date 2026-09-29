@@ -50,18 +50,26 @@ describe('users', () => {
     await expect(h.users.setAvatar(user.id, { ...image, mimeType: 'application/pdf' })).rejects.toMatchObject({ code: 'INVALID_FILE_TYPE' });
   });
 
-  it('searches other users by name', async () => {
+  it('lists other users A → Z, filtered by name and paginated', async () => {
     const me = await seed('me@example.com');
+    await h.repositories.users.create({ email: 'zed@example.com', name: 'Zed' });
     await h.repositories.users.create({ email: 'ada@example.com', name: 'Ada Lovelace' });
-    expect(await h.users.search(me.id, 'ada')).toEqual([expect.objectContaining({ name: 'Ada Lovelace' })]);
-    expect(await h.users.search(me.id, 'me')).toEqual([]);
+
+    const all = await h.users.search(me.id, { page: 1, limit: 1 });
+    expect(all.items).toEqual([expect.objectContaining({ name: 'Ada Lovelace' })]);
+    expect(all.meta).toMatchObject({ total: 2, hasNextPage: true });
+    expect((await h.users.search(me.id, { page: 2, limit: 1 })).items).toEqual([expect.objectContaining({ name: 'Zed' })]);
+    expect((await h.users.search(me.id, { page: 1, limit: 10, search: 'ada' })).items).toHaveLength(1);
+    expect((await h.users.search(me.id, { page: 1, limit: 10, search: 'me' })).items).toEqual([]);
   });
 
+{{#if DELETE_ACCOUNT}}
   it('deletes the own account', async () => {
     const user = await seed('jane@example.com');
     await h.users.deleteAccount(user.id);
     expect(await h.repositories.users.findById(user.id)).toBeNull();
   });
+{{/if}}
 
   it('signs the user out everywhere when an admin changes their role', async () => {
     const admin = await seed('admin@example.com');

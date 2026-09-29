@@ -2,6 +2,8 @@ import { env } from '{{IMPORT:config.env}}';
 
 export const appConfig = {
   appName: '{{DISPLAY_NAME}}',
+  /** Sent with the device registration – keep in sync with versionName (Android) / MARKETING_VERSION (iOS). */
+  version: '1.0.0',
   api: {
     baseUrl: env.apiBaseUrl,
     timeoutMs: 15_000,

@@ -2,9 +2,11 @@ import { Schema, model, type InferSchemaType, type Types } from 'mongoose';
 
 const conversationSchema = new Schema(
   {
+{{#if GROUP_CHAT}}
     title: { type: String, default: null, maxlength: 120 },
     isGroup: { type: Boolean, required: true, default: false },
     avatarUrl: { type: String, default: null, maxlength: 1024 },
+{{/if}}
     createdById: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     lastMessageAt: { type: Date, default: null },
   },
@@ -18,6 +20,9 @@ const memberSchema = new Schema(
   {
     conversationId: { type: Schema.Types.ObjectId, ref: 'Conversation', required: true },
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+{{#if GROUP_CHAT}}
+    role: { type: String, required: true, default: 'member', maxlength: 16 },
+{{/if}}
     lastReadAt: { type: Date, default: null },
     clearedAt: { type: Date, default: null },
     joinedAt: { type: Date, required: true, default: Date.now },

@@ -8,6 +8,29 @@
 
 ---
 
+## Quick start
+
+```sh
+{{#if DOCKER_COMPOSE}}
+docker compose up -d db{{#if REDIS}} redis{{/if}}   # {{DATABASE_LABEL}}{{#if REDIS}} + Redis{{/if}} in Docker (docker-compose.yml)
+{{/if}}
+npm install
+{{#if SQL}}
+npm run db:deploy      # create the tables
+{{/if}}
+{{#if USERS_API}}
+npm run db:seed        # {{#if AUTH}}the administrator from SEED_ADMIN_* in .env{{else}}a few demo users{{/if}}
+{{/if}}
+npm run dev            # http://localhost:{{PORT}}/api/v1{{#if SWAGGER}} · docs: /api/docs{{/if}}
+```
+{{#if !DOCKER_COMPOSE}}
+
+You need {{DATABASE_LABEL}}{{#if REDIS}} and Redis{{/if}} running – set `DATABASE_URL`{{#if REDIS}} / `REDIS_URL`{{/if}} in `.env` (see [Database setup](#database-setup)).
+{{/if}}
+
+**New to the code?** Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) – it follows one request through every file and
+shows how to add an endpoint.
+
 ## Table of contents
 
 1. [Prerequisites](#prerequisites)
@@ -40,6 +63,12 @@
 {{#if MONGO}}
 - MongoDB **6+**
 {{/if}}
+{{#if REDIS}}
+- Redis **6.2+**
+{{/if}}
+{{#if DOCKER_COMPOSE}}
+- Or just [Docker](https://docs.docker.com/get-docker/): `docker compose up -d db{{#if REDIS}} redis{{/if}}` starts {{#if REDIS}}both{{else}}the database{{/if}} with the settings already in `.env`.
+{{/if}}
 
 ## Installation
 
@@ -66,6 +95,9 @@ All configuration lives in `.env` and is validated at startup by `env.ts` (confi
 | `LOG_LEVEL` | `fatal` … `trace`, `silent` |
 | `TRUST_PROXY` | `true` behind a reverse proxy / load balancer |
 | `DATABASE_URL` | {{DATABASE_LABEL}} connection string |
+{{#if REDIS}}
+| `REDIS_URL` | Redis connection string (rate limits, {{#if SOCKET_SERVER}}Socket.IO, {{/if}}cache{{#if REDIS_CODES}}, verification codes{{/if}}{{#if EVENTS}}, events between services{{/if}}) |
+{{/if}}
 {{#if SEC_CORS}}
 | `CORS_ORIGINS` | Comma separated browser origins allowed to call the API |
 {{/if}}
@@ -106,6 +138,11 @@ Generate a secret: `openssl rand -base64 48`. Never commit `.env` or reuse devel
 
 ## Database setup
 
+{{#if DOCKER_COMPOSE}}
+With Docker, `docker compose up -d db` starts {{DATABASE_LABEL}} with the database already created – skip to the commands below.
+Otherwise:
+
+{{/if}}
 {{#if POSTGRES}}
 Create the database (or point `DATABASE_URL` at an existing one):
 
@@ -191,10 +228,14 @@ Every response has the same shape:
 ```
 
 ```json
-{ "success": false, "message": "Validation failed", "code": "VALIDATION_ERROR", "errors": [{ "field": "email", "message": "must be a valid email" }] }
+{ "success": false, "message": "Validation failed", "data": null, "code": "VALIDATION_ERROR", "errors": [{ "field": "email", "message": "must be a valid email" }] }
 ```
 
-`code` is stable and machine readable – use it in the client instead of the message. Every response carries an
+`code` is stable and machine readable – use it in the client instead of the message.
+
+**Messages** – no route writes its own text. Every success / error message is a constant in the feature's
+`<feature>.messages.ts` (e.g. `USERS_MESSAGES.profileUpdated`, `USERS_MESSAGES.notFound`); messages every feature shares
+(validation, 401 / 403 / 404, rate limit…) are in `messages.ts` of the core. Change the wording there. Every response carries an
 `X-Request-Id` header (also in the logs).
 
 | Area | Routes |
@@ -202,15 +243,21 @@ Every response has the same shape:
 | Health | `GET /api/v1/health` (503 when the database is down) |
 {{#if AUTH}}
 | Auth | {{AUTH_METHODS_TEXT}}{{#if AUTH_REFRESH}} · refresh · logout / logout-all{{else}} · logout{{/if}} · me |
-| Users | own profile (`PATCH /users/me`, avatar upload, delete account), user search, admin CRUD |
+| Users | own profile (`PATCH /users/me`, avatar upload{{#if DELETE_ACCOUNT}}, delete account{{/if}}), user list for "New chat" (paginated search), admin CRUD |
 {{else}}
 | Users | CRUD (no authentication – protect it before going live) |
 {{/if}}
 {{#if CHAT}}
-| Chat | conversations, messages (text / media), read receipts, uploads · live over Socket.IO |
+| Chat | conversations, messages (text / media), read receipts, uploads{{#if GROUP_CHAT}}, groups (admins / members){{/if}} · live over Socket.IO |
+{{/if}}
+{{#if DEVICES}}
+| Devices | the user's devices (one per app install): FCM token, platform, model, OS / app version, last active |
 {{/if}}
 {{#if NOTIFICATIONS}}
-| Notifications | FCM devices, inbox (unread count, read, delete), admin broadcasts |
+| Notifications | inbox (unread count, read, delete), pushes to every device, admin broadcasts |
+{{/if}}
+{{#if LEGAL}}
+| Legal | `GET /api/v1/legal` – Terms & Conditions / Privacy Policy links (pages in `public/`) |
 {{/if}}
 
 {{#if AUTH}}
@@ -275,18 +322,25 @@ In production, missing email / SMS providers are logged as warnings – the code
 
 ## Chat
 
-Direct and group conversations with text, photos, videos, voice notes and documents. Upload the file first
+{{#if GROUP_CHAT}}Direct and group conversations{{else}}Direct conversations{{/if}} with text, photos, videos, voice notes and documents. Upload the file first
 (`POST /chat/upload`), then send a message with its `url` as `mediaUrl`. Members receive `chat:receive_message` over
 Socket.IO (connect with `auth: { token }`); typing indicators, online status and read receipts are Socket.IO events too.
 {{#if NOTIFICATIONS}}
 Members who are offline get a push notification that opens the conversation.
+{{/if}}
+{{#if GROUP_CHAT}}
+
+Groups (`/chat/groups`): the creator is the first admin. Admins rename the group, change its image, add / remove members
+and make other members admin. When the last admin leaves (or deletes their account), the longest-standing member becomes
+admin; when the last member leaves, the group is deleted. Members get `chat:conversation_updated` and reload the group.
 {{/if}}
 {{/if}}
 {{#if NOTIFICATIONS}}
 
 ## Notifications
 
-The app registers its FCM token (`POST /notifications/devices`) after login and removes it on logout. Use
+The app registers its device (`POST /devices`: install id, FCM token, platform, model, versions) after every sign-in,
+on app start and when the token changes, and removes it on logout (`DELETE /devices/:deviceId`). Use
 `NotificationsService.notify(userId, { type, title, body, data })` from any feature – it stores an inbox entry, emits
 `notification:new` and pushes to the user's devices. Admins send broadcasts with `POST /notifications/broadcast`.
 Tokens FCM rejects are deleted automatically.
@@ -299,10 +353,15 @@ With `API_ENCRYPTION_ENABLED=true`, JSON bodies are exchanged as `{ "data": "<AE
 `API_ENCRYPTION_KEY` (32 chars) and `API_ENCRYPTION_IV` (16 chars) – set the **same** values in the app's `.env`.
 This only hides payloads from casual inspection; always use HTTPS.
 {{/if}}
-{{#if REALTIME}}
+{{#if SOCKET_SERVER}}
 
+{{#if REDIS}}
+> Socket.IO uses the Redis adapter, so events reach users connected to any instance. Online status (`isOnline`)
+> is still tracked per process.
+{{else}}
 > Online status and Socket.IO rooms live in the process memory. When running several instances, add the Socket.IO
 > Redis adapter so events reach every instance.
+{{/if}}
 {{/if}}
 
 ## Security
@@ -330,8 +389,41 @@ This only hides payloads from casual inspection; always use HTTPS.
 - **Secrets** – only in environment variables; the logger redacts passwords, tokens and `Authorization` headers.
 {{#if SEC_ANY_RATE_LIMIT}}
 
+{{#if REDIS}}
+> The rate limit counters are kept in Redis, so the limits apply across every instance.
+{{else}}
 > The rate limiter keeps its counters in memory, per process. When running several instances, use a shared store
 > (e.g. Redis) so limits apply across instances.
+{{/if}}
+{{/if}}
+{{#if REDIS}}
+
+## Redis
+
+One connection (`redis.ts`, `REDIS_URL`) is shared by:
+
+{{#if SEC_ANY_RATE_LIMIT}}
+- **Rate limits** – counters shared by every server instance.
+{{/if}}
+{{#if SOCKET_SERVER}}
+- **Socket.IO** – the Redis adapter delivers events to users connected to any instance.
+{{/if}}
+{{#if REDIS_CODES}}
+- **Verification / OTP codes** – stored with an expiry, Redis deletes them by itself (no database table).
+{{/if}}
+{{#if EVENTS}}
+- **Events between the services** (publish / subscribe).
+{{/if}}
+- **Cache** – `cache.ts`, for any service:
+
+```ts
+import { cache } from '…/cache.js';
+
+const stats = await cache.remember('stats:today', 60, () => loadStats()); // cached for 60 s
+await cache.del('stats:today'); // after the data changed
+```
+
+The tests run without Redis (`REDIS_URL` is empty there): rate limits and the cache fall back to memory.
 {{/if}}
 
 ## Logging
@@ -362,6 +454,22 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the rules of the architectu
 
 ## Deployment
 
+{{#if DOCKER}}
+**With Docker** – the `Dockerfile` builds a small production image (compiled code + runtime dependencies only):
+
+```sh
+docker build -t {{APP_SLUG}} .
+docker run --env-file .env -e NODE_ENV=production -p {{PORT}}:{{PORT}} {{APP_SLUG}}
+```
+
+{{#if !MICROSERVICE}}
+`docker compose up -d --build` runs the API together with {{DATABASE_LABEL}}{{#if REDIS}} and Redis{{/if}} (the API container reaches them by
+service name – see `docker-compose.yml`). Run {{#if SQL}}`npm run db:deploy` and {{/if}}`npm run db:seed` once from your machine first.
+
+{{/if}}
+**Without Docker:**
+
+{{/if}}
 1. `npm ci && npm run build`
 2. Set the environment variables (`NODE_ENV=production`, real secrets, `DATABASE_URL`, `CORS_ORIGINS`…).
 {{#if PRISMA}}
@@ -380,7 +488,10 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the rules of the architectu
 | Problem | Fix |
 | --- | --- |
 | `Invalid environment configuration` at startup | The listed variables are missing / invalid – compare `.env` with `.env.example` |
-| `Database not reachable, retrying…` | Check `DATABASE_URL` and that {{DATABASE_LABEL}} is running |
+| `Database not reachable, retrying…` | Check `DATABASE_URL` and that {{DATABASE_LABEL}} is running{{#if DOCKER_COMPOSE}} (`docker compose up -d db`){{/if}} |
+{{#if REDIS}}
+| `Redis error … ECONNREFUSED` in the log | Check `REDIS_URL` and that Redis is running{{#if DOCKER_COMPOSE}} (`docker compose up -d redis`){{/if}} |
+{{/if}}
 {{#if PRISMA}}
 | `Cannot find module '…/generated/prisma/client.js'` | Run `npm run db:generate` (runs automatically on `npm install`) |
 {{/if}}

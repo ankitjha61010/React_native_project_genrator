@@ -94,7 +94,7 @@ describe('{{SERVICE_NAME}} service events', () => {
 
   it('pushes on behalf of other services', async () => {
     const user = await h.repositories.users.create({ email: 'jane@example.com', name: 'Jane' });
-    await h.notifications.registerDevice(user.id, 'device-token-1', 'android');
+    await h.devices.register(user.id, { deviceId: 'jane-phone-1', token: 'device-token-1', platform: 'android' });
     await h.eventBus.publish(EVENT_CHANNELS.push, { userIds: [user.id], message: { title: 'Alice', body: 'Hi', data: { type: 'chat' } } });
     expect(h.pushSender.sent).toEqual([{ tokens: ['device-token-1'], message: { title: 'Alice', body: 'Hi', data: { type: 'chat' } } }]);
   });

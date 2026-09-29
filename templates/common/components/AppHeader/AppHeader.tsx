@@ -45,9 +45,8 @@ export function AppHeader<F extends IntlFile>({
   const styles = useStyles(createStyles);
 {{#if VECTOR_ICONS}}
 {{#if RTL}}
-  // Directional icons point the other way in right-to-left layouts.
-  const { isRTL } = useDirection();
-  const backIcon: AppIconName = isRTL ? 'arrow-right' : 'arrow-left';
+  // Points "back" in reading order (i18n/direction.ts).
+  const { backArrow: backIcon } = useDirection();
 {{else}}
   const backIcon: AppIconName = 'arrow-left';
 {{/if}}

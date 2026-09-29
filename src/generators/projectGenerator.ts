@@ -1,6 +1,7 @@
 import path from 'node:path';
 import fs from 'fs-extra';
 import { assertCompatible, assertNodeVersion, getProfile } from '../config/compatibility.js';
+import { hasSocialLogin } from '../config/socialAuth.js';
 import { prepareGeneration } from '../core/context.js';
 import type { ProjectOptions } from '../core/types.js';
 import { log, step } from '../cli/logger.js';
@@ -14,8 +15,8 @@ import { initGit } from './gitGenerator.js';
 import { generateNavigation, generateScreens } from './navigationGenerator.js';
 import { generateNotifications } from './notificationGenerator.js';
 import { generateSocialAuth } from './socialAuthGenerator.js';
-import { configureAndroidLayoutDirection, installAndroidFonts } from './native/android.js';
-import { configureXcodeEnv, linkIosFonts, VECTOR_ICON_FONTS } from './native/ios.js';
+import { configureAndroidLayoutDirection, configureAndroidMicrophone, installAndroidFonts } from './native/android.js';
+import { configureIosMicrophone, configureXcodeEnv, linkIosFonts, VECTOR_ICON_FONTS } from './native/ios.js';
 import { initReactNativeProject } from './reactNativeInit.js';
 
 /** Files of the React Native template that the generated project replaces. */
@@ -122,9 +123,20 @@ export async function generateProject(options: ProjectOptions, hooks: Generation
       await step('Configuring notifications', () => generateNotifications(projectDir, files, options), 'Notification service generated');
     }
 
-    if (options.socialAuth !== 'none') {
+    if (options.chat) {
+      await step(
+        'Configuring voice messages',
+        async () => {
+          await configureAndroidMicrophone(projectDir);
+          await configureIosMicrophone(projectDir, options.appName, options.displayName);
+        },
+        'Microphone permission added (Android & iOS)',
+      );
+    }
+
+    if (hasSocialLogin(options.socialAuth)) {
       await step('Configuring social login', () => generateSocialAuth(projectDir, options), providers =>
-        `Social login configured (${providers.join(', ')}) – add your keys, see docs/SOCIAL_LOGIN.md`,
+        `Social login configured (${providers.join(', ')}) – see docs/SOCIAL_LOGIN.md for any YOUR_… placeholders`,
       );
     }
 

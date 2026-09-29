@@ -2,7 +2,6 @@ import semver from 'semver';
 import type { ProjectOptions } from '../core/types.js';
 import { GeneratorError } from '../utils/errors.js';
 import { DEPENDENCY_REGISTRY } from './dependencies.js';
-import { socialProviders } from './socialAuth.js';
 import { DEFAULT_REACT_NATIVE_VERSION, REACT_NATIVE_PROFILES, type ReactNativeProfile } from './reactNativeVersions.js';
 
 /**
@@ -65,12 +64,12 @@ export function resolveDependencies(
   profile: ReactNativeProfile,
   options: Pick<
     ProjectOptions,
-    'architecture' | 'stateManagement' | 'apiEncryption' | 'vectorIcons' | 'notifications' | 'analytics' | 'rtl' | 'storage' | 'socket' | 'socialAuth'
+    'architecture' | 'stateManagement' | 'apiEncryption' | 'vectorIcons' | 'notifications' | 'analytics' | 'rtl' | 'storage' | 'socket' | 'chat' | 'socialAuth'
   >,
 ): ResolvedDependencies {
   assertCompatible(profile);
   const { featureDependencies } = DEPENDENCY_REGISTRY;
-  const social = socialProviders(options.socialAuth);
+  const social = options.socialAuth;
   const features = [
     options.apiEncryption ? featureDependencies.apiEncryption : undefined,
     options.vectorIcons ? featureDependencies.vectorIcons : undefined,
@@ -78,6 +77,7 @@ export function resolveDependencies(
     options.analytics ? featureDependencies.analytics : undefined,
     options.rtl ? featureDependencies.rtl : undefined,
     options.socket ? featureDependencies.socket : undefined,
+    options.chat ? featureDependencies.chat : undefined,
     social.google ? featureDependencies.socialGoogle : undefined,
     social.facebook ? featureDependencies.socialFacebook : undefined,
     social.apple ? featureDependencies.socialApple : undefined,

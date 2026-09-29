@@ -22,6 +22,8 @@ export interface SemanticColors {
   placeholder: string;
   border: string;
   error: string;
+  /** Online status, success states. */
+  success: string;
   errorPressed: string;
   tabInactive: string;
   /** Loading overlay. */
@@ -107,6 +109,7 @@ export const lightColors: ColorScheme = {
   placeholder: '#C5C5C5',
   border: '#EDF1F3',
   error: '#FF2D55',
+  success: '#22C55E',
   errorPressed: '#FF6060',
   tabInactive: '#A6A6A6',
   overlay: '#FFFFFF80',
@@ -187,6 +190,7 @@ export const darkColors: ColorScheme = {
   placeholder: '#6B7280',
   border: '#2B313B',
   error: '#FF6B81',
+  success: '#4ADE80',
   errorPressed: '#E0294A',
   tabInactive: '#6B7280',
   overlay: '#00000080',

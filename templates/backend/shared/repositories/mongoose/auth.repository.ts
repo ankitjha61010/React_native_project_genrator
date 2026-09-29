@@ -4,7 +4,7 @@ import { ConflictError } from '{{IMPORT:core.errors}}';
 {{#if AUTH_REFRESH}}
 import type { RefreshToken } from '{{IMPORT:domain.authTokens}}';
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
 import type { CodePurpose, VerificationCode } from '{{IMPORT:domain.authTokens}}';
 {{/if}}
 {{#if SOCIAL}}
@@ -15,13 +15,14 @@ import { isUniqueViolation } from '{{IMPORT:db.connection}}';
 import type { CreateRefreshTokenData, RefreshTokensRepository } from '{{IMPORT:contract.auth}}';
 import { RefreshTokenModel, type RefreshTokenDocument } from '{{IMPORT:mongoose.auth}}';
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
 import type { VerificationCodesRepository } from '{{IMPORT:contract.auth}}';
 import { VerificationCodeModel, type VerificationCodeDocument } from '{{IMPORT:mongoose.auth}}';
 {{/if}}
 {{#if SOCIAL}}
 import type { SocialAccountsRepository } from '{{IMPORT:contract.auth}}';
 import { SocialAccountModel, type SocialAccountDocument } from '{{IMPORT:mongoose.auth}}';
+import { AUTH_MESSAGES } from '{{IMPORT:messages.auth}}';
 {{/if}}
 {{#if AUTH_REFRESH}}
 
@@ -67,7 +68,7 @@ export class MongooseRefreshTokensRepository implements RefreshTokensRepository 
   }
 }
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
 
 const toCode = (doc: VerificationCodeDocument): VerificationCode => ({
   id: doc._id.toString(),
@@ -129,7 +130,7 @@ export class MongooseSocialAccountsRepository implements SocialAccountsRepositor
     try {
       return toAccount((await SocialAccountModel.create(data)).toObject<SocialAccountDocument>());
     } catch (error) {
-      if (isUniqueViolation(error)) throw new ConflictError('This account is already linked', 'SOCIAL_ACCOUNT_LINKED');
+      if (isUniqueViolation(error)) throw new ConflictError(AUTH_MESSAGES.socialAccountLinked);
       throw error;
     }
   }

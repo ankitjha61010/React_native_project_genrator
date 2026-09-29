@@ -50,7 +50,7 @@ CREATE TABLE "refresh_tokens" (
     CONSTRAINT "refresh_tokens_pkey" PRIMARY KEY ("id")
 );
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
 
 -- CreateTable
 CREATE TABLE "verification_codes" (
@@ -85,9 +85,11 @@ CREATE TABLE "social_accounts" (
 -- CreateTable
 CREATE TABLE "conversations" (
     "id" UUID NOT NULL,
+{{#if GROUP_CHAT}}
     "title" VARCHAR(120),
     "is_group" BOOLEAN NOT NULL DEFAULT false,
     "avatar_url" VARCHAR(1024),
+{{/if}}
     "created_by_id" UUID NOT NULL,
     "last_message_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -100,6 +102,9 @@ CREATE TABLE "conversations" (
 CREATE TABLE "conversation_members" (
     "conversation_id" UUID NOT NULL,
     "user_id" UUID NOT NULL,
+{{#if GROUP_CHAT}}
+    "role" VARCHAR(16) NOT NULL DEFAULT 'member',
+{{/if}}
     "last_read_at" TIMESTAMP(3),
     "cleared_at" TIMESTAMP(3),
     "joined_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -132,8 +137,13 @@ CREATE TABLE "messages" (
 CREATE TABLE "devices" (
     "id" UUID NOT NULL,
     "user_id" UUID NOT NULL,
-    "token" VARCHAR(512) NOT NULL,
+    "device_id" VARCHAR(128) NOT NULL,
+    "token" VARCHAR(512),
     "platform" VARCHAR(16) NOT NULL,
+    "device_name" VARCHAR(120),
+    "os_version" VARCHAR(32),
+    "app_version" VARCHAR(32),
+    "last_active_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -191,7 +201,7 @@ CREATE INDEX "refresh_tokens_user_id_idx" ON "refresh_tokens"("user_id");
 -- CreateIndex
 CREATE INDEX "refresh_tokens_family_id_idx" ON "refresh_tokens"("family_id");
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
 
 -- CreateIndex
 CREATE INDEX "verification_codes_purpose_target_idx" ON "verification_codes"("purpose", "target");
@@ -216,6 +226,9 @@ CREATE INDEX "messages_conversation_id_created_at_idx" ON "messages"("conversati
 CREATE INDEX "messages_sender_id_idx" ON "messages"("sender_id");
 {{/if}}
 {{#if NOTIFICATIONS}}
+
+-- CreateIndex
+CREATE UNIQUE INDEX "devices_device_id_key" ON "devices"("device_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "devices_token_key" ON "devices"("token");
@@ -321,7 +334,7 @@ CREATE TABLE `refresh_tokens` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
 
 -- CreateTable
 CREATE TABLE `verification_codes` (
@@ -359,9 +372,11 @@ CREATE TABLE `social_accounts` (
 -- CreateTable
 CREATE TABLE `conversations` (
     `id` CHAR(36) NOT NULL,
+{{#if GROUP_CHAT}}
     `title` VARCHAR(120) NULL,
     `is_group` BOOLEAN NOT NULL DEFAULT false,
     `avatar_url` VARCHAR(1024) NULL,
+{{/if}}
     `created_by_id` CHAR(36) NOT NULL,
     `last_message_at` DATETIME(3) NULL,
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -374,6 +389,9 @@ CREATE TABLE `conversations` (
 CREATE TABLE `conversation_members` (
     `conversation_id` CHAR(36) NOT NULL,
     `user_id` CHAR(36) NOT NULL,
+{{#if GROUP_CHAT}}
+    `role` VARCHAR(16) NOT NULL DEFAULT 'member',
+{{/if}}
     `last_read_at` DATETIME(3) NULL,
     `cleared_at` DATETIME(3) NULL,
     `joined_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -409,11 +427,17 @@ CREATE TABLE `messages` (
 CREATE TABLE `devices` (
     `id` CHAR(36) NOT NULL,
     `user_id` CHAR(36) NOT NULL,
-    `token` VARCHAR(512) NOT NULL,
+    `device_id` VARCHAR(128) NOT NULL,
+    `token` VARCHAR(512) NULL,
     `platform` VARCHAR(16) NOT NULL,
+    `device_name` VARCHAR(120) NULL,
+    `os_version` VARCHAR(32) NULL,
+    `app_version` VARCHAR(32) NULL,
+    `last_active_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updated_at` DATETIME(3) NOT NULL,
 
+    UNIQUE INDEX `devices_device_id_key`(`device_id`),
     UNIQUE INDEX `devices_token_key`(`token`),
     INDEX `devices_user_id_idx`(`user_id`),
     PRIMARY KEY (`id`)

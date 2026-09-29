@@ -1,48 +1,21 @@
-import type { AuthSession, LoginCredentials, {{#if AUTH_EMAIL}}RegisterInput, {{/if}}{{#if AUTH_MOBILE}}PhoneNumber, {{/if}}User } from '{{IMPORT:auth.types}}';
+import type { AuthSession, LoginCredentials{{#if AUTH_EMAIL}}, RegisterInput{{/if}}{{#if AUTH_MOBILE}}, PhoneNumber{{/if}} } from '{{IMPORT:auth.types}}';
 {{#if HAS_SOCIAL_AUTH}}
 import type { SocialAuthResult } from '{{IMPORT:auth.socialAuth}}';
 {{/if}}
 {{#if NOTIFICATIONS}}
-import { getFcmToken } from '{{IMPORT:notification.token}}';
-import { notificationsApi } from '{{IMPORT:notification.api}}';
+import { getDeviceId } from '{{IMPORT:notification.deviceInfo}}';
+import { deviceApi } from './deviceApi';
 {{/if}}
 import { authSessionStorage } from '{{IMPORT:storage.session}}';
 import { api } from './apiClient';
+import { toUser, type ServerUser } from './userApi';
 
-/** The backend's user / session shapes (see the backend's docs/API.md). */
-interface ServerUser {
-  id: string;
-  email: string | null;
-  name: string;
-  avatar: string | null;
-  countryCode: string | null;
-  phone: string | null;
-  location: string | null;
-  bio: string | null;
-  role: 'user' | 'admin';
-  emailVerified: boolean;
-  phoneVerified: boolean;
-}
-
+/** The backend's session (see its docs/API.md). */
 interface ServerSession {
   user: ServerUser;
   tokens: { accessToken: string; refreshToken?: string };
   isNewUser?: boolean;
 }
-
-export const toUser = (u: ServerUser): User => ({
-  id: u.id,
-  email: u.email ?? '',
-  name: u.name,
-  avatar: u.avatar ?? undefined,
-  countryCode: u.countryCode ?? undefined,
-  phone: u.phone ?? undefined,
-  location: u.location ?? undefined,
-  bio: u.bio ?? undefined,
-  role: u.role,
-  emailVerified: u.emailVerified,
-  phoneVerified: u.phoneVerified,
-});
 
 /** A session, plus whether this sign-in created the account (show onboarding). */
 export type SignInResult = AuthSession & { isNewUser: boolean };
@@ -64,7 +37,7 @@ export interface SentCode {
 /** No token refresh for the sign-in calls themselves (a 401 there means wrong credentials). */
 const noRefresh = { skipAuthRefresh: true };
 
-/** Every account-related request of the app. */
+/** Sign-in, sign-out and session requests (profile requests: userApi.ts). */
 export const authApi = {
   login: async (credentials: LoginCredentials) =>
     toSession(await api.post<ServerSession>('/auth/login', { email: credentials.email.trim().toLowerCase(), password: credentials.password }, noRefresh)),
@@ -76,7 +49,8 @@ export const authApi = {
 
   resetPassword: (input: { email: string; code: string; newPassword: string }) => api.post<null>('/auth/reset-password', input, noRefresh),
 
-  changePassword: async (input: { currentPassword?: string; newPassword: string }) => toSession(await api.post<ServerSession>('/auth/change-password', input)),
+  /** Returns a new session – the backend signs out the other devices. */
+  changePassword: async (input: { currentPassword: string; newPassword: string }) => toSession(await api.post<ServerSession>('/auth/change-password', input)),
 {{/if}}
 {{#if AUTH_MOBILE}}
 
@@ -113,15 +87,6 @@ export const authApi = {
     api.post<null>('/auth/logout', refreshToken ? { refreshToken } : undefined, noRefresh).catch(() => null),
 
   me: async () => toUser(await api.get<ServerUser>('/auth/me')),
-
-  updateProfile: async (changes: { name?: string; countryCode?: string | null; phone?: string | null; location?: string | null; bio?: string | null }) =>
-    toUser(await api.patch<ServerUser>('/users/me', changes)),
-
-  /** `uri` from the image picker. */
-  uploadAvatar: async (image: { uri: string; fileName?: string; mimeType?: string }) =>
-    toUser(await api.upload<ServerUser>('/users/me/avatar', 'avatar', { uri: image.uri, name: image.fileName ?? 'avatar.jpg', type: image.mimeType ?? 'image/jpeg' })),
-
-  deleteAccount: () => api.delete<null>('/users/me'),
 };
 
 /**
@@ -130,8 +95,7 @@ export const authApi = {
  */
 export async function endServerSession(): Promise<void> {
 {{#if NOTIFICATIONS}}
-  const fcmToken = await getFcmToken();
-  if (fcmToken) await notificationsApi.unregisterDevice(fcmToken).catch(() => null);
+  await deviceApi.remove(await getDeviceId()).catch(() => null);
 {{/if}}
   const refreshToken = await authSessionStorage.getRefreshToken();
   await authApi.logout(refreshToken ?? undefined);

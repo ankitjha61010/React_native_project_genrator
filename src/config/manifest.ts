@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { TEMPLATES_DIR } from '../utils/paths.js';
+import { hasSocialLogin } from './socialAuth.js';
 import type { GroupId, ManifestEntry, RenderContext, StateManagement } from '../core/types.js';
 
 /**
@@ -19,6 +20,7 @@ const analytics = (ctx: RenderContext) => ctx.options.analytics;
 const notifications = (ctx: RenderContext) => ctx.options.notifications;
 const drawer = (ctx: RenderContext) => ctx.options.drawer;
 const headerButtons = (ctx: RenderContext) => ctx.options.drawer || ctx.options.notifications;
+const terms = (ctx: RenderContext) => ctx.options.termsAndConditions;
 
 /** Country flags for the phone number picker (templates/common/assets/flags/*.png). */
 const COUNTRY_FLAGS = fs
@@ -47,11 +49,12 @@ function entries(group: GroupId, list: Array<[id: string, file: string, template
 
 const socket = (ctx: RenderContext) => ctx.options.socket;
 const chat = (ctx: RenderContext) => ctx.options.chat;
+const groupChat = (ctx: RenderContext) => ctx.options.chat && ctx.options.groupChat;
 const authEmail = (ctx: RenderContext) => ctx.options.authEmail;
 const authMobile = (ctx: RenderContext) => ctx.options.authMobile;
 /** Phone number fields exist at sign-up (email auth) and on the mobile login screen. */
 const phoneInput = (ctx: RenderContext) => ctx.options.authEmail || ctx.options.authMobile;
-const hasSocialAuth = (ctx: RenderContext) => ctx.options.socialAuth !== 'none';
+const hasSocialAuth = (ctx: RenderContext) => hasSocialLogin(ctx.options.socialAuth);
 
 export const COMMON_MANIFEST: ManifestEntry[] = [
   // Project root. Dot-files are stored without the dot so `npm publish` keeps them.
@@ -135,7 +138,10 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['hooks.useImagePicker', 'useImagePicker.ts'],
     ['hooks.useSessionServices', 'useSessionServices.ts'],
     ['hooks.useTheme', 'useTheme.ts'],
+    // Profile / Edit Profile / Delete Account (backend → updated user → every screen).
+    ['hooks.useProfile', 'useProfile.ts'],
   ]),
+  { ...entries('hooks', [['hooks.useChangePassword', 'useChangePassword.ts']])[0]!, when: authEmail },
   { ...entries('hooks', [['hooks.useDirection', 'useDirection.ts']])[0]!, when: rtl },
 
   ...entries('api', [
@@ -143,8 +149,13 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['api.errors', 'apiErrors.ts'],
     ['api.client', 'apiClient.ts'],
     ['api.auth', 'authApi.ts'],
+    ['api.user', 'userApi.ts'],
+    // Side effects of signing in / out, shared by every state management variant.
+    ['api.session', 'sessionService.ts'],
   ]),
   { ...entries('api', [['api.encryption', 'apiEncryption.ts']])[0]!, when: encrypted },
+  { ...entries('api', [['api.device', 'deviceApi.ts']])[0]!, when: notifications },
+  { ...entries('api', [['api.legal', 'legalApi.ts']])[0]!, when: terms },
 
   ...entries('storage', [
     ['storage.keys', 'storageKeys.ts'],
@@ -155,6 +166,8 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
   ...entries('notification', [
     ['notification.permissions', 'notificationPermissions.ts'],
     ['notification.token', 'notificationToken.ts'],
+    // This install (id, FCM token, model, versions) → POST /devices.
+    ['notification.deviceInfo', 'deviceInfo.ts'],
     ['notification.display', 'notificationDisplay.ts'],
     ['notification.handlers', 'notificationHandlers.ts'],
     ['notification.service', 'notificationService.ts'],
@@ -185,8 +198,8 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['components.AppScreen', 'AppScreen/AppScreen.tsx'],
     ['components.MediaPickerModal', 'MediaPickerModal/MediaPickerModal.tsx'],
     ['components.MediaEditorModal', 'MediaEditorModal/MediaEditorModal.tsx'],
-    ['components.LegalLinks', 'LegalLinks/LegalLinks.tsx'],
   ]),
+  { ...entries('components', [['components.LegalLinks', 'LegalLinks/LegalLinks.tsx']])[0]!, when: terms },
   ...entries('components', [
     ['components.CountryPicker', 'CountryPicker/CountryPicker.tsx'],
     ['components.PhoneInput', 'PhoneInput/PhoneInput.tsx'],
@@ -219,6 +232,8 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['screens.Settings', 'SettingsScreen/SettingsScreen.tsx'],
   ]),
   { ...entries('screens', [['screens.Notifications', 'NotificationsScreen/NotificationsScreen.tsx']])[0]!, when: notifications },
+  // Profile → Change Password (accounts with a password).
+  { ...entries('screens', [['screens.ChangePassword', 'ChangePasswordScreen/ChangePasswordScreen.tsx']])[0]!, when: authEmail },
 
   // Additional Auth Screens
   ...entries('auth', [
@@ -262,7 +277,23 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['chat.ChatBubble', 'components/ChatBubble/ChatBubble.tsx'],
     ['chat.ChatInputBar', 'components/ChatInputBar/ChatInputBar.tsx'],
     ['chat.ChatMediaPreview', 'components/ChatMediaPreview/ChatMediaPreview.tsx'],
+    ['chat.TypingIndicator', 'components/TypingIndicator/TypingIndicator.tsx'],
+    ['chat.AudioMessage', 'components/AudioMessage/AudioMessage.tsx'],
+    ['chat.UserRow', 'components/UserRow/UserRow.tsx'],
+    // Voice messages: record / play (react-native-nitro-sound).
+    ['chat.voiceService', 'services/voiceService.ts'],
+    // One hook per screen: Screen → hook → service.
+    ['chat.useChatList', 'hooks/useChatList.ts'],
+    ['chat.useChatRoom', 'hooks/useChatRoom.ts'],
+    ['chat.useUserList', 'hooks/useUserList.ts'],
   ]).map(e => ({ ...e, when: chat })),
+  ...entries('chat', [
+    ['chat.groupService', 'services/groupService.ts'],
+    ['chat.useCreateGroup', 'hooks/useCreateGroup.ts'],
+    ['chat.useGroupInfo', 'hooks/useGroupInfo.ts'],
+    ['chat.CreateGroupScreen', 'screens/CreateGroupScreen/CreateGroupScreen.tsx'],
+    ['chat.GroupInfoScreen', 'screens/GroupInfoScreen/GroupInfoScreen.tsx'],
+  ]).map(e => ({ ...e, when: groupChat })),
 
   // Session access is the only thing screens know about state; its implementation
   // depends on the selected state management.

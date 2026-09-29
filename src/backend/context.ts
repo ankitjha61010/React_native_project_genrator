@@ -44,6 +44,34 @@ export function devDatabaseUrl(options: BackendOptions, name = dbName(options.ap
   }
 }
 
+/** Where the users feature lives in this architecture – docs/ARCHITECTURE.md walks through these files. */
+function examplePaths(options: BackendOptions, arch: BackendArchitecture): Record<string, string> {
+  const fw = options.framework;
+  const nest = fw === 'nestjs';
+  const strict = arch.id === 'clean' || arch.id === 'enterprise';
+  const bootstrap = arch.dir('bootstrap', fw);
+  const routesDir = arch.dir('routes', fw, 'users');
+  return {
+    PATH_CONTAINER: `${bootstrap}/container.ts`,
+    PATH_APP: nest ? `${bootstrap}/app.setup.ts` : `${bootstrap}/app.ts`,
+    PATH_APP_MODULE: `${bootstrap}/app.module.ts`,
+    PATH_CORE_MODULE: `${bootstrap}/core.module.ts`,
+    PATH_ROUTES_INDEX: routesDir === 'src/routes' ? 'src/routes/index.ts' : `${bootstrap}/routes.ts`,
+    PATH_USERS_ROUTES: `${routesDir}/users.routes.ts`,
+    PATH_USERS_CONTROLLER: `${arch.dir('http', fw, 'users')}/users.controller.ts`,
+    PATH_USERS_SCHEMAS: `${arch.dir('dto', fw, 'users')}/users.${nest ? 'dto' : 'schemas'}.ts`,
+    PATH_USERS_DOCS: `${arch.dir('docs', fw, 'users')}/users.docs.ts`,
+    PATH_USERS_MESSAGES: `${arch.dir('messages', fw, 'users')}/users.messages.ts`,
+    PATH_CORE_MESSAGES: `${arch.dir('core', fw)}/messages.ts`,
+    PATH_USERS_SERVICE: `${arch.dir('application', fw, 'users')}/users.service.ts`,
+    PATH_USERS_REPOSITORY: `${arch.dir('repositoryImpl', fw, 'users')}/${strict ? `${options.orm}-users` : 'users'}.repository.ts`,
+    PATH_USERS_CONTRACT: `${arch.dir('repositoryContract', fw, 'users')}/users.repository.ts`,
+    PATH_USERS_ENTITY: `${arch.dir('domain', fw, 'users')}/user.entity.ts`,
+    PATH_USERS_MODULE: `${arch.dir('module', fw, 'users')}/users.module.ts`,
+    PATH_ERRORS: `${arch.dir('core', fw)}/app-error.ts`,
+  };
+}
+
 export function prepareBackendContext(options: BackendOptions): BackendRenderContext {
   const arch: BackendArchitecture = getBackendArchitecture(options.architecture);
   const s = options.security;
@@ -54,6 +82,7 @@ export function prepareBackendContext(options: BackendOptions): BackendRenderCon
   const social = hasAuth && (m.google || m.facebook || m.apple);
   const chat = hasAuth && options.modules.chat;
   const notifications = hasAuth && options.modules.notifications;
+  const groupChat = chat && options.modules.groupChat;
   const role = options.service;
   const replica = role === 'chat' || role === 'notifications';
   const slug = options.appName.toLowerCase().replace(/[^a-z0-9-]+/g, '-');
@@ -93,7 +122,17 @@ export function prepareBackendContext(options: BackendOptions): BackendRenderCon
     HASH_CONFIGURABLE: email && options.hashing === 'configurable',
     // Feature modules
     CHAT: chat,
+    /** Group conversations: admins / members, name, image, add / remove members, leave. */
+    GROUP_CHAT: groupChat,
+    /** Direct chats only (no group columns, no member roles). */
+    NO_GROUP_CHAT: chat && !groupChat,
     NOTIFICATIONS: notifications,
+    /** User devices (FCM tokens) – part of push notifications. */
+    DEVICES: notifications,
+    /** GET /legal + Terms & Conditions / Privacy Policy pages (monolith / identity service). */
+    LEGAL: options.modules.legal && !replica,
+    /** The user may delete their own account (DELETE /users/me). */
+    DELETE_ACCOUNT: hasAuth && options.modules.deleteAccount && !replica,
     /** The Realtime port exists (chat events, live notifications). */
     REALTIME: chat || notifications,
     /** This process hosts the Socket.IO server (not the notifications service – it publishes events). */
@@ -121,6 +160,21 @@ export function prepareBackendContext(options: BackendOptions): BackendRenderCon
     REALTIME_EVENTS: role === 'notifications',
     /** File uploads (avatars, chat media) on local disk. */
     UPLOADS: hasAuth && role !== 'notifications',
+    /** Redis: shared rate limits, Socket.IO adapter, cache helper (always on for microservices). */
+    REDIS: options.redis || role !== undefined,
+    /** Verification / OTP codes live in Redis (with a TTL) instead of a database table. */
+    REDIS_CODES: (options.redis || role !== undefined) && (email || otp) && !replica,
+    /** Verification / OTP codes are stored in the database. */
+    DB_CODES: (email || otp) && !((options.redis || role !== undefined) && !replica),
+    DOCKER: options.docker,
+    /** This project has its own docker-compose.yml (microservices share one at the workspace root). */
+    DOCKER_COMPOSE: options.docker && role === undefined,
+    /**
+     * Clean / Enterprise: interfaces (ports, repository contracts) in their own files and layers.
+     * The other architectures keep an interface in the same file as its implementation.
+     */
+    STRICT: arch.id === 'clean' || arch.id === 'enterprise',
+    SIMPLE: arch.id !== 'clean' && arch.id !== 'enterprise',
     API_ENCRYPTION: options.apiEncryption,
     /** env.ts needs its comma-separated list parser. */
     ENV_LIST: s.cors || (hasAuth && (m.google || m.apple)),
@@ -140,7 +194,9 @@ export function prepareBackendContext(options: BackendOptions): BackendRenderCon
     MODULE_AUTH: false,
     MODULE_USERS: false,
     MODULE_CHAT: false,
+    MODULE_DEVICES: false,
     MODULE_NOTIFICATIONS: false,
+    MODULE_LEGAL: false,
   };
   for (const a of ['feature-based', 'layered', 'clean', 'mvc', 'modular', 'enterprise']) {
     flags[`ARCH_${a.replace(/-/g, '_').toUpperCase()}`] = arch.id === a;
@@ -182,10 +238,16 @@ export function prepareBackendContext(options: BackendOptions): BackendRenderCon
     /** First enabled provider, as a literal (tests). */
     SOCIAL_PROVIDER: `'${(['google', 'facebook', 'apple'] as const).find(p => m[p]) ?? 'google'}'`,
     SOCIAL_PROVIDER_LIST: (['google', 'facebook', 'apple'] as const).filter(p => hasAuth && m[p]).map(p => `'${p}'`).join(', '),
+    // Social sign-in keys (entered while generating, or empty – set them in .env later).
+    GOOGLE_CLIENT_IDS_VALUE: [options.socialCredentials?.googleWebClientId, options.socialCredentials?.googleIosClientId].filter(Boolean).join(','),
+    FACEBOOK_APP_ID_VALUE: options.socialCredentials?.facebookAppId ?? '',
+    FACEBOOK_APP_SECRET_VALUE: options.socialCredentials?.facebookAppSecret ?? '',
+    APPLE_CLIENT_IDS_VALUE: [options.appPackage, options.socialCredentials?.appleServiceId].filter(Boolean).join(','),
     // 32 / 16 characters, like the app's API_ENCRYPTION_KEY / API_ENCRYPTION_IV.
     API_ENCRYPTION_KEY: options.encryptionSecrets?.key ?? randomBytes(24).toString('base64url'),
     API_ENCRYPTION_IV: options.encryptionSecrets?.iv ?? randomBytes(12).toString('base64url'),
   };
 
+  Object.assign(variables, examplePaths(options, arch));
   return { options, arch, flags, variables };
 }

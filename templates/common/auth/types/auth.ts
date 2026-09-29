@@ -13,6 +13,8 @@ export interface User {
   role?: 'user' | 'admin';
   emailVerified?: boolean;
   phoneVerified?: boolean;
+  /** False for accounts without a password (mobile / social sign-in) – no Change Password for them. */
+  hasPassword?: boolean;
 }
 
 export interface AuthSession {

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 {{/if}}
 {{#if SOCIAL}}
 import { UnauthorizedError } from '{{IMPORT:core.errors}}';
+import { AUTH_MESSAGES } from '{{IMPORT:messages.auth}}';
 {{/if}}
 {{#if UPLOADS}}
 import type { FileStorage, StoredFile, UploadedFile } from '{{IMPORT:port.fileStorage}}';
@@ -72,7 +73,7 @@ export class FakeSms implements SmsSender {
 export class FakeSocialVerifier implements SocialVerifier {
   async verify(credential: SocialCredential): Promise<SocialProfile> {
     const [kind, id, email] = credential.token.split(':');
-    if (kind !== 'valid' || !id) throw new UnauthorizedError('Invalid sign-in token', 'INVALID_SOCIAL_TOKEN');
+    if (kind !== 'valid' || !id) throw new UnauthorizedError(AUTH_MESSAGES.invalidSocialToken('social'));
     // Like Apple: no name in the token – the app sends it.
     return { provider: credential.provider, providerUserId: id, email: email || null, emailVerified: !!email, name: null, avatarUrl: null };
   }

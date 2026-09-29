@@ -2,17 +2,21 @@ import type { Response } from 'express';
 import { successResponse } from '{{IMPORT:core.response}}';
 import { Paginated } from '{{IMPORT:core.pagination}}';
 
-interface RespondOptions {
-  message?: string;
+interface SuccessOptions {
+  /** HTTP status (default 200). */
   status?: number;
+  /** Extra fields for `meta`, e.g. `{ unreadCount: 3 }`. */
   meta?: Record<string, unknown>;
 }
 
 /**
- * Sends the standard success envelope `{ success, message, data, meta }`.
- * A `Paginated` value is split into `data` (items) and `meta` (page info).
+ * Sends the standard success response `{ success: true, message, data, meta }`.
+ * A `Paginated` result is split into `data` (the items) and `meta` (page, total…).
+ *
+ *   sendSuccess(res, 'Profile updated', toPublicUser(user));
+ *   sendSuccess(res, 'Registered successfully', session, { status: 201 });
  */
-export function respond(res: Response, data: unknown, { message = 'OK', status = 200, meta }: RespondOptions = {}): void {
+export function sendSuccess(res: Response, message: string, data: unknown = null, { status = 200, meta }: SuccessOptions = {}): void {
   if (data instanceof Paginated) {
     res.status(status).json(successResponse(data.items, message, { ...data.meta, ...meta }));
     return;

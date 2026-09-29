@@ -1,7 +1,7 @@
 import { ARCHITECTURES, getArchitecture } from '../architectures/index.js';
 import { STATE_MANAGEMENT_LABELS } from '../config/constants.js';
 import { getProfile } from '../config/compatibility.js';
-import { SOCIAL_PLACEHOLDERS, socialProviders } from '../config/socialAuth.js';
+import { hasSocialLogin, socialValues } from '../config/socialAuth.js';
 import { allPlannedPaths, createPlan, importAliases } from './plan.js';
 import { renderTree } from './tree.js';
 import type { GenerationPlan, GroupId, ProjectOptions, RenderContext } from './types.js';
@@ -49,7 +49,8 @@ export function prepareGeneration(options: ProjectOptions): PreparedGeneration {
   const architecture = getArchitecture(options.architecture);
   const profile = getProfile(options.reactNativeVersion);
   const sm = options.stateManagement;
-  const social = socialProviders(options.socialAuth);
+  const social = options.socialAuth;
+  const socialConfig = socialValues(options.socialCredentials);
 
   const flags: Record<string, boolean> = {
     STATE_REDUX: sm === 'redux',
@@ -74,9 +75,13 @@ export function prepareGeneration(options: ProjectOptions): PreparedGeneration {
     SOCIAL_GOOGLE: social.google,
     SOCIAL_FACEBOOK: social.facebook,
     SOCIAL_APPLE: social.apple,
-    HAS_SOCIAL_AUTH: options.socialAuth !== 'none',
+    HAS_SOCIAL_AUTH: hasSocialLogin(social),
     SOCKET: options.socket,
     CHAT: options.chat,
+    GROUP_CHAT: options.chat && options.groupChat,
+    /** Terms & Conditions / Privacy Policy links from the backend (GET /legal). */
+    TERMS: options.termsAndConditions,
+    DELETE_ACCOUNT: options.deleteAccount,
     DRAWER: options.drawer,
     HAS_HEADER_BUTTONS: options.drawer || options.notifications,
   };
@@ -99,11 +104,19 @@ export function prepareGeneration(options: ProjectOptions): PreparedGeneration {
     STATE_MANAGEMENT_NAME: STATE_MANAGEMENT_LABELS[sm],
     RN_VERSION: profile.reactNative,
     REACT_VERSION: profile.react,
-    GOOGLE_WEB_CLIENT_ID_PLACEHOLDER: SOCIAL_PLACEHOLDERS.googleWebClientId,
-    GOOGLE_IOS_CLIENT_ID_PLACEHOLDER: SOCIAL_PLACEHOLDERS.googleIosClientId,
-    GOOGLE_IOS_URL_SCHEME_PLACEHOLDER: SOCIAL_PLACEHOLDERS.googleIosUrlScheme,
-    FACEBOOK_APP_ID_PLACEHOLDER: SOCIAL_PLACEHOLDERS.facebookAppId,
-    FACEBOOK_CLIENT_TOKEN_PLACEHOLDER: SOCIAL_PLACEHOLDERS.facebookClientToken,
+    // The entered credentials, or YOUR_… placeholders for skipped providers.
+    GOOGLE_WEB_CLIENT_ID: socialConfig.googleWebClientId,
+    GOOGLE_IOS_CLIENT_ID: socialConfig.googleIosClientId,
+    GOOGLE_IOS_URL_SCHEME: socialConfig.googleIosUrlScheme,
+    FACEBOOK_APP_ID: socialConfig.facebookAppId,
+    FACEBOOK_CLIENT_TOKEN: socialConfig.facebookClientToken,
+    SOCIAL_STATUS_TEXT: [
+      social.google && `Google – ${options.socialCredentials.googleWebClientId ? 'configured' : 'placeholders (skipped)'}`,
+      social.facebook && `Facebook – ${options.socialCredentials.facebookAppId ? 'configured' : 'placeholders (skipped)'}`,
+      social.apple && 'Apple – ready (uses the bundle id)',
+    ]
+      .filter(Boolean)
+      .join(' · '),
     SOCIAL_PROVIDER_NAMES: joinNames([
       ...(social.google ? ['**Google**'] : []),
       ...(social.facebook ? ['**Facebook**'] : []),

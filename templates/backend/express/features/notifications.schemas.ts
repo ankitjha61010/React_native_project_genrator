@@ -1,11 +1,5 @@
 import { z } from 'zod';
-import { BROADCAST_AUDIENCES, DEVICE_PLATFORMS, NOTIFICATION_TYPES } from '{{IMPORT:domain.notification}}';
-
-export const registerDeviceSchema = z
-  .object({ token: z.string().min(10).max(512).meta({ description: 'FCM registration token' }), platform: z.enum(DEVICE_PLATFORMS) })
-  .meta({ id: 'RegisterDeviceRequest' });
-
-export const deviceTokenParams = z.object({ token: z.string().min(10).max(512) });
+import { BROADCAST_AUDIENCES, NOTIFICATION_TYPES } from '{{IMPORT:domain.notification}}';
 
 const data = z.record(z.string().max(64), z.string().max(1000)).refine(value => Object.keys(value).length <= 20, 'at most 20 keys');
 

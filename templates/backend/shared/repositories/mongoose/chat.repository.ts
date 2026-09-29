@@ -1,14 +1,16 @@
 import { Types } from 'mongoose';
 import type { Conversation, ConversationMember, MediaCrop, Message, MessageType } from '{{IMPORT:domain.chat}}';
-import type { ChatRepository, CreateMessageData } from '{{IMPORT:contract.chat}}';
+import type { ChatRepository, CreateConversationData, CreateMessageData } from '{{IMPORT:contract.chat}}';
 import { isValidId } from '{{IMPORT:db.connection}}';
 import { ConversationMemberModel, ConversationModel, MessageModel, type ConversationDocument, type MemberDocument, type MessageDocument } from '{{IMPORT:mongoose.chat}}';
 
 const toConversation = (d: ConversationDocument): Conversation => ({
   id: d._id.toString(),
+{{#if GROUP_CHAT}}
   title: d.title ?? null,
   isGroup: d.isGroup,
   avatarUrl: d.avatarUrl ?? null,
+{{/if}}
   createdById: d.createdById.toString(),
   lastMessageAt: d.lastMessageAt ?? null,
   createdAt: d.createdAt,
@@ -18,6 +20,9 @@ const toConversation = (d: ConversationDocument): Conversation => ({
 const toMember = (d: MemberDocument): ConversationMember => ({
   conversationId: d.conversationId.toString(),
   userId: d.userId.toString(),
+{{#if GROUP_CHAT}}
+  role: d.role === 'admin' ? 'admin' : 'member',
+{{/if}}
   lastReadAt: d.lastReadAt ?? null,
   clearedAt: d.clearedAt ?? null,
   joinedAt: d.joinedAt,
@@ -42,9 +47,14 @@ const toMessage = (d: MessageDocument): Message => ({
 const ids = (values: string[]) => values.filter(isValidId).map(id => new Types.ObjectId(id));
 
 export class MongooseChatRepository implements ChatRepository {
-  async createConversation(data: { isGroup: boolean; title: string | null; createdById: string; memberIds: string[] }): Promise<Conversation> {
-    const doc = await ConversationModel.create({ isGroup: data.isGroup, title: data.title, createdById: data.createdById });
-    await ConversationMemberModel.insertMany(data.memberIds.map(userId => ({ conversationId: doc._id, userId })));
+  async createConversation({ memberIds, ...data }: CreateConversationData): Promise<Conversation> {
+    const doc = await ConversationModel.create(data);
+{{#if GROUP_CHAT}}
+    const role = (userId: string) => (data.isGroup && userId === data.createdById ? 'admin' : 'member');
+    await ConversationMemberModel.insertMany(memberIds.map(userId => ({ conversationId: doc._id, userId, role: role(userId) })));
+{{else}}
+    await ConversationMemberModel.insertMany(memberIds.map(userId => ({ conversationId: doc._id, userId })));
+{{/if}}
     return toConversation(doc.toObject<ConversationDocument>());
   }
 
@@ -53,11 +63,19 @@ export class MongooseChatRepository implements ChatRepository {
     const doc = await ConversationModel.findById(id).lean<ConversationDocument>();
     return doc ? toConversation(doc) : null;
   }
+{{#if GROUP_CHAT}}
+
+  async updateConversation(id: string, data: Partial<Pick<Conversation, 'title' | 'avatarUrl'>>): Promise<Conversation> {
+    const doc = await ConversationModel.findByIdAndUpdate(id, { $set: data }, { returnDocument: 'after' }).lean<ConversationDocument>();
+    if (!doc) throw new Error(`Conversation ${id} not found`);
+    return toConversation(doc);
+  }
+{{/if}}
 
   async findDirectConversation(userId: string, otherUserId: string): Promise<Conversation | null> {
     const mine = await ConversationMemberModel.find({ userId }, { conversationId: 1 }).lean<MemberDocument[]>();
     const shared = await ConversationMemberModel.find({ userId: otherUserId, conversationId: { $in: mine.map(m => m.conversationId) } }, { conversationId: 1 }).lean<MemberDocument[]>();
-    const doc = await ConversationModel.findOne({ _id: { $in: shared.map(m => m.conversationId) }, isGroup: false }).lean<ConversationDocument>();
+    const doc = await ConversationModel.findOne({ _id: { $in: shared.map(m => m.conversationId) }{{#if GROUP_CHAT}}, isGroup: false{{/if}} }).lean<ConversationDocument>();
     return doc ? toConversation(doc) : null;
   }
 
@@ -75,7 +93,13 @@ export class MongooseChatRepository implements ChatRepository {
 
   async listMembers(conversationIds: string[]): Promise<ConversationMember[]> {
     const valid = ids(conversationIds);
+{{#if GROUP_CHAT}}
+    if (!valid.length) return [];
+    // Oldest member first – the next admin when the last one leaves.
+    return (await ConversationMemberModel.find({ conversationId: { $in: valid } }).sort({ joinedAt: 1 }).lean<MemberDocument[]>()).map(toMember);
+{{else}}
     return valid.length ? (await ConversationMemberModel.find({ conversationId: { $in: valid } }).lean<MemberDocument[]>()).map(toMember) : [];
+{{/if}}
   }
 
   async findMember(conversationId: string, userId: string): Promise<ConversationMember | null> {
@@ -84,9 +108,20 @@ export class MongooseChatRepository implements ChatRepository {
     return doc ? toMember(doc) : null;
   }
 
-  async updateMember(conversationId: string, userId: string, data: Partial<Pick<ConversationMember, 'lastReadAt' | 'clearedAt'>>): Promise<void> {
+  async updateMember(conversationId: string, userId: string, data: Partial<Pick<ConversationMember, 'lastReadAt' | 'clearedAt'{{#if GROUP_CHAT}} | 'role'{{/if}}>>): Promise<void> {
     await ConversationMemberModel.updateOne({ conversationId, userId }, { $set: data });
   }
+{{#if GROUP_CHAT}}
+
+  async addMembers(conversationId: string, userIds: string[]): Promise<void> {
+    // Existing members are left as they are.
+    await ConversationMemberModel.bulkWrite(
+      userIds.map(userId => ({
+        updateOne: { filter: { conversationId: new Types.ObjectId(conversationId), userId: new Types.ObjectId(userId) }, update: { $setOnInsert: { role: 'member', joinedAt: new Date() } }, upsert: true },
+      })),
+    );
+  }
+{{/if}}
 
   async removeMember(conversationId: string, userId: string): Promise<void> {
     await ConversationMemberModel.deleteOne({ conversationId, userId });

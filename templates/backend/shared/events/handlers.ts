@@ -34,7 +34,7 @@ function reviveUser(raw: Record<string, unknown>): User {
  * - `push`: push requests of other services (e.g. chat messages for offline members)
 {{/if}}
  */
-export async function startEventHandlers(infra: Infrastructure, {{#if SVC_NOTIFICATIONS}}services{{else}}_services{{/if}}: Services, logger: Logger): Promise<void> {
+export async function startEventHandlers(infra: Infrastructure, {{#if SVC_NOTIFICATIONS}}services{{else}}{{#if GROUP_CHAT}}services{{else}}_services{{/if}}{{/if}}: Services, logger: Logger): Promise<void> {
   const { eventBus } = infra;
 {{#if REPLICA}}
 
@@ -43,6 +43,10 @@ export async function startEventHandlers(infra: Infrastructure, {{#if SVC_NOTIFI
     if (event.type === 'user.upserted' && event.user) {
       await infra.repositories.users.saveReplica(reviveUser(event.user));
     } else if (event.type === 'user.deleted' && event.id) {
+{{#if GROUP_CHAT}}
+      // Their groups get a new admin first.
+      await services.chat.leaveAllGroups(event.id);
+{{/if}}
       await infra.repositories.users.delete(event.id).catch(error => {
         if (!(error instanceof NotFoundError)) throw error;
       });

@@ -2,9 +2,6 @@
 export const NOTIFICATION_TYPES = ['chat', 'order', 'promotion', 'account', 'general'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
-export const DEVICE_PLATFORMS = ['ios', 'android', 'web'] as const;
-export type DevicePlatform = (typeof DEVICE_PLATFORMS)[number];
-
 export const BROADCAST_AUDIENCES = ['all', 'users', 'admins'] as const;
 export type BroadcastAudience = (typeof BROADCAST_AUDIENCES)[number];
 
@@ -22,16 +19,6 @@ export interface Notification {
   readAt: Date | null;
   broadcastId: string | null;
   createdAt: Date;
-}
-
-/** An FCM registration token of one app install. */
-export interface Device {
-  id: string;
-  userId: string;
-  token: string;
-  platform: DevicePlatform;
-  createdAt: Date;
-  updatedAt: Date;
 }
 
 /** A notification an admin sent to many users. */

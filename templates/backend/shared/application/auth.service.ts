@@ -54,6 +54,8 @@ import type {
   SocialLoginInput,
 {{/if}}
 } from '{{IMPORT:app.authTypes}}';
+import { USERS_MESSAGES } from '{{IMPORT:messages.users}}';
+import { AUTH_MESSAGES } from '{{IMPORT:messages.auth}}';
 
 export interface AuthDependencies {
   users: UsersRepository;
@@ -77,7 +79,7 @@ export interface AuthDependencies {
 }
 {{#if AUTH_EMAIL}}
 
-const INVALID_CREDENTIALS = () => new UnauthorizedError('Invalid email or password', 'INVALID_CREDENTIALS');
+const INVALID_CREDENTIALS = () => new UnauthorizedError(AUTH_MESSAGES.invalidCredentials);
 {{/if}}
 
 /**
@@ -98,7 +100,7 @@ export class AuthService {
     const { users, hasher, settings, logger } = this.deps;
     assertPasswordPolicy(input.password, settings.password);
     const email = normalizeEmail(input.email);
-    if (await users.findByEmail(email)) throw new ConflictError('Email is already registered', 'EMAIL_TAKEN');
+    if (await users.findByEmail(email)) throw new ConflictError(AUTH_MESSAGES.emailTaken);
     const phone = input.phone && input.countryCode ? await this.assertPhoneAvailable(input.countryCode, input.phone) : null;
 
     const user = await users.create({ email, name: input.name.trim(), passwordHash: await hasher.hash(input.password), countryCode: phone?.countryCode ?? null, phone: phone?.phone ?? null });
@@ -116,7 +118,7 @@ export class AuthService {
       throw INVALID_CREDENTIALS();
     }
 {{#if SEC_LOCKOUT}}
-    if (user.lockedUntil && user.lockedUntil > new Date()) throw new AccountLockedError(user.lockedUntil);
+    if (user.lockedUntil && user.lockedUntil > new Date()) throw new AccountLockedError(user.lockedUntil, AUTH_MESSAGES.accountLocked);
 {{/if}}
     if (!(await hasher.verify(user.passwordHash, input.password))) {
 {{#if SEC_LOCKOUT}}
@@ -137,9 +139,9 @@ export class AuthService {
     const user = await this.getCurrentUser(userId);
     if (user.passwordHash) {
       if (!input.currentPassword || !(await hasher.verify(user.passwordHash, input.currentPassword))) {
-        throw new BadRequestError('Current password is incorrect', 'INVALID_CURRENT_PASSWORD');
+        throw new BadRequestError(AUTH_MESSAGES.wrongCurrentPassword);
       }
-      if (input.currentPassword === input.newPassword) throw new BadRequestError('The new password must be different', 'PASSWORD_UNCHANGED');
+      if (input.currentPassword === input.newPassword) throw new BadRequestError(AUTH_MESSAGES.passwordUnchanged);
     }
     assertPasswordPolicy(input.newPassword, settings.password, 'newPassword');
 
@@ -165,7 +167,7 @@ export class AuthService {
     const email = normalizeEmail(input.email);
     await codes.verify('password_reset', email, input.code);
     const user = await users.findByEmail(email);
-    if (!user) throw new BadRequestError('The code is invalid or has expired, please request a new one', 'INVALID_CODE');
+    if (!user) throw new BadRequestError(AUTH_MESSAGES.invalidCode);
     assertPasswordPolicy(input.newPassword, settings.password, 'newPassword');
 
     await sessions.revokeAll(user.id);
@@ -175,14 +177,14 @@ export class AuthService {
 
   async requestEmailVerification(userId: string): Promise<SentCode> {
     const user = await this.getCurrentUser(userId);
-    if (!user.email) throw new BadRequestError('The account has no email address', 'NO_EMAIL');
-    if (user.emailVerifiedAt) throw new ConflictError('Email is already verified', 'EMAIL_ALREADY_VERIFIED');
+    if (!user.email) throw new BadRequestError(AUTH_MESSAGES.noEmail);
+    if (user.emailVerifiedAt) throw new ConflictError(AUTH_MESSAGES.emailAlreadyVerified);
     return this.sendEmailVerification(user);
   }
 
   async verifyEmail(userId: string, code: string): Promise<User> {
     const user = await this.getCurrentUser(userId);
-    if (!user.email) throw new BadRequestError('The account has no email address', 'NO_EMAIL');
+    if (!user.email) throw new BadRequestError(AUTH_MESSAGES.noEmail);
     await this.deps.codes.verify('email_verification', user.email, code);
     return this.deps.users.update(user.id, { emailVerifiedAt: new Date() });
   }
@@ -229,7 +231,7 @@ export class AuthService {
     const linked = await socialAccounts.find(profile.provider, profile.providerUserId);
     if (linked) {
       const user = await users.findById(linked.userId);
-      if (!user) throw new NotFoundError('User not found', 'USER_NOT_FOUND');
+      if (!user) throw new NotFoundError(USERS_MESSAGES.notFound);
       return this.signIn(user, client);
     }
 
@@ -280,14 +282,14 @@ export class AuthService {
 
   async getCurrentUser(userId: string): Promise<User> {
     const user = await this.deps.users.findById(userId);
-    if (!user) throw new NotFoundError('User not found', 'USER_NOT_FOUND');
+    if (!user) throw new NotFoundError(USERS_MESSAGES.notFound);
     return user;
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────
 
   private async signIn(user: User, client: ClientContext): Promise<AuthResult> {
-    if (!user.isActive) throw new ForbiddenError('This account has been disabled', 'ACCOUNT_DISABLED');
+    if (!user.isActive) throw new ForbiddenError(AUTH_MESSAGES.accountDisabled);
     const updated = await this.deps.users.update(user.id, { lastLoginAt: new Date() });
     return { user: updated, tokens: await this.deps.sessions.issue(updated, client) };
   }
@@ -296,7 +298,7 @@ export class AuthService {
   private async assertPhoneAvailable(countryCode: string, phone: string) {
     const normalized = normalizePhone(countryCode, phone);
     if (await this.deps.users.findByPhone(normalized.countryCode, normalized.phone)) {
-      throw new ConflictError('Mobile number is already registered', 'PHONE_TAKEN');
+      throw new ConflictError(USERS_MESSAGES.phoneTaken);
     }
     return normalized;
   }

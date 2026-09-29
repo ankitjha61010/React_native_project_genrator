@@ -1,7 +1,40 @@
 import type { ResponseConfig } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 
-/** Shared schemas & helpers for the OpenAPI document. */
+/** One endpoint in the Swagger / OpenAPI docs. */
+export interface ApiDoc {
+  method: 'get' | 'post' | 'put' | 'patch' | 'delete';
+  /** Express-style path below /api/v1, e.g. `/users/:id`. */
+  path: string;
+  summary: string;
+{{#if AUTH}}
+  /** Needs `Authorization: Bearer <access token>`. */
+  auth?: boolean;
+{{/if}}
+  /** Success status (default 200). */
+  status?: number;
+  body?: z.ZodType;
+  query?: z.ZodObject;
+  params?: z.ZodObject;
+{{#if UPLOADS}}
+  /** multipart/form-data with one file in this field. */
+  upload?: string;
+{{/if}}
+  /** Schema of `data` in the response. */
+  response?: z.ZodType;
+  /** `data` is a page (array + `meta`). */
+  paginated?: boolean;
+  /** Error statuses this endpoint can answer. */
+  errors?: number[];
+}
+
+/** The endpoints of one feature (a group in Swagger UI). */
+export interface ApiDocGroup {
+  tag: string;
+  endpoints: ApiDoc[];
+}
+
+// ── shared schemas & helpers ──────────────────────────────────────────────────
 
 const fieldErrorSchema = z.object({ field: z.string().optional(), message: z.string() });
 

@@ -4,7 +4,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigation } from '@react-navigation/native';
-import { userMessage } from '{{IMPORT:api.errors}}';
+import { errorMessage } from '{{IMPORT:api.errors}}';
 import { defaultCountry, type Country } from '{{IMPORT:assets.countries}}';
 import { {{SYMBOL:auth.service}} } from '{{IMPORT:auth.service}}';
 import { AppButton } from '{{IMPORT:components.AppButton}}';
@@ -69,7 +69,7 @@ export function RegisterScreen(): React.JSX.Element {
       navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
     } catch (error) {
       // e.g. "Email is already registered" / "Mobile number is already registered".
-      flash.error({ message: userMessage(error) ?? 'Registration failed, please try again.' });
+      flash.error({ message: errorMessage(error) });
     }
   });
 

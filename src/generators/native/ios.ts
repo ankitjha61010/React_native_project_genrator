@@ -2,7 +2,7 @@ import path from 'node:path';
 import fs from 'fs-extra';
 import plist from 'plist';
 import xcode from 'xcode';
-import { SOCIAL_PLACEHOLDERS, type SocialProviders } from '../../config/socialAuth.js';
+import type { SocialProviders, socialValues } from '../../config/socialAuth.js';
 import { GeneratorError } from '../../utils/errors.js';
 import { applyPatches } from '../../utils/nativePatch.js';
 
@@ -75,7 +75,7 @@ export async function configureXcodeEnv(projectDir: string, appName: string): Pr
  * Podfile: react-native-permissions handlers, static frameworks for React Native
  * Firebase (resolved through CocoaPods, not SPM) and a path-free `.xcode.env.local`.
  */
-export async function configurePodfile(projectDir: string, appName: string): Promise<void> {
+export async function configurePodfile(projectDir: string, appName: string, extraPermissions: string[] = []): Promise<void> {
   const { podfile } = iosPaths(projectDir, appName);
   await edit(podfile, 'ios/Podfile', source =>
     applyPatches(
@@ -125,7 +125,7 @@ export async function configurePodfile(projectDir: string, appName: string): Pro
             '',
             '# react-native-permissions: only the handlers listed here are compiled in.',
             '# Add more (e.g. LocationWhenInUse) together with their Info.plist usage description.',
-            "setup_permissions(['Camera', 'Notifications'])",
+            `setup_permissions([${['Camera', 'Notifications', ...extraPermissions].map(p => `'${p}'`).join(', ')}])`,
             '',
             '# React Native Firebase requires static frameworks.',
             'use_frameworks! :linkage => :static',
@@ -188,6 +188,17 @@ export async function configureAppDelegate(projectDir: string, appName: string):
       'AppDelegate.swift',
     ),
   );
+}
+
+/** Info.plist: microphone usage description (chat voice messages). */
+export async function configureIosMicrophone(projectDir: string, appName: string, displayName: string): Promise<void> {
+  const { infoPlist } = iosPaths(projectDir, appName);
+  if (!(await fs.pathExists(infoPlist))) {
+    throw new GeneratorError(`Expected Info.plist at ${infoPlist}.`);
+  }
+  const data = plist.parse(await fs.readFile(infoPlist, 'utf8')) as Record<string, plist.PlistValue>;
+  data.NSMicrophoneUsageDescription ??= `${displayName} uses the microphone to record voice messages.`;
+  await fs.writeFile(infoPlist, plist.build(data, { indent: '\t', pretty: true }) + '\n', 'utf8');
 }
 
 /** Info.plist: display name, usage descriptions and remote-notification background mode. */
@@ -323,13 +334,14 @@ const FACEBOOK_QUERY_SCHEMES = ['fbapi', 'fb-messenger-api', 'fbauth2', 'fbshare
  * - Facebook: FacebookAppID / ClientToken / DisplayName, `fb<APP_ID>` URL scheme, query
  *   schemes and the SDK hooks in AppDelegate (launch + open URL).
  * - Apple: "Sign in with Apple" entitlement wired into the app target.
- * Every value is a placeholder listed in docs/SOCIAL_LOGIN.md.
+ * Values are the credentials entered while generating, or YOUR_… placeholders (docs/SOCIAL_LOGIN.md).
  */
 export async function configureIosSocialAuth(
   projectDir: string,
   appName: string,
   displayName: string,
   providers: SocialProviders,
+  values: ReturnType<typeof socialValues>,
 ): Promise<void> {
   const { infoPlist, appDelegate, pbxproj, appFolder } = iosPaths(projectDir, appName);
 
@@ -339,13 +351,13 @@ export async function configureIosSocialAuth(
     }
     const data = plist.parse(await fs.readFile(infoPlist, 'utf8')) as Record<string, plist.PlistValue>;
     if (providers.google) {
-      addUrlScheme(data, SOCIAL_PLACEHOLDERS.googleIosUrlScheme);
+      addUrlScheme(data, values.googleIosUrlScheme);
     }
     if (providers.facebook) {
-      data.FacebookAppID = SOCIAL_PLACEHOLDERS.facebookAppId;
-      data.FacebookClientToken = SOCIAL_PLACEHOLDERS.facebookClientToken;
+      data.FacebookAppID = values.facebookAppId;
+      data.FacebookClientToken = values.facebookClientToken;
       data.FacebookDisplayName ??= displayName;
-      addUrlScheme(data, `fb${SOCIAL_PLACEHOLDERS.facebookAppId}`);
+      addUrlScheme(data, `fb${values.facebookAppId}`);
       const queries = new Set(Array.isArray(data.LSApplicationQueriesSchemes) ? (data.LSApplicationQueriesSchemes as string[]) : []);
       FACEBOOK_QUERY_SCHEMES.forEach(s => queries.add(s));
       data.LSApplicationQueriesSchemes = [...queries];

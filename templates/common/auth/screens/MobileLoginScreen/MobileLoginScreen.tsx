@@ -4,7 +4,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigation } from '@react-navigation/native';
-import { userMessage } from '{{IMPORT:api.errors}}';
+import { errorMessage } from '{{IMPORT:api.errors}}';
 import { defaultCountry, type Country } from '{{IMPORT:assets.countries}}';
 import { {{SYMBOL:auth.service}} } from '{{IMPORT:auth.service}}';
 import { AppButton } from '{{IMPORT:components.AppButton}}';
@@ -41,7 +41,7 @@ export function MobileLoginScreen(): React.JSX.Element {
       navigation.navigate('OtpVerify', { countryCode: country.dialCode, phone, resendIn: sent.resendIn });
     } catch (error) {
       // e.g. "Please wait 42 seconds before requesting a new code".
-      flash.error({ message: userMessage(error) ?? 'Could not send the code, please try again.' });
+      flash.error({ message: errorMessage(error) });
     }
   });
 

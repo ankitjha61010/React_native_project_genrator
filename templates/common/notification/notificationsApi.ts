@@ -1,4 +1,3 @@
-import { Platform } from 'react-native';
 import { api } from '{{IMPORT:api.client}}';
 import { NotificationType, type AppNotification } from './notificationTypes';
 
@@ -25,14 +24,8 @@ const toAppNotification = (n: ServerNotification): AppNotification => ({
   data: n.data,
 });
 
-/** Notification requests: push device registration and the server-side inbox. */
+/** The server-side notification inbox (devices: api/deviceApi.ts). */
 export const notificationsApi = {
-  /** Idempotent – called on every app start and FCM token refresh. */
-  registerDevice: (token: string) => api.post<null>('/notifications/devices', { token, platform: Platform.OS === 'ios' ? 'ios' : 'android' }),
-
-  /** On logout: this device stops receiving the user's pushes. */
-  unregisterDevice: (token: string) => api.delete<null>(`/notifications/devices/${encodeURIComponent(token)}`, { skipAuthRefresh: true }),
-
   /** Newest first (the backend returns at most 100 per page). */
   async list(limit = 100): Promise<{ items: AppNotification[]; unreadCount: number }> {
     const page = await api.page<ServerNotification>('/notifications', { params: { page: 1, limit } });

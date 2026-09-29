@@ -1,7 +1,7 @@
 import path from 'node:path';
 import fs from 'fs-extra';
 import type { ReactNativeProfile } from '../../config/reactNativeVersions.js';
-import { SOCIAL_PLACEHOLDERS, type SocialProviders } from '../../config/socialAuth.js';
+import type { SocialProviders, socialValues } from '../../config/socialAuth.js';
 import { GeneratorError } from '../../utils/errors.js';
 import { appendBlock, applyPatches } from '../../utils/nativePatch.js';
 
@@ -86,6 +86,26 @@ export async function configureAndroidPermissions(projectDir: string): Promise<v
   );
 }
 
+/** RECORD_AUDIO for chat voice messages (requested at runtime). */
+export async function configureAndroidMicrophone(projectDir: string): Promise<void> {
+  const manifest = path.join(projectDir, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+  await edit(manifest, 'AndroidManifest.xml', source =>
+    applyPatches(
+      source,
+      [
+        {
+          id: 'microphone',
+          anchor: /<uses-permission android:name="android\.permission\.INTERNET" \/>/,
+          position: 'after',
+          comment: 'xml',
+          content: ['<!-- Microphone for chat voice messages (requested at runtime) -->', '<uses-permission android:name="android.permission.RECORD_AUDIO" />'].join('\n'),
+        },
+      ],
+      'AndroidManifest.xml',
+    ),
+  );
+}
+
 /**
  * Android only mirrors the UI when the app declares `supportsRtl`. Set it ONLY for apps
  * generated with RTL support: an LTR-only app must stay left-to-right even on an Arabic
@@ -128,7 +148,7 @@ export async function installAndroidFonts(projectDir: string, fontPaths: string[
  * Google Sign-In needs no manifest changes (only the SHA-1 in Google Cloud – see
  * docs/SOCIAL_LOGIN.md). Sign in with Apple is iOS only.
  */
-export async function configureAndroidSocialAuth(projectDir: string, providers: SocialProviders): Promise<void> {
+export async function configureAndroidSocialAuth(projectDir: string, providers: SocialProviders, values: ReturnType<typeof socialValues>): Promise<void> {
   if (!providers.facebook) return;
   const main = path.join(projectDir, 'android', 'app', 'src', 'main');
 
@@ -142,11 +162,11 @@ export async function configureAndroidSocialAuth(projectDir: string, providers: 
           position: 'before',
           comment: 'xml',
           content: [
-            '    <!-- Facebook Login – replace with your values (see docs/SOCIAL_LOGIN.md) -->',
-            `    <string name="facebook_app_id">${SOCIAL_PLACEHOLDERS.facebookAppId}</string>`,
-            `    <string name="facebook_client_token">${SOCIAL_PLACEHOLDERS.facebookClientToken}</string>`,
+            '    <!-- Facebook Login (YOUR_… = not configured yet, see docs/SOCIAL_LOGIN.md) -->',
+            `    <string name="facebook_app_id">${escapeXml(values.facebookAppId)}</string>`,
+            `    <string name="facebook_client_token">${escapeXml(values.facebookClientToken)}</string>`,
             '    <!-- "fb" followed by your app id, e.g. fb1234567890 -->',
-            `    <string name="fb_login_protocol_scheme">fb${SOCIAL_PLACEHOLDERS.facebookAppId}</string>`,
+            `    <string name="fb_login_protocol_scheme">fb${escapeXml(values.facebookAppId)}</string>`,
           ].join('\n'),
         },
       ],

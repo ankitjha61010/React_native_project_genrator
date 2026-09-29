@@ -11,7 +11,7 @@ import { ProfileScreen } from '{{IMPORT:screens.Profile}}';
 import { ChatListScreen } from '{{IMPORT:chat.ChatListScreen}}';
 {{/if}}
 {{#if DRAWER}}
-import { DrawerMenuButton } from './HeaderButtons';
+import { renderDrawerButton } from './HeaderButtons';
 {{/if}}
 import { HomeStackNavigator } from './HomeStackNavigator';
 import type { BottomTabParamList } from './navigationTypes';
@@ -50,7 +50,7 @@ export function BottomTabNavigator(): React.JSX.Element {
       screenOptions={{
         headerTitleAlign: 'center',
 {{#if DRAWER}}
-        headerLeft: DrawerMenuButton,
+        headerLeft: renderDrawerButton,
         headerLeftContainerStyle: { paddingStart: 12 },
 {{/if}}
         tabBarActiveTintColor: theme.colors.primary,

@@ -7,11 +7,10 @@ import { generateBackend } from '../backend/generator.js';
 import { generateMicroservices } from '../backend/microservices.js';
 import { collectBackendOptions, describeBackend, type BackendPreset } from '../backend/prompts.js';
 import type { BackendOptions } from '../backend/types.js';
-import { DATABASE_LABELS, devDatabaseUrl, FRAMEWORK_LABELS } from '../backend/context.js';
+import { DATABASE_LABELS, FRAMEWORK_LABELS } from '../backend/context.js';
 import type { CliFlags } from '../cli/args.js';
 import { log } from '../cli/logger.js';
 import { collectOptions } from '../cli/prompts.js';
-import { socialProviders } from '../config/socialAuth.js';
 import type { ProjectOptions } from '../core/types.js';
 import { initGit } from '../generators/gitGenerator.js';
 import { generateProject } from '../generators/projectGenerator.js';
@@ -30,7 +29,7 @@ export const DEV_API_URL = 'http://localhost:3000/api/v1';
 
 /** What the app's choices mean for the backend. */
 function presetFor(frontend: ProjectOptions, rootDir: string): BackendPreset {
-  const social = socialProviders(frontend.socialAuth);
+  const social = frontend.socialAuth;
   const slug = frontend.appName.toLowerCase();
   return {
     appName: `${slug}-api`,
@@ -38,8 +37,10 @@ function presetFor(frontend: ProjectOptions, rootDir: string): BackendPreset {
     projectDir: path.join(rootDir, 'backend'),
     // The app's login screen always has email + password.
     authMethods: { email: true, mobileOtp: frontend.authMobile, google: social.google, facebook: social.facebook, apple: social.apple },
-    modules: { chat: frontend.chat, notifications: frontend.notifications },
+    modules: { chat: frontend.chat, groupChat: frontend.chat && frontend.groupChat, notifications: frontend.notifications, legal: frontend.termsAndConditions, deleteAccount: frontend.deleteAccount },
     apiEncryption: frontend.apiEncryption,
+    // The keys entered for the app – the backend verifies the same client ids.
+    socialCredentials: frontend.socialCredentials,
     appPackage: frontend.packageName,
     installDependencies: frontend.installDependencies,
     // One repository for both projects (created at the root).
@@ -95,7 +96,7 @@ export async function collectFullstackOptions(flags: CliFlags): Promise<Fullstac
 function microRun(b: BackendOptions): string {
   return `\`\`\`sh
 # 1. Database server (one database per service) + Redis
-docker compose -f backend/docker-compose.yml up -d
+${b.docker ? 'docker compose -f backend/docker-compose.yml up -d db redis' : `#    install / start ${DATABASE_LABELS[b.database]} and Redis yourself – see backend/README.md`}
 
 # 2. Backend – API gateway http://localhost:3000/api/v1 + ${['identity', ...(b.modules.chat ? ['chat'] : []), ...(b.modules.notifications ? ['notifications'] : [])].join(' / ')} services
 cd backend
@@ -114,9 +115,10 @@ function rootReadme(o: FullstackOptions): string {
   const b = o.backend;
   const db = DATABASE_LABELS[b.database];
   const migrate = b.orm === 'mongoose' ? '' : '\nnpm run db:deploy          # create the tables\n';
+  const infra = b.redis ? `${db} + Redis` : db;
   const monolithRun = `\`\`\`sh
-# 1. Database (${db}) – or point backend/.env DATABASE_URL at your own
-docker compose up -d db
+# 1. Database (${infra})${b.docker ? ' – or point DATABASE_URL in backend/.env at your own' : ''}
+${b.docker ? `docker compose -f backend/docker-compose.yml up -d db${b.redis ? ' redis' : ''}` : `#    install / start ${infra} yourself, then set DATABASE_URL${b.redis ? ' / REDIS_URL' : ''} in backend/.env`}
 
 # 2. Backend – http://localhost:3000/api/v1${b.swagger ? ' · docs http://localhost:3000/api/docs' : ''}
 cd backend
@@ -149,64 +151,10 @@ ${b.modules.notifications ? '- **Push notifications:** add the Firebase config f
 `;
 }
 
-function dockerCompose(b: BackendOptions): string {
-  const name = new URL(devDatabaseUrl(b)).pathname.slice(1) || 'app';
-  switch (b.database) {
-    case 'postgresql':
-      return `# Development database – matches DATABASE_URL in backend/.env
-services:
-  db:
-    image: postgres:17
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: ${name}
-    ports:
-      - '5432:5432'
-    volumes:
-      - db-data:/var/lib/postgresql/data
-
-volumes:
-  db-data:
-`;
-    case 'mysql':
-      return `# Development database – matches DATABASE_URL in backend/.env
-services:
-  db:
-    image: mysql:8.4
-    environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: ${name}
-    ports:
-      - '3306:3306'
-    volumes:
-      - db-data:/var/lib/mysql
-
-volumes:
-  db-data:
-`;
-    case 'mongodb':
-      return `# Development database – matches DATABASE_URL in backend/.env
-services:
-  db:
-    image: mongo:8
-    ports:
-      - '27017:27017'
-    volumes:
-      - db-data:/data/db
-
-volumes:
-  db-data:
-`;
-  }
-}
-
-/** Root files: README, run scripts, docker-compose for the database, .gitignore. */
+/** Root files: README, run scripts, .gitignore (Docker files, when chosen, are in backend/). */
 export async function writeRootFiles(o: FullstackOptions): Promise<void> {
   await fs.ensureDir(o.rootDir);
   await fs.writeFile(path.join(o.rootDir, 'README.md'), rootReadme(o));
-  // Microservices: backend/docker-compose.yml has the database server + Redis.
-  if (o.backend.deployment !== 'microservices') await fs.writeFile(path.join(o.rootDir, 'docker-compose.yml'), dockerCompose(o.backend));
   await fs.writeFile(path.join(o.rootDir, '.gitignore'), 'node_modules/\n.DS_Store\n*.log\n');
   await fs.writeJson(
     path.join(o.rootDir, 'package.json'),
@@ -218,9 +166,8 @@ export async function writeRootFiles(o: FullstackOptions): Promise<void> {
         mobile: 'npm --prefix mobile start',
         android: 'npm --prefix mobile run android',
         ios: 'npm --prefix mobile run ios',
-        ...(o.backend.deployment === 'microservices'
-          ? { db: 'docker compose -f backend/docker-compose.yml up -d', test: 'npm --prefix backend test && npm --prefix mobile test' }
-          : { db: 'docker compose up -d db', test: 'npm --prefix backend run test:all && npm --prefix mobile test' }),
+        ...(o.backend.docker ? { db: `docker compose -f backend/docker-compose.yml up -d db${o.backend.redis ? ' redis' : ''}` } : {}),
+        test: o.backend.deployment === 'microservices' ? 'npm --prefix backend test && npm --prefix mobile test' : 'npm --prefix backend run test:all && npm --prefix mobile test',
       },
     },
     { spaces: 2 },

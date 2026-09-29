@@ -177,7 +177,7 @@ export const api = {
     const form = new FormData();
     form.append(field, file as unknown as Blob);
     return apiClient
-      .post(url, form, { ...config, headers: { 'Content-Type': 'multipart/form-data' }{{#if API_ENCRYPTION}}, skipEncryption: true{{/if}}, timeout: 120_000 })
+      .post(url, form, { ...config, headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120_000 })
       .then(r => unwrap<T>(r.data));
   },
 };

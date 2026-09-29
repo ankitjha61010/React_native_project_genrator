@@ -7,6 +7,7 @@ import type { AccessTokenPayload, RefreshTokenPayload, SignedToken, TokenService
 {{else}}
 import type { AccessTokenPayload, SignedToken, TokenService } from '{{IMPORT:port.tokenService}}';
 {{/if}}
+import { AUTH_MESSAGES } from '{{IMPORT:messages.auth}}';
 
 export interface JwtOptions {
   accessSecret: string;
@@ -32,7 +33,7 @@ export class JwtTokenService implements TokenService {
   verifyAccessToken(token: string): AccessTokenPayload {
     const payload = this.verify(token, this.options.accessSecret, 'access');
     if (!isRole(payload.role) || typeof payload.tv !== 'number') {
-      throw new UnauthorizedError('Invalid access token', 'INVALID_TOKEN');
+      throw new UnauthorizedError(AUTH_MESSAGES.invalidAccessToken);
     }
     return { sub: payload.sub!, role: payload.role, tv: payload.tv };
   }
@@ -45,7 +46,7 @@ export class JwtTokenService implements TokenService {
   verifyRefreshToken(token: string): RefreshTokenPayload {
     const payload = this.verify(token, this.options.refreshSecret, 'refresh');
     if (typeof payload.jti !== 'string' || typeof payload.fam !== 'string') {
-      throw new UnauthorizedError('Invalid refresh token', 'INVALID_TOKEN');
+      throw new UnauthorizedError(AUTH_MESSAGES.invalidRefreshToken);
     }
     return { sub: payload.sub!, jti: payload.jti, fam: payload.fam };
   }
@@ -73,10 +74,10 @@ export class JwtTokenService implements TokenService {
       });
     } catch (error) {
       const expired = error instanceof jwt.TokenExpiredError;
-      throw new UnauthorizedError(expired ? 'Token expired' : 'Invalid token', expired ? 'TOKEN_EXPIRED' : 'INVALID_TOKEN');
+      throw new UnauthorizedError(expired ? AUTH_MESSAGES.tokenExpired : AUTH_MESSAGES.invalidToken);
     }
     if (typeof payload === 'string' || payload.typ !== type || typeof payload.sub !== 'string') {
-      throw new UnauthorizedError('Invalid token', 'INVALID_TOKEN');
+      throw new UnauthorizedError(AUTH_MESSAGES.invalidToken);
     }
     return payload;
   }

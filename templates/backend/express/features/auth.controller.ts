@@ -1,13 +1,18 @@
+import type { Request, Response } from 'express';
+import type { AuthService } from '{{IMPORT:app.authService}}';
 {{#if VIEWS}}
 import { authView } from '{{IMPORT:views.auth}}';
 import { userView } from '{{IMPORT:views.user}}';
 {{else}}
+import { toSessionView, type ClientContext } from '{{IMPORT:app.authTypes}}';
 import { toPublicUser } from '{{IMPORT:domain.user}}';
-import { toSessionView } from '{{IMPORT:app.authTypes}}';
 {{/if}}
-import { emptySchema } from '{{IMPORT:ex.schemas}}';
-import { route, type RouteGroup } from '{{IMPORT:ex.route}}';
-import { publicUserSchema } from '{{IMPORT:ex.users.schemas}}';
+{{#if VIEWS}}
+import type { ClientContext } from '{{IMPORT:app.authTypes}}';
+{{/if}}
+import { currentUser } from '{{IMPORT:ex.mw.auth}}';
+import { sendSuccess } from '{{IMPORT:ex.respond}}';
+import { parseBody } from '{{IMPORT:ex.validation}}';
 import {
 {{#if AUTH_EMAIL}}
   changePasswordSchema,
@@ -16,9 +21,6 @@ import {
   registerSchema,
   resetPasswordSchema,
   verifyEmailSchema,
-{{/if}}
-{{#if CODES}}
-  sentCodeSchema,
 {{/if}}
 {{#if AUTH_OTP}}
   sendOtpSchema,
@@ -30,200 +32,120 @@ import {
 {{#if AUTH_REFRESH}}
   refreshTokenSchema,
 {{/if}}
-  sessionSchema,
 } from '{{IMPORT:ex.auth.schemas}}';
+import { AUTH_MESSAGES } from '{{IMPORT:messages.auth}}';
 
 {{#if VIEWS}}
 const session = authView.session;
 const publicUser = userView.one;
 {{else}}
+/** `{ user, tokens }` – the response of every sign-in endpoint. */
 const session = toSessionView;
 const publicUser = toPublicUser;
 {{/if}}
 
-/** `/auth` – {{AUTH_METHODS_TEXT}}, sessions. */
-export const authRoutes: RouteGroup = {
-  prefix: '/auth',
-  tag: 'Auth',
-  routes: [
+/** IP + user agent – stored with the session and used in security logs. */
+const client = (req: Request): ClientContext => ({ ip: req.ip, userAgent: req.get('user-agent') });
+
+/** Handles `/auth` requests: {{AUTH_METHODS_TEXT}}, sessions. */
+export class AuthController {
+  constructor(private readonly auth: AuthService) {}
 {{#if AUTH_EMAIL}}
-    route({
-      method: 'post',
-      path: '/register',
-      summary: 'Create an account with email + password (a verification code is emailed)',
-      message: 'Registered successfully',
-      status: 201,
-      limited: true,
-      body: registerSchema,
-      response: sessionSchema,
-      errors: [409, 422, 429],
-      handler: async ({ body, client }, { auth }) => session(await auth.register(body, client)),
-    }),
-    route({
-      method: 'post',
-      path: '/login',
-      summary: 'Log in with email + password',
-      message: 'Logged in successfully',
-      limited: true,
-      body: loginSchema,
-      response: sessionSchema,
-      errors: [401, 403{{#if SEC_LOCKOUT}}, 423{{/if}}, 422, 429],
-      handler: async ({ body, client }, { auth }) => session(await auth.login(body, client)),
-    }),
+
+  /** POST /auth/register – a verification code is emailed */
+  register = async (req: Request, res: Response) => {
+    const result = await this.auth.register(parseBody(registerSchema, req), client(req));
+    sendSuccess(res, AUTH_MESSAGES.registered, session(result), { status: 201 });
+  };
+
+  /** POST /auth/login */
+  login = async (req: Request, res: Response) => {
+    const result = await this.auth.login(parseBody(loginSchema, req), client(req));
+    sendSuccess(res, AUTH_MESSAGES.loggedIn, session(result));
+  };
 {{/if}}
 {{#if AUTH_OTP}}
-    route({
-      method: 'post',
-      path: '/otp/send',
-      summary: 'Text a 6-digit login code to a mobile number',
-      message: 'Code sent',
-      limited: true,
-      body: sendOtpSchema,
-      response: sentCodeSchema,
-      errors: [422, 429],
-      handler: ({ body }, { auth }) => auth.sendOtp(body),
-    }),
-    route({
-      method: 'post',
-      path: '/otp/verify',
-      summary: 'Sign in with the SMS code (creates the account on the first login)',
-      message: 'Logged in successfully',
-      limited: true,
-      body: verifyOtpSchema,
-      response: sessionSchema,
-      errors: [400, 403, 422, 429],
-      handler: async ({ body, client }, { auth }) => session(await auth.verifyOtp(body, client)),
-    }),
+
+  /** POST /auth/otp/send – texts a 6-digit code */
+  sendOtp = async (req: Request, res: Response) => {
+    sendSuccess(res, AUTH_MESSAGES.codeSent, await this.auth.sendOtp(parseBody(sendOtpSchema, req)));
+  };
+
+  /** POST /auth/otp/verify – signs in (the account is created on the first login) */
+  verifyOtp = async (req: Request, res: Response) => {
+    const result = await this.auth.verifyOtp(parseBody(verifyOtpSchema, req), client(req));
+    sendSuccess(res, AUTH_MESSAGES.loggedIn, session(result));
+  };
 {{/if}}
 {{#if SOCIAL}}
-    route({
-      method: 'post',
-      path: '/social',
-      summary: 'Sign in with {{SOCIAL_PROVIDERS_TEXT}} (the token from the provider SDK is verified with the provider)',
-      message: 'Logged in successfully',
-      limited: true,
-      body: socialLoginSchema,
-      response: sessionSchema,
-      errors: [401, 403, 422, 429],
-      handler: async ({ body, client }, { auth }) => session(await auth.socialLogin(body, client)),
-    }),
+
+  /** POST /auth/social – {{SOCIAL_PROVIDERS_TEXT}} (the token is verified with the provider) */
+  socialLogin = async (req: Request, res: Response) => {
+    const result = await this.auth.socialLogin(parseBody(socialLoginSchema, req), client(req));
+    sendSuccess(res, AUTH_MESSAGES.loggedIn, session(result));
+  };
 {{/if}}
 {{#if AUTH_REFRESH}}
-    route({
-      method: 'post',
-      path: '/refresh',
-{{#if AUTH_ROTATION}}
-      summary: 'New token pair for a refresh token (the used one is revoked; reusing it revokes the whole session)',
+
+  /** POST /auth/refresh{{#if AUTH_ROTATION}} – the used refresh token is revoked; reusing it revokes the whole session{{/if}} */
+  refresh = async (req: Request, res: Response) => {
+    const { refreshToken } = parseBody(refreshTokenSchema, req);
+    sendSuccess(res, AUTH_MESSAGES.tokenRefreshed, session(await this.auth.refresh(refreshToken, client(req))));
+  };
+
+  /** POST /auth/logout – ends the session of a refresh token */
+  logout = async (req: Request, res: Response) => {
+    await this.auth.logout(parseBody(refreshTokenSchema, req).refreshToken);
+    sendSuccess(res, AUTH_MESSAGES.loggedOut);
+  };
+
+  /** POST /auth/logout-all – every device */
+  logoutAll = async (req: Request, res: Response) => {
+    await this.auth.logoutAll(currentUser(req).id);
+    sendSuccess(res, AUTH_MESSAGES.loggedOutEverywhere);
+  };
 {{else}}
-      summary: 'New access token for a refresh token',
+
+  /** POST /auth/logout – invalidates every token of the user */
+  logout = async (req: Request, res: Response) => {
+    await this.auth.logout(currentUser(req).id);
+    sendSuccess(res, AUTH_MESSAGES.loggedOut);
+  };
 {{/if}}
-      message: 'Token refreshed',
-      limited: true,
-      body: refreshTokenSchema,
-      response: sessionSchema,
-      errors: [401, 422, 429],
-      handler: async ({ body, client }, { auth }) => session(await auth.refresh(body.refreshToken, client)),
-    }),
-    route({
-      method: 'post',
-      path: '/logout',
-      summary: 'End the session of a refresh token',
-      message: 'Logged out',
-      body: refreshTokenSchema,
-      response: emptySchema,
-      errors: [422],
-      handler: async ({ body }, { auth }) => auth.logout(body.refreshToken),
-    }),
-    route({
-      method: 'post',
-      path: '/logout-all',
-      summary: 'Log out on every device',
-      message: 'Logged out on all devices',
-      auth: true,
-      response: emptySchema,
-      errors: [401],
-      handler: ({ user }, { auth }) => auth.logoutAll(user.id),
-    }),
-{{else}}
-    route({
-      method: 'post',
-      path: '/logout',
-      summary: 'Log out (invalidates every token of the user)',
-      message: 'Logged out',
-      auth: true,
-      response: emptySchema,
-      errors: [401],
-      handler: ({ user }, { auth }) => auth.logout(user.id),
-    }),
-{{/if}}
-    route({
-      method: 'get',
-      path: '/me',
-      summary: 'The signed-in user',
-      message: 'Current user',
-      auth: true,
-      response: publicUserSchema,
-      errors: [401],
-      handler: async ({ user }, { auth }) => publicUser(await auth.getCurrentUser(user.id)),
-    }),
+
+  /** GET /auth/me */
+  me = async (req: Request, res: Response) => {
+    sendSuccess(res, AUTH_MESSAGES.currentUser, publicUser(await this.auth.getCurrentUser(currentUser(req).id)));
+  };
 {{#if AUTH_EMAIL}}
-    route({
-      method: 'post',
-      path: '/change-password',
-      summary: 'Change (or set) the password – other sessions are signed out',
-      message: 'Password changed',
-      auth: true,
-      limited: true,
-      body: changePasswordSchema,
-      response: sessionSchema,
-      errors: [400, 401, 422, 429],
-      handler: async ({ user, body, client }, { auth }) => session(await auth.changePassword(user.id, body, client)),
-    }),
-    route({
-      method: 'post',
-      path: '/forgot-password',
-      summary: 'Email a 6-digit password reset code (always succeeds)',
-      message: 'If the email is registered, a reset code has been sent',
-      limited: true,
-      body: forgotPasswordSchema,
-      response: emptySchema,
-      errors: [422, 429],
-      handler: ({ body }, { auth }) => auth.requestPasswordReset(body.email),
-    }),
-    route({
-      method: 'post',
-      path: '/reset-password',
-      summary: 'Set a new password with the emailed code',
-      message: 'Password has been reset, please log in',
-      limited: true,
-      body: resetPasswordSchema,
-      response: emptySchema,
-      errors: [400, 422, 429],
-      handler: ({ body }, { auth }) => auth.resetPassword(body),
-    }),
-    route({
-      method: 'post',
-      path: '/verify-email/request',
-      summary: 'Email a verification code',
-      message: 'Verification code sent',
-      auth: true,
-      limited: true,
-      response: sentCodeSchema,
-      errors: [400, 401, 409, 429],
-      handler: ({ user }, { auth }) => auth.requestEmailVerification(user.id),
-    }),
-    route({
-      method: 'post',
-      path: '/verify-email',
-      summary: 'Confirm the email address with the emailed code',
-      message: 'Email verified',
-      auth: true,
-      limited: true,
-      body: verifyEmailSchema,
-      response: publicUserSchema,
-      errors: [400, 401, 422, 429],
-      handler: async ({ user, body }, { auth }) => publicUser(await auth.verifyEmail(user.id, body.code)),
-    }),
+
+  /** POST /auth/change-password – other sessions are signed out */
+  changePassword = async (req: Request, res: Response) => {
+    const result = await this.auth.changePassword(currentUser(req).id, parseBody(changePasswordSchema, req), client(req));
+    sendSuccess(res, AUTH_MESSAGES.passwordChanged, session(result));
+  };
+
+  /** POST /auth/forgot-password – always succeeds (doesn't reveal which emails exist) */
+  forgotPassword = async (req: Request, res: Response) => {
+    await this.auth.requestPasswordReset(parseBody(forgotPasswordSchema, req).email);
+    sendSuccess(res, AUTH_MESSAGES.resetCodeSent);
+  };
+
+  /** POST /auth/reset-password */
+  resetPassword = async (req: Request, res: Response) => {
+    await this.auth.resetPassword(parseBody(resetPasswordSchema, req));
+    sendSuccess(res, AUTH_MESSAGES.passwordReset);
+  };
+
+  /** POST /auth/verify-email/request */
+  requestEmailVerification = async (req: Request, res: Response) => {
+    sendSuccess(res, AUTH_MESSAGES.verificationCodeSent, await this.auth.requestEmailVerification(currentUser(req).id));
+  };
+
+  /** POST /auth/verify-email */
+  verifyEmail = async (req: Request, res: Response) => {
+    const { code } = parseBody(verifyEmailSchema, req);
+    sendSuccess(res, AUTH_MESSAGES.emailVerified, publicUser(await this.auth.verifyEmail(currentUser(req).id, code)));
+  };
 {{/if}}
-  ],
-};
+}

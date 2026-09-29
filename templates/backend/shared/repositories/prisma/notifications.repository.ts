@@ -1,15 +1,13 @@
 import { pageOffset, type PageQuery } from '{{IMPORT:core.pagination}}';
-import type { Broadcast, BroadcastAudience, Device, DevicePlatform, Notification, NotificationData, NotificationType } from '{{IMPORT:domain.notification}}';
+import type { Broadcast, BroadcastAudience, Notification, NotificationData, NotificationType } from '{{IMPORT:domain.notification}}';
 import type { CreateNotificationData, NotificationsRepository } from '{{IMPORT:contract.notifications}}';
 import type { PrismaClient } from '{{IMPORT:db.connection}}';
 
 type NotificationRecord = NonNullable<Awaited<ReturnType<PrismaClient['notification']['findUnique']>>>;
 type BroadcastRecord = NonNullable<Awaited<ReturnType<PrismaClient['broadcast']['findUnique']>>>;
-type DeviceRecord = NonNullable<Awaited<ReturnType<PrismaClient['device']['findUnique']>>>;
 
 const toNotification = (r: NotificationRecord): Notification => ({ ...r, type: r.type as NotificationType, data: r.data as NotificationData });
 const toBroadcast = (r: BroadcastRecord): Broadcast => ({ ...r, type: r.type as NotificationType, audience: r.audience as BroadcastAudience, data: r.data as NotificationData });
-const toDevice = (r: DeviceRecord): Device => ({ ...r, platform: r.platform as DevicePlatform });
 
 export class PrismaNotificationsRepository implements NotificationsRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -50,23 +48,6 @@ export class PrismaNotificationsRepository implements NotificationsRepository {
 
   async deleteAll(userId: string): Promise<void> {
     await this.prisma.notification.deleteMany({ where: { userId } });
-  }
-
-  async saveDevice(data: { userId: string; token: string; platform: DevicePlatform }): Promise<Device> {
-    return toDevice(await this.prisma.device.upsert({ where: { token: data.token }, create: data, update: { userId: data.userId, platform: data.platform } }));
-  }
-
-  async removeDevice(userId: string, token: string): Promise<void> {
-    await this.prisma.device.deleteMany({ where: { userId, token } });
-  }
-
-  async listDevices(userIds: string[]): Promise<Device[]> {
-    if (!userIds.length) return [];
-    return (await this.prisma.device.findMany({ where: { userId: { in: userIds } } })).map(toDevice);
-  }
-
-  async deleteDevicesByToken(tokens: string[]): Promise<void> {
-    await this.prisma.device.deleteMany({ where: { token: { in: tokens } } });
   }
 
   async createBroadcast(data: Omit<Broadcast, 'id' | 'createdAt'>): Promise<Broadcast> {

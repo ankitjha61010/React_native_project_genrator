@@ -3,8 +3,6 @@ declare module '@env' {
   export const API_BASE_URL: string | undefined;
   export const SOCKET_URL: string | undefined;
   export const APP_ENV: string | undefined;
-  export const TERMS_URL: string | undefined;
-  export const PRIVACY_POLICY_URL: string | undefined;
 {{#if API_ENCRYPTION}}
   export const API_ENCRYPTION_ENABLED: string | undefined;
   export const API_ENCRYPTION_KEY: string | undefined;

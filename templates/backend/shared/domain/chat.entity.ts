@@ -12,12 +12,21 @@ export interface MediaCrop {
   outputHeight?: number;
 }
 
+{{#if GROUP_CHAT}}
+export const MEMBER_ROLES = ['admin', 'member'] as const;
+/** Group admins add / remove members, rename the group, change its image and appoint admins. */
+export type MemberRole = (typeof MEMBER_ROLES)[number];
+
+{{/if}}
 export interface Conversation {
   id: string;
+{{#if GROUP_CHAT}}
   /** Groups only – a direct chat is titled with the other person's name. */
   title: string | null;
   isGroup: boolean;
+  /** Group image (a direct chat shows the other person's avatar). */
   avatarUrl: string | null;
+{{/if}}
   createdById: string;
   lastMessageAt: Date | null;
   createdAt: Date;
@@ -27,6 +36,10 @@ export interface Conversation {
 export interface ConversationMember {
   conversationId: string;
   userId: string;
+{{#if GROUP_CHAT}}
+  /** Always `member` in direct chats. */
+  role: MemberRole;
+{{/if}}
   /** Messages up to this moment are read. */
   lastReadAt: Date | null;
   /** "Delete chat": messages before this moment are hidden for this member. */
@@ -60,6 +73,9 @@ export interface ChatParticipantView {
   avatar?: string;
   isOnline: boolean;
   lastSeen?: string;
+{{#if GROUP_CHAT}}
+  role: MemberRole;
+{{/if}}
 }
 
 export interface ChatMessageView {
@@ -86,7 +102,11 @@ export interface ConversationView {
   id: string;
   title: string;
   avatar?: string;
+{{#if GROUP_CHAT}}
   isGroup: boolean;
+  /** Your role in this conversation. */
+  myRole: MemberRole;
+{{/if}}
   unreadCount: number;
   lastMessage?: ChatMessageView;
   participants: ChatParticipantView[];

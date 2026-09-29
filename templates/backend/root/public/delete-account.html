@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Delete your account – {{DISPLAY_NAME}}</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
+      h1 { font-size: 1.6rem; margin-bottom: 0.25rem; }
+      h2 { font-size: 1.15rem; margin-top: 2rem; }
+      .updated { opacity: 0.7; font-size: 0.9rem; }
+    </style>
+  </head>
+  <body>
+    <!-- The page app stores ask for ("how can users delete their account?"). Edit it, or set DELETE_ACCOUNT_URL in .env. -->
+    <h1>Delete your {{DISPLAY_NAME}} account</h1>
+
+    <h2>In the app</h2>
+    <ol>
+      <li>Open {{DISPLAY_NAME}} and sign in.</li>
+      <li>Go to <strong>Profile</strong> → <strong>Delete account</strong>.</li>
+      <li>Confirm. Your account is deleted immediately.</li>
+    </ol>
+
+    <h2>Without the app</h2>
+    <p>Email <a href="mailto:support@example.com">support@example.com</a> from the address of your account and we will delete it within 30 days.</p>
+
+    <h2>What is deleted</h2>
+    <p>Your profile, photo, sign-in methods, devices, notifications and your chat memberships. Messages you sent are removed from conversations.</p>
+  </body>
+</html>

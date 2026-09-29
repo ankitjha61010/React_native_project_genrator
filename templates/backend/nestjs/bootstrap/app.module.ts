@@ -10,6 +10,12 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule{{#if SEC_RATE_LIMIT}}, ThrottlerGuard{{/if}} } from '@nestjs/throttler';
 import { config } from '{{IMPORT:config.env}}';
 {{/if}}
+{{#if REDIS}}
+{{#if SEC_ANY_RATE_LIMIT}}
+import { redis } from '{{IMPORT:db.redis}}';
+import { RedisThrottlerStorage } from '{{IMPORT:nest.throttlerStorage}}';
+{{/if}}
+{{/if}}
 import { CoreModule } from '{{IMPORT:nest.coreModule}}';
 {{#if AUTH}}
 import { AccessGuard } from '{{IMPORT:nest.accessGuard}}';
@@ -22,7 +28,13 @@ import { AuthModule } from '{{IMPORT:nest.auth.module}}';
 {{#if CHAT}}
 import { ChatModule } from '{{IMPORT:nest.chat.module}}';
 {{/if}}
+{{#if DEVICES}}
+import { DevicesModule } from '{{IMPORT:nest.devices.module}}';
+{{/if}}
 import { HealthModule } from '{{IMPORT:nest.health.module}}';
+{{#if LEGAL}}
+import { LegalModule } from '{{IMPORT:nest.legal.module}}';
+{{/if}}
 {{#if NOTIFICATIONS}}
 import { NotificationsModule } from '{{IMPORT:nest.notifications.module}}';
 {{/if}}
@@ -36,7 +48,13 @@ import { AuthController } from '{{IMPORT:nest.auth.controller}}';
 {{#if CHAT}}
 import { ChatController } from '{{IMPORT:nest.chat.controller}}';
 {{/if}}
+{{#if DEVICES}}
+import { DevicesController } from '{{IMPORT:nest.devices.controller}}';
+{{/if}}
 import { HealthController } from '{{IMPORT:nest.health.controller}}';
+{{#if LEGAL}}
+import { LegalController } from '{{IMPORT:nest.legal.controller}}';
+{{/if}}
 {{#if NOTIFICATIONS}}
 import { NotificationsController } from '{{IMPORT:nest.notifications.controller}}';
 {{/if}}
@@ -50,11 +68,27 @@ import { UsersController } from '{{IMPORT:nest.users.controller}}';
     CoreModule,
 {{#if SEC_RATE_LIMIT}}
     // Per-IP limit for every route (RATE_LIMIT_*); auth routes are stricter (@AuthRateLimit).
+{{#if REDIS}}
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', ttl: config.rateLimit.windowMs, limit: config.rateLimit.max }],
+      // Counters in Redis, shared by every instance (in memory when REDIS_URL is empty, e.g. tests).
+      storage: redis ? new RedisThrottlerStorage(redis) : undefined,
+    }),
+{{else}}
     ThrottlerModule.forRoot([{ name: 'default', ttl: config.rateLimit.windowMs, limit: config.rateLimit.max }]),
+{{/if}}
 {{else}}
 {{#if SEC_AUTH_RATE_LIMIT}}
     // Only the auth routes are limited (@AuthRateLimit).
+{{#if REDIS}}
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', ttl: config.authRateLimit.windowMs, limit: config.authRateLimit.max }],
+      // Counters in Redis, shared by every instance (in memory when REDIS_URL is empty, e.g. tests).
+      storage: redis ? new RedisThrottlerStorage(redis) : undefined,
+    }),
+{{else}}
     ThrottlerModule.forRoot([{ name: 'default', ttl: config.authRateLimit.windowMs, limit: config.authRateLimit.max }]),
+{{/if}}
 {{/if}}
 {{/if}}
 {{#if FEATURE_MODULES}}
@@ -68,13 +102,19 @@ import { UsersController } from '{{IMPORT:nest.users.controller}}';
 {{#if CHAT}}
     ChatModule,
 {{/if}}
+{{#if DEVICES}}
+    DevicesModule,
+{{/if}}
 {{#if NOTIFICATIONS}}
     NotificationsModule,
+{{/if}}
+{{#if LEGAL}}
+    LegalModule,
 {{/if}}
 {{/if}}
   ],
 {{#if !FEATURE_MODULES}}
-  controllers: [HealthController{{#if AUTH_API}}, AuthController{{/if}}{{#if USERS_API}}, UsersController{{/if}}{{#if CHAT}}, ChatController{{/if}}{{#if NOTIFICATIONS}}, NotificationsController{{/if}}],
+  controllers: [HealthController{{#if AUTH_API}}, AuthController{{/if}}{{#if USERS_API}}, UsersController{{/if}}{{#if CHAT}}, ChatController{{/if}}{{#if DEVICES}}, DevicesController{{/if}}{{#if NOTIFICATIONS}}, NotificationsController{{/if}}{{#if LEGAL}}, LegalController{{/if}}],
 {{/if}}
   providers: [
     // Global guards run in this order.

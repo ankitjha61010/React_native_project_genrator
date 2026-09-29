@@ -49,9 +49,12 @@ describe('users API', () => {
     expect(missing.body.errors[0].field).toBe('avatar');
   });
 
-  it('GET /users/search finds other users', async () => {
-    const res = await request(app.server).get(`${api}/users/search?q=ada`).set(bearer(user.token)).expect(200);
-    expect(res.body.data).toEqual([{ id: admin.id, name: 'Ada Admin', avatar: null }]);
+  it('GET /users/search lists other users (paginated), filtered by name', async () => {
+    const all = await request(app.server).get(`${api}/users/search?page=1&limit=20`).set(bearer(user.token)).expect(200);
+    expect(all.body.data).toEqual([{ id: admin.id, name: 'Ada Admin', avatar: null }]);
+    expect(all.body.meta).toMatchObject({ page: 1, total: 1, hasNextPage: false });
+    const filtered = await request(app.server).get(`${api}/users/search?search=nobody`).set(bearer(user.token)).expect(200);
+    expect(filtered.body.data).toEqual([]);
   });
 
   it('requires authentication and the users:read permission', async () => {
@@ -76,11 +79,14 @@ describe('users API', () => {
     expect(res.body.code).toBe('USER_NOT_FOUND');
   });
 
+{{#if DELETE_ACCOUNT}}
+
   it('DELETE /users/me deletes the account', async () => {
     const temp = await app.signUp('Temp');
     await request(app.server).delete(`${api}/users/me`).set(bearer(temp.token)).expect(200);
     await request(app.server).get(`${api}/auth/me`).set(bearer(temp.token)).expect(401);
   });
+{{/if}}
 {{else}}
 
   it('creates, reads, lists, updates and deletes users', async () => {

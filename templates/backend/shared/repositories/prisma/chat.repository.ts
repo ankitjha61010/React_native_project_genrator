@@ -1,25 +1,40 @@
 import type { Conversation, ConversationMember, MediaCrop, Message, MessageType } from '{{IMPORT:domain.chat}}';
-import type { ChatRepository, CreateMessageData } from '{{IMPORT:contract.chat}}';
+import type { ChatRepository, CreateConversationData, CreateMessageData } from '{{IMPORT:contract.chat}}';
 import type { PrismaClient } from '{{IMPORT:db.connection}}';
 
 type MessageRecord = NonNullable<Awaited<ReturnType<PrismaClient['message']['findUnique']>>>;
+{{#if GROUP_CHAT}}
+type MemberRecord = NonNullable<Awaited<ReturnType<PrismaClient['conversationMember']['findUnique']>>>;
+
+const toMember = ({ role, ...record }: MemberRecord): ConversationMember => ({ ...record, role: role === 'admin' ? 'admin' : 'member' });
+{{/if}}
 
 const toMessage = ({ crop, type, ...record }: MessageRecord): Message => ({ ...record, type: type as MessageType, crop: (crop as MediaCrop | null) ?? null });
 
 export class PrismaChatRepository implements ChatRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
-  createConversation(data: { isGroup: boolean; title: string | null; createdById: string; memberIds: string[] }): Promise<Conversation> {
-    const { memberIds, ...conversation } = data;
+  createConversation({ memberIds, ...conversation }: CreateConversationData): Promise<Conversation> {
+{{#if GROUP_CHAT}}
+    const role = (userId: string) => (conversation.isGroup && userId === conversation.createdById ? 'admin' : 'member');
+    return this.prisma.conversation.create({ data: { ...conversation, members: { create: memberIds.map(userId => ({ userId, role: role(userId) })) } } });
+{{else}}
     return this.prisma.conversation.create({ data: { ...conversation, members: { create: memberIds.map(userId => ({ userId })) } } });
+{{/if}}
   }
 
   findConversation(id: string): Promise<Conversation | null> {
     return this.prisma.conversation.findUnique({ where: { id } });
   }
+{{#if GROUP_CHAT}}
+
+  updateConversation(id: string, data: Partial<Pick<Conversation, 'title' | 'avatarUrl'>>): Promise<Conversation> {
+    return this.prisma.conversation.update({ where: { id }, data });
+  }
+{{/if}}
 
   findDirectConversation(userId: string, otherUserId: string): Promise<Conversation | null> {
-    return this.prisma.conversation.findFirst({ where: { isGroup: false, AND: [{ members: { some: { userId } } }, { members: { some: { userId: otherUserId } } }] } });
+    return this.prisma.conversation.findFirst({ where: { {{#if GROUP_CHAT}}isGroup: false, {{/if}}AND: [{ members: { some: { userId } } }, { members: { some: { userId: otherUserId } } }] } });
   }
 
   listConversations(userId: string): Promise<Conversation[]> {
@@ -30,6 +45,26 @@ export class PrismaChatRepository implements ChatRepository {
     await this.prisma.conversation.deleteMany({ where: { id } });
   }
 
+{{#if GROUP_CHAT}}
+  async listMembers(conversationIds: string[]): Promise<ConversationMember[]> {
+    if (!conversationIds.length) return [];
+    // Oldest member first – the next admin when the last one leaves.
+    return (await this.prisma.conversationMember.findMany({ where: { conversationId: { in: conversationIds } }, orderBy: { joinedAt: 'asc' } })).map(toMember);
+  }
+
+  async findMember(conversationId: string, userId: string): Promise<ConversationMember | null> {
+    const record = await this.prisma.conversationMember.findUnique({ where: { conversationId_userId: { conversationId, userId } } });
+    return record ? toMember(record) : null;
+  }
+
+  async updateMember(conversationId: string, userId: string, data: Partial<Pick<ConversationMember, 'lastReadAt' | 'clearedAt' | 'role'>>): Promise<void> {
+    await this.prisma.conversationMember.updateMany({ where: { conversationId, userId }, data });
+  }
+
+  async addMembers(conversationId: string, userIds: string[]): Promise<void> {
+    await this.prisma.conversationMember.createMany({ data: userIds.map(userId => ({ conversationId, userId, role: 'member' })), skipDuplicates: true });
+  }
+{{else}}
   listMembers(conversationIds: string[]): Promise<ConversationMember[]> {
     return conversationIds.length ? this.prisma.conversationMember.findMany({ where: { conversationId: { in: conversationIds } } }) : Promise.resolve([]);
   }
@@ -41,6 +76,7 @@ export class PrismaChatRepository implements ChatRepository {
   async updateMember(conversationId: string, userId: string, data: Partial<Pick<ConversationMember, 'lastReadAt' | 'clearedAt'>>): Promise<void> {
     await this.prisma.conversationMember.updateMany({ where: { conversationId, userId }, data });
   }
+{{/if}}
 
   async removeMember(conversationId: string, userId: string): Promise<void> {
     await this.prisma.conversationMember.deleteMany({ where: { conversationId, userId } });

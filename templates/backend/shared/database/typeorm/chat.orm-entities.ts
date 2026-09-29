@@ -1,12 +1,13 @@
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryColumn, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import type { MediaCrop } from '{{IMPORT:domain.chat}}';
-import { JSON_TYPE, TIMESTAMP, UuidColumn } from './columns.js';
-import { UserOrmEntity } from './user.orm-entity.js';
+import { JSON_TYPE, TIMESTAMP, UuidColumn } from '{{IMPORT:typeorm.columns}}';
+import { UserOrmEntity } from '{{IMPORT:typeorm.user}}';
 
 @Entity({ name: 'conversations' })
 export class ConversationOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+{{#if GROUP_CHAT}}
 
   @Column({ type: 'varchar', length: 120, nullable: true })
   title: string | null;
@@ -16,6 +17,7 @@ export class ConversationOrmEntity {
 
   @Column({ name: 'avatar_url', type: 'varchar', length: 1024, nullable: true })
   avatarUrl: string | null;
+{{/if}}
 
   @UuidColumn({ name: 'created_by_id' })
   createdById: string;
@@ -46,6 +48,12 @@ export class ConversationMemberOrmEntity {
   @ManyToOne(() => UserOrmEntity, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
   user?: UserOrmEntity;
+{{#if GROUP_CHAT}}
+
+  /** `admin` or `member`. */
+  @Column({ type: 'varchar', length: 16, default: 'member' })
+  role: string;
+{{/if}}
 
   @Column({ name: 'last_read_at', type: TIMESTAMP, nullable: true })
   lastReadAt: Date | null;

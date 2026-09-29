@@ -18,7 +18,7 @@ export class PublishingUsersRepository implements UsersRepository {
   findByEmail = (email: string) => this.inner.findByEmail(email);
   findByPhone = (countryCode: string, phone: string) => this.inner.findByPhone(countryCode, phone);
   findManyByIds = (ids: string[]) => this.inner.findManyByIds(ids);
-  search = (term: string, options: { excludeId: string; limit: number }) => this.inner.search(term, options);
+  search = (term: string, options: { excludeId: string; offset: number; limit: number }) => this.inner.search(term, options);
   list = (query: Parameters<UsersRepository['list']>[0]) => this.inner.list(query);
 
   async create(data: Parameters<UsersRepository['create']>[0]): Promise<User> {

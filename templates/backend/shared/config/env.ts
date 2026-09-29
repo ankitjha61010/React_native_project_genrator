@@ -44,7 +44,8 @@ const schema = z.object({
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
 {{/if}}
   DATABASE_URL: z.string().min(1),
-{{#if EVENTS}}
+{{#if REDIS}}
+  /** Empty = no Redis (the tests use in-memory fallbacks). */
   REDIS_URL: z.string().default('redis://localhost:6379'),
 {{/if}}
 {{#if AUTH}}
@@ -117,6 +118,14 @@ const schema = z.object({
 {{/if}}
   SEED_ADMIN_NAME: z.string().default('Administrator'),
 {{/if}}
+{{#if LEGAL}}
+  /** Empty: the pages in public/ served by this API (APP_URL/terms-and-conditions …). */
+  TERMS_URL: z.union([z.url(), z.literal('')]).default(''),
+  PRIVACY_POLICY_URL: z.union([z.url(), z.literal('')]).default(''),
+{{#if DELETE_ACCOUNT}}
+  DELETE_ACCOUNT_URL: z.union([z.url(), z.literal('')]).default(''),
+{{/if}}
+{{/if}}
 {{#if API_ENCRYPTION}}
   API_ENCRYPTION_ENABLED: boolean.default(true),
   API_ENCRYPTION_KEY: z.string().length(32, 'must be exactly 32 characters'),
@@ -176,8 +185,8 @@ export const config = {
   authRateLimit: { windowMs: env.AUTH_RATE_LIMIT_WINDOW_MS, max: env.AUTH_RATE_LIMIT_MAX },
 {{/if}}
   database: { url: env.DATABASE_URL },
-{{#if EVENTS}}
-  events: { redisUrl: env.REDIS_URL },
+{{#if REDIS}}
+  redis: { url: env.REDIS_URL },
 {{/if}}
 {{#if AUTH}}
   jwt: {
@@ -255,6 +264,17 @@ export const config = {
 {{/if}}
 {{#if NOTIFICATIONS}}
   firebase: { serviceAccount: env.FIREBASE_SERVICE_ACCOUNT },
+{{/if}}
+{{#if LEGAL}}
+  /** Links the app opens (GET /legal) – change them here, not in the app. */
+  legal: {
+    termsUrl: env.TERMS_URL || `${env.APP_URL.replace(/\/$/, '')}/terms-and-conditions`,
+    privacyPolicyUrl: env.PRIVACY_POLICY_URL || `${env.APP_URL.replace(/\/$/, '')}/privacy-policy`,
+{{#if DELETE_ACCOUNT}}
+    /** A web page explaining how to delete an account (Google Play asks for one). */
+    deleteAccountUrl: env.DELETE_ACCOUNT_URL || `${env.APP_URL.replace(/\/$/, '')}/delete-account`,
+{{/if}}
+  },
 {{/if}}
 {{#if API_ENCRYPTION}}
   encryption: { enabled: env.API_ENCRYPTION_ENABLED, key: env.API_ENCRYPTION_KEY, iv: env.API_ENCRYPTION_IV },

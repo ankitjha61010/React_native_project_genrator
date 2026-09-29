@@ -1,7 +1,6 @@
 import { Transform } from 'class-transformer';
-import { {{#if AUTH}}IsBoolean, IsIn, IsInt, {{else}}IsEmail, {{/if}}IsNotEmpty, IsOptional, IsString{{#if AUTH}}, Matches, Max{{/if}}, MaxLength{{#if AUTH}}, Min{{/if}} } from 'class-validator';
+import { {{#if AUTH}}IsBoolean, IsIn, {{else}}IsEmail, {{/if}}IsNotEmpty, IsOptional, IsString{{#if AUTH}}, Matches{{/if}}, MaxLength } from 'class-validator';
 {{#if AUTH}}
-import { Type } from 'class-transformer';
 import { ROLES, type Role } from '{{IMPORT:domain.roles}}';
 {{/if}}
 import { trim } from '{{IMPORT:nest.commonDto}}';
@@ -72,20 +71,6 @@ export class UpdateProfileDto {
   @IsString()
   @MaxLength(500)
   bio?: string | null;
-}
-
-export class SearchUsersQueryDto {
-  @Transform(trim)
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(100)
-  q: string;
-
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(50)
-  limit: number = 20;
 }
 {{/if}}
 

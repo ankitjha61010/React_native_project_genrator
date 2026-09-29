@@ -1,3 +1,5 @@
+import { COMMON_MESSAGES, type ErrorMessage } from '{{IMPORT:core.messages}}';
+
 /** A single problem with a request (usually one invalid field). */
 export interface FieldError {
   field?: string;
@@ -8,15 +10,19 @@ export interface FieldError {
  * Every expected error is an AppError: it carries the HTTP status, a stable machine
  * readable `code` and an optional list of field errors. The HTTP layer turns it into the
  * standard error response; anything else becomes a 500 without leaking details.
+ *
+ *   throw new NotFoundError(USERS_MESSAGES.notFound);   // messages come from *.messages.ts
  */
 export class AppError extends Error {
+  readonly code: string;
+
   constructor(
-    message: string,
+    error: ErrorMessage,
     readonly statusCode = 500,
-    readonly code = 'INTERNAL_ERROR',
     readonly errors: FieldError[] = [],
   ) {
-    super(message);
+    super(error.message);
+    this.code = error.code;
     this.name = new.target.name;
   }
 
@@ -27,51 +33,60 @@ export class AppError extends Error {
 }
 
 export class BadRequestError extends AppError {
-  constructor(message = 'Bad request', code = 'BAD_REQUEST', errors: FieldError[] = []) {
-    super(message, 400, code, errors);
+  constructor(error: ErrorMessage = COMMON_MESSAGES.badRequest, errors: FieldError[] = []) {
+    super(error, 400, errors);
   }
 }
 
 export class ValidationError extends AppError {
-  constructor(errors: FieldError[], message = 'Validation failed') {
-    super(message, 422, 'VALIDATION_ERROR', errors);
+  constructor(errors: FieldError[], error: ErrorMessage = COMMON_MESSAGES.validationFailed) {
+    super(error, 422, errors);
   }
 }
 
 export class UnauthorizedError extends AppError {
-  constructor(message = 'Authentication required', code = 'UNAUTHORIZED') {
-    super(message, 401, code);
+  constructor(error: ErrorMessage = COMMON_MESSAGES.unauthorized) {
+    super(error, 401);
   }
 }
 
 export class ForbiddenError extends AppError {
-  constructor(message = 'You are not allowed to do this', code = 'FORBIDDEN') {
-    super(message, 403, code);
+  constructor(error: ErrorMessage = COMMON_MESSAGES.forbidden) {
+    super(error, 403);
   }
 }
 
 export class NotFoundError extends AppError {
-  constructor(message = 'Resource not found', code = 'NOT_FOUND') {
-    super(message, 404, code);
+  constructor(error: ErrorMessage = COMMON_MESSAGES.notFound) {
+    super(error, 404);
   }
 }
 
 export class ConflictError extends AppError {
-  constructor(message = 'Resource already exists', code = 'CONFLICT') {
-    super(message, 409, code);
+  constructor(error: ErrorMessage = COMMON_MESSAGES.conflict) {
+    super(error, 409);
+  }
+}
+
+export class PayloadTooLargeError extends AppError {
+  constructor(error: ErrorMessage = COMMON_MESSAGES.payloadTooLarge) {
+    super(error, 413);
   }
 }
 
 export class TooManyRequestsError extends AppError {
-  constructor(message = 'Too many requests, please try again later', code = 'TOO_MANY_REQUESTS') {
-    super(message, 429, code);
+  constructor(error: ErrorMessage = COMMON_MESSAGES.tooManyRequests) {
+    super(error, 429);
   }
 }
 {{#if SEC_LOCKOUT}}
 
 export class AccountLockedError extends AppError {
-  constructor(readonly lockedUntil: Date) {
-    super('Too many failed login attempts. The account is temporarily locked.', 423, 'ACCOUNT_LOCKED');
+  constructor(
+    readonly lockedUntil: Date,
+    error: ErrorMessage,
+  ) {
+    super(error, 423);
   }
 }
 {{/if}}

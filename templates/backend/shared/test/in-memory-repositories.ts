@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { ConflictError, NotFoundError } from '{{IMPORT:core.errors}}';
 import { pageOffset, type PageQuery } from '{{IMPORT:core.pagination}}';
+import { USERS_MESSAGES } from '{{IMPORT:messages.users}}';
 {{#if AUTH_REFRESH}}
 import type { RefreshToken } from '{{IMPORT:domain.authTokens}}';
 {{/if}}
@@ -13,8 +14,11 @@ import type { SocialAccount, SocialProvider } from '{{IMPORT:domain.authTokens}}
 {{#if CHAT}}
 import type { Conversation, ConversationMember, Message } from '{{IMPORT:domain.chat}}';
 {{/if}}
+{{#if DEVICES}}
+import type { Device, DeviceInput } from '{{IMPORT:domain.device}}';
+{{/if}}
 {{#if NOTIFICATIONS}}
-import type { Broadcast, Device, DevicePlatform, Notification } from '{{IMPORT:domain.notification}}';
+import type { Broadcast, Notification } from '{{IMPORT:domain.notification}}';
 import type { Role } from '{{IMPORT:domain.roles}}';
 {{/if}}
 import type { User } from '{{IMPORT:domain.user}}';
@@ -29,7 +33,10 @@ import type { VerificationCodesRepository } from '{{IMPORT:contract.auth}}';
 import type { SocialAccountsRepository } from '{{IMPORT:contract.auth}}';
 {{/if}}
 {{#if CHAT}}
-import type { ChatRepository, CreateMessageData } from '{{IMPORT:contract.chat}}';
+import type { ChatRepository, CreateConversationData, CreateMessageData } from '{{IMPORT:contract.chat}}';
+{{/if}}
+{{#if DEVICES}}
+import type { DevicesRepository } from '{{IMPORT:contract.devices}}';
 {{/if}}
 {{#if NOTIFICATIONS}}
 import type { CreateNotificationData, NotificationsRepository } from '{{IMPORT:contract.notifications}}';
@@ -61,11 +68,12 @@ export class InMemoryUsersRepository implements UsersRepository {
     return ids.map(id => this.users.get(id)).filter(user => user !== undefined);
   }
 
-  async search(term: string, options: { excludeId: string; limit: number }) {
+  async search(term: string, options: { excludeId: string; offset: number; limit: number }) {
     const q = term.toLowerCase();
-    return [...this.users.values()]
-      .filter(u => u.isActive && u.id !== options.excludeId && (u.name.toLowerCase().includes(q) || (u.email ?? '').includes(q)))
-      .slice(0, options.limit);
+    const all = [...this.users.values()]
+      .filter(u => u.isActive && u.id !== options.excludeId && (!q || u.name.toLowerCase().includes(q) || (u.email ?? '').includes(q)))
+      .toSorted((a, b) => a.name.localeCompare(b.name));
+    return { items: all.slice(options.offset, options.offset + options.limit), total: all.length };
   }
 {{/if}}
 {{#if NOTIFICATIONS}}
@@ -119,7 +127,7 @@ export class InMemoryUsersRepository implements UsersRepository {
 
   async update(id: string, data: UpdateUserData) {
     const user = this.users.get(id);
-    if (!user) throw new NotFoundError('User not found', 'USER_NOT_FOUND');
+    if (!user) throw new NotFoundError(USERS_MESSAGES.notFound);
     const updated = { ...user, ...data, updatedAt: new Date() };
     this.assertUnique(updated, id);
     this.users.set(id, updated);
@@ -127,7 +135,7 @@ export class InMemoryUsersRepository implements UsersRepository {
   }
 
   async delete(id: string) {
-    if (!this.users.delete(id)) throw new NotFoundError('User not found', 'USER_NOT_FOUND');
+    if (!this.users.delete(id)) throw new NotFoundError(USERS_MESSAGES.notFound);
   }
 {{#if REPLICA}}
 
@@ -140,9 +148,9 @@ export class InMemoryUsersRepository implements UsersRepository {
   private assertUnique(data: Partial<User>, exceptId?: string) {
     for (const other of this.users.values()) {
       if (other.id === exceptId) continue;
-      if (data.email && other.email === data.email) throw new ConflictError('Email or mobile number is already registered', 'ACCOUNT_EXISTS');
+      if (data.email && other.email === data.email) throw new ConflictError({{#if AUTH}}USERS_MESSAGES.accountExists{{else}}USERS_MESSAGES.emailTaken{{/if}});
 {{#if AUTH}}
-      if (data.phone && other.phone === data.phone && other.countryCode === data.countryCode) throw new ConflictError('Email or mobile number is already registered', 'ACCOUNT_EXISTS');
+      if (data.phone && other.phone === data.phone && other.countryCode === data.countryCode) throw new ConflictError(USERS_MESSAGES.accountExists);
 {{/if}}
     }
   }
@@ -248,21 +256,50 @@ export class InMemoryChatRepository implements ChatRepository {
   members: ConversationMember[] = [];
   readonly messages = new Map<string, Message>();
 
-  async createConversation(data: { isGroup: boolean; title: string | null; createdById: string; memberIds: string[] }) {
+  async createConversation({ memberIds, ...data }: CreateConversationData) {
     const now = new Date();
-    const conversation: Conversation = { id: randomUUID(), title: data.title, isGroup: data.isGroup, avatarUrl: null, createdById: data.createdById, lastMessageAt: null, createdAt: now, updatedAt: now };
+    const conversation: Conversation = { id: randomUUID(), ...data, lastMessageAt: null, createdAt: now, updatedAt: now };
     this.conversations.set(conversation.id, conversation);
-    for (const userId of data.memberIds) this.members.push({ conversationId: conversation.id, userId, lastReadAt: null, clearedAt: null, joinedAt: now });
+    // Each member joins a millisecond later, so "the longest-standing member" is well defined.
+    memberIds.forEach((userId, i) =>
+      this.members.push({
+        conversationId: conversation.id,
+        userId,
+{{#if GROUP_CHAT}}
+        role: data.isGroup && userId === data.createdById ? 'admin' : 'member',
+{{/if}}
+        lastReadAt: null,
+        clearedAt: null,
+        joinedAt: new Date(now.getTime() + i),
+      }),
+    );
     return conversation;
   }
 
   async findConversation(id: string) {
     return this.conversations.get(id) ?? null;
   }
+{{#if GROUP_CHAT}}
+
+  async updateConversation(id: string, data: Partial<Pick<Conversation, 'title' | 'avatarUrl'>>) {
+    const conversation = { ...this.conversations.get(id)!, ...data, updatedAt: new Date() };
+    this.conversations.set(id, conversation);
+    return conversation;
+  }
+
+  async addMembers(conversationId: string, userIds: string[]) {
+    const now = Date.now();
+    userIds.forEach((userId, i) => {
+      if (!this.members.some(m => m.conversationId === conversationId && m.userId === userId)) {
+        this.members.push({ conversationId, userId, role: 'member', lastReadAt: null, clearedAt: null, joinedAt: new Date(now + 1000 + i) });
+      }
+    });
+  }
+{{/if}}
 
   async findDirectConversation(userId: string, otherUserId: string) {
     return (
-      [...this.conversations.values()].find(c => !c.isGroup && this.members.some(m => m.conversationId === c.id && m.userId === userId) && this.members.some(m => m.conversationId === c.id && m.userId === otherUserId)) ?? null
+      [...this.conversations.values()].find(c => {{#if GROUP_CHAT}}!c.isGroup && {{/if}}this.members.some(m => m.conversationId === c.id && m.userId === userId) && this.members.some(m => m.conversationId === c.id && m.userId === otherUserId)) ?? null
     );
   }
 
@@ -276,14 +313,14 @@ export class InMemoryChatRepository implements ChatRepository {
   }
 
   async listMembers(conversationIds: string[]) {
-    return this.members.filter(m => conversationIds.includes(m.conversationId));
+    return this.members.filter(m => conversationIds.includes(m.conversationId)).toSorted((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
   }
 
   async findMember(conversationId: string, userId: string) {
     return this.members.find(m => m.conversationId === conversationId && m.userId === userId) ?? null;
   }
 
-  async updateMember(conversationId: string, userId: string, data: Partial<Pick<ConversationMember, 'lastReadAt' | 'clearedAt'>>) {
+  async updateMember(conversationId: string, userId: string, data: Partial<Pick<ConversationMember, 'lastReadAt' | 'clearedAt'{{#if GROUP_CHAT}} | 'role'{{/if}}>>) {
     this.members = this.members.map(m => (m.conversationId === conversationId && m.userId === userId ? { ...m, ...data } : m));
   }
 
@@ -344,11 +381,57 @@ export class InMemoryChatRepository implements ChatRepository {
   }
 }
 {{/if}}
+{{#if DEVICES}}
+
+export class InMemoryDevicesRepository implements DevicesRepository {
+  devices: Device[] = [];
+
+  async save(userId: string, input: DeviceInput) {
+    const now = new Date();
+    const token = input.token ?? null;
+    // A token belongs to one install.
+    if (token) this.devices = this.devices.map(d => (d.token === token && d.deviceId !== input.deviceId ? { ...d, token: null } : d));
+    const existing = this.devices.find(d => d.deviceId === input.deviceId);
+    const device: Device = {
+      id: existing?.id ?? randomUUID(),
+      userId,
+      deviceId: input.deviceId,
+      token,
+      platform: input.platform,
+      deviceName: input.deviceName ?? null,
+      osVersion: input.osVersion ?? null,
+      appVersion: input.appVersion ?? null,
+      lastActiveAt: now,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    this.devices = [...this.devices.filter(d => d.deviceId !== input.deviceId), device];
+    return device;
+  }
+
+  async listByUser(userId: string) {
+    return this.devices.filter(d => d.userId === userId).toSorted((a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime());
+  }
+
+  async listWithToken(userIds: string[]) {
+    return this.devices.filter(d => userIds.includes(d.userId) && d.token !== null);
+  }
+
+  async remove(userId: string, deviceId: string) {
+    const before = this.devices.length;
+    this.devices = this.devices.filter(d => !(d.userId === userId && d.deviceId === deviceId));
+    return this.devices.length < before;
+  }
+
+  async removeTokens(tokens: string[]) {
+    this.devices = this.devices.filter(d => !d.token || !tokens.includes(d.token));
+  }
+}
+{{/if}}
 {{#if NOTIFICATIONS}}
 
 export class InMemoryNotificationsRepository implements NotificationsRepository {
   notifications: Notification[] = [];
-  devices: Device[] = [];
   readonly broadcasts: Broadcast[] = [];
 
   async create(data: CreateNotificationData) {
@@ -391,26 +474,6 @@ export class InMemoryNotificationsRepository implements NotificationsRepository 
     this.notifications = this.notifications.filter(n => n.userId !== userId);
   }
 
-  async saveDevice(data: { userId: string; token: string; platform: DevicePlatform }) {
-    const now = new Date();
-    const existing = this.devices.find(d => d.token === data.token);
-    const device: Device = existing ? { ...existing, ...data, updatedAt: now } : { id: randomUUID(), ...data, createdAt: now, updatedAt: now };
-    this.devices = [...this.devices.filter(d => d.token !== data.token), device];
-    return device;
-  }
-
-  async removeDevice(userId: string, token: string) {
-    this.devices = this.devices.filter(d => !(d.userId === userId && d.token === token));
-  }
-
-  async listDevices(userIds: string[]) {
-    return this.devices.filter(d => userIds.includes(d.userId));
-  }
-
-  async deleteDevicesByToken(tokens: string[]) {
-    this.devices = this.devices.filter(d => !tokens.includes(d.token));
-  }
-
   async createBroadcast(data: Omit<Broadcast, 'id' | 'createdAt'>) {
     const broadcast: Broadcast = { id: randomUUID(), ...data, createdAt: new Date() };
     this.broadcasts.push(broadcast);
@@ -439,6 +502,9 @@ export function createInMemoryRepositories() {
 {{/if}}
 {{#if CHAT}}
     chat: new InMemoryChatRepository(),
+{{/if}}
+{{#if DEVICES}}
+    devices: new InMemoryDevicesRepository(),
 {{/if}}
 {{#if NOTIFICATIONS}}
     notifications: new InMemoryNotificationsRepository(),

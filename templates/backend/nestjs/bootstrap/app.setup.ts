@@ -26,13 +26,14 @@ import { ResponseInterceptor } from '{{IMPORT:nest.interceptor}}';
 import { sanitizeInput } from '{{IMPORT:nest.sanitize}}';
 {{/if}}
 import { AppValidationPipe } from '{{IMPORT:nest.validationPipe}}';
+import { COMMON_MESSAGES } from '{{IMPORT:core.messages}}';
 
 /** Body parser errors happen before Nest's router – answer them with the standard envelope. */
 function bodyParserErrors(error: { type?: string }, _req: Request, res: Response, next: NextFunction): void {
   if (error?.type === 'entity.too.large') {
-    res.status(413).json(errorResponse('Request body is too large', 'PAYLOAD_TOO_LARGE'));
+    res.status(413).json(errorResponse(COMMON_MESSAGES.payloadTooLarge));
   } else if (error?.type === 'entity.parse.failed') {
-    res.status(400).json(errorResponse('Malformed JSON body', 'INVALID_JSON'));
+    res.status(400).json(errorResponse(COMMON_MESSAGES.malformedJson));
   } else {
     next(error);
   }
@@ -80,6 +81,10 @@ export function configureApp(app: NestExpressApplication): void {
 {{#if UPLOADS}}
   // Uploaded files (avatars{{#if CHAT}}, chat media{{/if}}). Never executed, never listed.
   app.useStaticAssets(config.uploads.dir, { prefix: config.uploads.publicPath, index: false, dotfiles: 'deny', maxAge: '7d' });
+{{/if}}
+{{#if LEGAL}}
+  // Legal pages the app opens: /terms-and-conditions, /privacy-policy… (public/*.html – edit them).
+  app.useStaticAssets('public', { index: false, extensions: ['html'], dotfiles: 'deny', maxAge: '1h' });
 {{/if}}
 
   // /<API_PREFIX>/v<N>/… e.g. /api/v1/auth/login

@@ -45,8 +45,12 @@ AUTH_RATE_LIMIT_WINDOW_MS=900000
 AUTH_RATE_LIMIT_MAX=10
 {{/if}}
 
+{{#if REDIS}}
 {{#if EVENTS}}
-# ── Events between services (Redis) ──────────────────────────────────────────
+# ── Redis (events between services, rate limits, cache{{#if REDIS_CODES}}, verification codes{{/if}}) ─────────
+{{else}}
+# ── Redis (rate limits, Socket.IO, cache{{#if REDIS_CODES}}, verification codes{{/if}}) ─────────────────────
+{{/if}}
 REDIS_URL=redis://localhost:6379
 
 {{/if}}
@@ -112,15 +116,15 @@ TWILIO_FROM=
 # ── Social sign-in ───────────────────────────────────────────────────────────
 {{#if SOCIAL_GOOGLE}}
 # Comma separated OAuth client ids (web client id used by the app + iOS/Android client ids).
-GOOGLE_CLIENT_IDS=
+GOOGLE_CLIENT_IDS={{GOOGLE_CLIENT_IDS_VALUE}}
 {{/if}}
 {{#if SOCIAL_FACEBOOK}}
-FACEBOOK_APP_ID=
-FACEBOOK_APP_SECRET=
+FACEBOOK_APP_ID={{FACEBOOK_APP_ID_VALUE}}
+FACEBOOK_APP_SECRET={{#if !ENV_EXAMPLE}}{{FACEBOOK_APP_SECRET_VALUE}}{{/if}}
 {{/if}}
 {{#if SOCIAL_APPLE}}
-# The iOS bundle id (audience of Apple identity tokens).
-APPLE_CLIENT_IDS={{APP_PACKAGE}}
+# The iOS bundle id (audience of Apple identity tokens) + a Services ID for web / Android sign-in.
+APPLE_CLIENT_IDS={{APPLE_CLIENT_IDS_VALUE}}
 {{/if}}
 {{/if}}
 {{#if UPLOADS}}
@@ -135,6 +139,17 @@ UPLOAD_MAX_MB=25
 # Path to the service account JSON (Firebase console → Project settings → Service accounts),
 # or the JSON itself. Empty: pushes are only logged.
 FIREBASE_SERVICE_ACCOUNT=
+{{/if}}
+{{#if LEGAL}}
+
+# ── Legal pages (the app reads these links from GET /api/v1/legal) ───────────
+# Empty: the editable pages in public/ served by this API (APP_URL/terms-and-conditions …).
+TERMS_URL=
+PRIVACY_POLICY_URL=
+{{#if DELETE_ACCOUNT}}
+# Web page explaining how to delete an account (Google Play requires one).
+DELETE_ACCOUNT_URL=
+{{/if}}
 {{/if}}
 {{#if HASH_CONFIGURABLE}}
 

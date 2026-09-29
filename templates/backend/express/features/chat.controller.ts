@@ -1,138 +1,125 @@
-import { z } from 'zod';
-import { emptySchema } from '{{IMPORT:ex.schemas}}';
-import { route, WithMeta, type RouteGroup } from '{{IMPORT:ex.route}}';
+import type { Request, Response } from 'express';
+import type { ChatService } from '{{IMPORT:app.chatService}}';
+import { currentUser } from '{{IMPORT:ex.mw.auth}}';
+import { sendSuccess } from '{{IMPORT:ex.respond}}';
+import { uploadedFile } from '{{IMPORT:ex.mw.upload}}';
+import { parseBody, parseParams, parseQuery } from '{{IMPORT:ex.validation}}';
 import {
-  chatMessageSchema,
+{{#if GROUP_CHAT}}
+  addMembersSchema,
+  createGroupSchema,
+  memberParams,
+  memberRoleSchema,
+  updateGroupSchema,
+{{/if}}
   conversationParams,
-  conversationSchema,
   listMessagesQuery,
   messageParams,
   sendMessageSchema,
   startConversationSchema,
-  uploadedMediaSchema,
 } from '{{IMPORT:ex.chat.schemas}}';
+import { CHAT_MESSAGES } from '{{IMPORT:messages.chat}}';
 
-/** `/chat` – the endpoints of the app's chatEndpoints.ts. Live events: see the Socket.IO server. */
-export const chatRoutes: RouteGroup = {
-  prefix: '/chat',
-  tag: 'Chat',
-  routes: [
-    route({
-      method: 'get',
-      path: '/conversations',
-      summary: 'Your conversations, newest activity first',
-      message: 'Conversations',
-      auth: true,
-      response: z.array(conversationSchema),
-      errors: [401],
-      handler: ({ user }, { chat }) => chat.listConversations(user.id),
-    }),
-    route({
-      method: 'post',
-      path: '/conversations',
-      summary: 'Open a direct chat (reuses the existing one) or create a group',
-      message: 'Conversation',
-      auth: true,
-      body: startConversationSchema,
-      response: conversationSchema,
-      errors: [400, 401, 404, 422],
-      handler: ({ user, body }, { chat }) => chat.startConversation(user.id, body),
-    }),
-    route({
-      method: 'get',
-      path: '/conversations/:conversationId',
-      summary: 'One conversation',
-      message: 'Conversation',
-      auth: true,
-      params: conversationParams,
-      response: conversationSchema,
-      errors: [401, 404],
-      handler: ({ user, params }, { chat }) => chat.getConversation(user.id, params.conversationId),
-    }),
-    route({
-      method: 'delete',
-      path: '/conversations/:conversationId',
-      summary: 'Delete a chat for you (direct) or leave a group',
-      message: 'Conversation deleted',
-      auth: true,
-      params: conversationParams,
-      response: emptySchema,
-      errors: [401, 404],
-      handler: ({ user, params }, { chat }) => chat.deleteConversation(user.id, params.conversationId),
-    }),
-    route({
-      method: 'get',
-      path: '/conversations/:conversationId/messages',
-      summary: 'Messages, oldest → newest (`before` loads older pages; meta.hasMore)',
-      message: 'Messages',
-      auth: true,
-      params: conversationParams,
-      query: listMessagesQuery,
-      response: z.array(chatMessageSchema),
-      errors: [401, 404, 422],
-      async handler({ user, params, query }, { chat }) {
-        const { items, hasMore } = await chat.listMessages(user.id, params.conversationId, query);
-        return new WithMeta(items, { hasMore });
-      },
-    }),
-    route({
-      method: 'post',
-      path: '/conversations/:conversationId/messages',
-      summary: 'Send a message (members get `chat:receive_message`)',
-      message: 'Message sent',
-      status: 201,
-      auth: true,
-      params: conversationParams,
-      body: sendMessageSchema,
-      response: chatMessageSchema,
-      errors: [400, 401, 404, 422],
-      handler: ({ user, params, body }, { chat }) => chat.sendMessage(user.id, params.conversationId, body),
-    }),
-    route({
-      method: 'post',
-      path: '/conversations/:conversationId/read',
-      summary: 'Mark the conversation as read (others get `chat:message_read`)',
-      message: 'Marked as read',
-      auth: true,
-      params: conversationParams,
-      response: emptySchema,
-      errors: [401, 404],
-      handler: ({ user, params }, { chat }) => chat.markRead(user.id, params.conversationId),
-    }),
-    route({
-      method: 'delete',
-      path: '/conversations/:conversationId/messages/:messageId',
-      summary: 'Delete one of your messages for everyone',
-      message: 'Message deleted',
-      auth: true,
-      params: messageParams,
-      response: emptySchema,
-      errors: [401, 403, 404],
-      handler: ({ user, params }, { chat }) => chat.deleteMessage(user.id, params.conversationId, params.messageId),
-    }),
-    route({
-      method: 'post',
-      path: '/upload',
-      summary: 'Upload a photo, video, audio or document (multipart field `file`) – then send its url',
-      message: 'File uploaded',
-      status: 201,
-      auth: true,
-      upload: 'file',
-      response: uploadedMediaSchema,
-      errors: [400, 401, 413, 422],
-      handler: ({ user, file }, { chat }) => chat.uploadMedia(user.id, file),
-    }),
-    route({
-      method: 'post',
-      path: '/upload-voice',
-      summary: 'Upload a voice note (multipart field `file`, audio only)',
-      message: 'Voice note uploaded',
-      status: 201,
-      auth: true,
-      upload: 'file',
-      response: uploadedMediaSchema,
-      errors: [400, 401, 413, 422],
-      handler: ({ user, file }, { chat }) => chat.uploadMedia(user.id, file, true),
-    }),
-  ],
-};
+/** Handles `/chat` requests (the app's chatEndpoints.ts). Live events go through Socket.IO. */
+export class ChatController {
+  constructor(private readonly chat: ChatService) {}
+
+  /** GET /chat/conversations – newest activity first */
+  listConversations = async (req: Request, res: Response) => {
+    sendSuccess(res, CHAT_MESSAGES.conversations, await this.chat.listConversations(currentUser(req).id));
+  };
+
+  /** POST /chat/conversations – opens the direct chat with someone (reuses the existing one) */
+  startConversation = async (req: Request, res: Response) => {
+    sendSuccess(res, CHAT_MESSAGES.conversation, await this.chat.startConversation(currentUser(req).id, parseBody(startConversationSchema, req)));
+  };
+
+  /** GET /chat/conversations/:conversationId */
+  getConversation = async (req: Request, res: Response) => {
+    const { conversationId } = parseParams(conversationParams, req);
+    sendSuccess(res, CHAT_MESSAGES.conversation, await this.chat.getConversation(currentUser(req).id, conversationId));
+  };
+
+  /** DELETE /chat/conversations/:conversationId – deletes a direct chat for you, or leaves a group */
+  deleteConversation = async (req: Request, res: Response) => {
+    const { conversationId } = parseParams(conversationParams, req);
+    await this.chat.deleteConversation(currentUser(req).id, conversationId);
+    sendSuccess(res, CHAT_MESSAGES.conversationDeleted);
+  };
+
+  /** GET /chat/conversations/:conversationId/messages – oldest → newest; `before` loads older pages */
+  listMessages = async (req: Request, res: Response) => {
+    const { conversationId } = parseParams(conversationParams, req);
+    const { items, hasMore } = await this.chat.listMessages(currentUser(req).id, conversationId, parseQuery(listMessagesQuery, req));
+    sendSuccess(res, CHAT_MESSAGES.messages, items, { meta: { hasMore } });
+  };
+
+  /** POST /chat/conversations/:conversationId/messages – members get `chat:receive_message` */
+  sendMessage = async (req: Request, res: Response) => {
+    const { conversationId } = parseParams(conversationParams, req);
+    const message = await this.chat.sendMessage(currentUser(req).id, conversationId, parseBody(sendMessageSchema, req));
+    sendSuccess(res, CHAT_MESSAGES.messageSent, message, { status: 201 });
+  };
+
+  /** POST /chat/conversations/:conversationId/read – others get `chat:message_read` */
+  markRead = async (req: Request, res: Response) => {
+    const { conversationId } = parseParams(conversationParams, req);
+    await this.chat.markRead(currentUser(req).id, conversationId);
+    sendSuccess(res, CHAT_MESSAGES.markedRead);
+  };
+
+  /** DELETE /chat/conversations/:conversationId/messages/:messageId – for everyone */
+  deleteMessage = async (req: Request, res: Response) => {
+    const { conversationId, messageId } = parseParams(messageParams, req);
+    await this.chat.deleteMessage(currentUser(req).id, conversationId, messageId);
+    sendSuccess(res, CHAT_MESSAGES.messageDeleted);
+  };
+
+{{#if GROUP_CHAT}}
+  /** POST /chat/groups – the creator becomes the group's admin */
+  createGroup = async (req: Request, res: Response) => {
+    sendSuccess(res, CHAT_MESSAGES.groupCreated, await this.chat.createGroup(currentUser(req).id, parseBody(createGroupSchema, req)), { status: 201 });
+  };
+
+  /** PATCH /chat/groups/:conversationId – name / image (admins) */
+  updateGroup = async (req: Request, res: Response) => {
+    const { conversationId } = parseParams(conversationParams, req);
+    sendSuccess(res, CHAT_MESSAGES.groupUpdated, await this.chat.updateGroup(currentUser(req).id, conversationId, parseBody(updateGroupSchema, req)));
+  };
+
+  /** POST /chat/groups/:conversationId/members – add people (admins) */
+  addMembers = async (req: Request, res: Response) => {
+    const { conversationId } = parseParams(conversationParams, req);
+    sendSuccess(res, CHAT_MESSAGES.membersAdded, await this.chat.addMembers(currentUser(req).id, conversationId, parseBody(addMembersSchema, req).userIds));
+  };
+
+  /** DELETE /chat/groups/:conversationId/members/:userId – remove someone (admins) */
+  removeMember = async (req: Request, res: Response) => {
+    const { conversationId, userId } = parseParams(memberParams, req);
+    sendSuccess(res, CHAT_MESSAGES.memberRemoved, await this.chat.removeMember(currentUser(req).id, conversationId, userId));
+  };
+
+  /** PATCH /chat/groups/:conversationId/members/:userId – make admin / member (admins) */
+  setMemberRole = async (req: Request, res: Response) => {
+    const { conversationId, userId } = parseParams(memberParams, req);
+    sendSuccess(res, CHAT_MESSAGES.roleChanged, await this.chat.setMemberRole(currentUser(req).id, conversationId, userId, parseBody(memberRoleSchema, req).role));
+  };
+
+  /** POST /chat/groups/:conversationId/leave – the last admin's role goes to the longest-standing member */
+  leaveGroup = async (req: Request, res: Response) => {
+    const { conversationId } = parseParams(conversationParams, req);
+    await this.chat.leaveGroup(currentUser(req).id, conversationId);
+    sendSuccess(res, CHAT_MESSAGES.leftGroup);
+  };
+
+{{/if}}
+  /** POST /chat/upload (multipart field `file`) – photo, video, audio or document; then send its url */
+  upload = async (req: Request, res: Response) => {
+    sendSuccess(res, CHAT_MESSAGES.fileUploaded, await this.chat.uploadMedia(currentUser(req).id, uploadedFile(req, 'file')), { status: 201 });
+  };
+
+  /** POST /chat/upload-voice (multipart field `file`, audio only) */
+  uploadVoice = async (req: Request, res: Response) => {
+    sendSuccess(res, CHAT_MESSAGES.voiceNoteUploaded, await this.chat.uploadMedia(currentUser(req).id, uploadedFile(req, 'file'), true), { status: 201 });
+  };
+}

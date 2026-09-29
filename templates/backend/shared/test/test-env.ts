@@ -17,6 +17,10 @@ export const testEnv: Record<string, string> = {
 {{#if MONGO}}
   DATABASE_URL: 'mongodb://localhost:27017/test',
 {{/if}}
+{{#if REDIS}}
+  // No Redis in tests: rate limits, the cache{{#if SOCKET_SERVER}} and Socket.IO{{/if}} use memory, codes the in-memory repository.
+  REDIS_URL: '',
+{{/if}}
 {{#if SEC_CORS}}
   CORS_ORIGINS: 'http://localhost:8081',
 {{/if}}

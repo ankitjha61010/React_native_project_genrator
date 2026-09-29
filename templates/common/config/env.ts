@@ -5,11 +5,9 @@ import {
   API_ENCRYPTION_IV,
   API_ENCRYPTION_KEY,
   APP_ENV,
-  PRIVACY_POLICY_URL,
-  TERMS_URL,
 } from '@env';
 {{else}}
-import { API_BASE_URL, APP_ENV, PRIVACY_POLICY_URL, TERMS_URL } from '@env';
+import { API_BASE_URL, APP_ENV } from '@env';
 {{/if}}
 {{#if SOCKET}}
 import { SOCKET_URL } from '@env';
@@ -21,8 +19,11 @@ import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from '@env';
 
 export type AppEnvironment = 'development' | 'staging' | 'production';
 
-/** The Android emulator reaches the development machine at 10.0.2.2, not localhost. */
-function forDevice(url: string): string {
+/**
+ * The Android emulator reaches the development machine at 10.0.2.2, not localhost. Also used
+ * for URLs the backend sends (avatars, chat media, legal pages) – see `deviceUrl`.
+ */
+export function forDevice(url: string): string {
   return Platform.OS === 'android' ? url.replace(/\/\/(localhost|127\.0\.0\.1)(?=[:/]|$)/, '//10.0.2.2') : url;
 }
 
@@ -49,11 +50,6 @@ export const env = {
   socketUrl: forDevice(SOCKET_URL || originOf(API_BASE_URL ?? '')),
 {{/if}}
   appEnv: readEnvironment(APP_ENV),
-  /** Legal pages shown in the in-app WebView. */
-  legal: {
-    termsUrl: TERMS_URL ?? '',
-    privacyPolicyUrl: PRIVACY_POLICY_URL ?? '',
-  },
 {{#if API_ENCRYPTION}}
   apiEncryption: {
     enabled: API_ENCRYPTION_ENABLED !== 'false',

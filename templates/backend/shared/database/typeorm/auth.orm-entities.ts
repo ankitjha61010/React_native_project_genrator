@@ -1,6 +1,6 @@
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryColumn, PrimaryGeneratedColumn } from 'typeorm';
-import { TIMESTAMP, UuidColumn } from './columns.js';
-import { UserOrmEntity } from './user.orm-entity.js';
+import { TIMESTAMP, UuidColumn } from '{{IMPORT:typeorm.columns}}';
+import { UserOrmEntity } from '{{IMPORT:typeorm.user}}';
 {{#if AUTH_REFRESH}}
 
 @Entity({ name: 'refresh_tokens' })
@@ -43,7 +43,7 @@ export class RefreshTokenOrmEntity {
   createdAt: Date;
 }
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
 
 @Entity({ name: 'verification_codes' })
 @Index(['purpose', 'target'])

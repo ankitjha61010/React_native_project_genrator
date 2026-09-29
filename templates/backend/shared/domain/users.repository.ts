@@ -27,10 +27,17 @@ export interface CreateUserData {
 export type UpdateUserData = Partial<Pick<User, 'name'>>;
 {{/if}}
 
+{{#if STRICT}}
 /**
  * Data access contract for users. Services depend on this interface only; the ORM
  * implementation lives in the data layer.
  */
+{{else}}
+/**
+ * Everything the app can do with users in the database. Services use this interface, so the
+ * tests can pass an in-memory version; the {{ORM_NAME}} class below is the real one.
+ */
+{{/if}}
 export interface UsersRepository {
   findById(id: string): Promise<User | null>;
   /** `email` must already be normalized. */
@@ -38,8 +45,11 @@ export interface UsersRepository {
 {{#if AUTH}}
   findByPhone(countryCode: string, phone: string): Promise<User | null>;
   findManyByIds(ids: string[]): Promise<User[]>;
-  /** Active users matching the name / email, for "start a chat" pickers. */
-  search(term: string, options: { excludeId: string; limit: number }): Promise<User[]>;
+  /**
+   * Other active users by name (A → Z), for "start a chat" pickers. An empty `term` lists
+   * everybody; `offset` / `limit` page through the result.
+   */
+  search(term: string, options: { excludeId: string; offset: number; limit: number }): Promise<{ items: User[]; total: number }>;
 {{/if}}
 {{#if NOTIFICATIONS}}
   /** Ids of active users, optionally with one role (broadcast audiences). */

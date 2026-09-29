@@ -15,10 +15,14 @@ import { SocialAccountModel } from '{{IMPORT:mongoose.auth}}';
 {{#if CHAT}}
 import { ConversationMemberModel, MessageModel } from '{{IMPORT:mongoose.chat}}';
 {{/if}}
+{{#if DEVICES}}
+import { DeviceModel } from '{{IMPORT:mongoose.device}}';
+{{/if}}
 {{#if NOTIFICATIONS}}
-import { DeviceModel, NotificationModel } from '{{IMPORT:mongoose.notifications}}';
+import { NotificationModel } from '{{IMPORT:mongoose.notifications}}';
 {{/if}}
 import { UserModel, type UserDocument } from '{{IMPORT:mongoose.user}}';
+import { USERS_MESSAGES } from '{{IMPORT:messages.users}}';
 
 function toUser(doc: UserDocument): User {
   return {
@@ -54,9 +58,9 @@ function toUser(doc: UserDocument): User {
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 {{#if AUTH}}
-const TAKEN = () => new ConflictError('Email or mobile number is already registered', 'ACCOUNT_EXISTS');
+const TAKEN = () => new ConflictError(USERS_MESSAGES.accountExists);
 {{else}}
-const TAKEN = () => new ConflictError('Email is already registered', 'EMAIL_TAKEN');
+const TAKEN = () => new ConflictError(USERS_MESSAGES.emailTaken);
 {{/if}}
 
 export class MongooseUsersRepository implements UsersRepository {
@@ -82,13 +86,14 @@ export class MongooseUsersRepository implements UsersRepository {
     return valid.length ? (await UserModel.find({ _id: { $in: valid } }).lean<UserDocument[]>()).map(toUser) : [];
   }
 
-  async search(term: string, options: { excludeId: string; limit: number }): Promise<User[]> {
-    const pattern = new RegExp(escapeRegex(term), 'i');
-    const docs = await UserModel.find({ isActive: true, _id: { $ne: options.excludeId }, $or: [{ name: pattern }, { email: pattern }] })
-      .sort({ name: 1 })
-      .limit(options.limit)
-      .lean<UserDocument[]>();
-    return docs.map(toUser);
+  async search(term: string, options: { excludeId: string; offset: number; limit: number }): Promise<{ items: User[]; total: number }> {
+    const pattern = term ? new RegExp(escapeRegex(term), 'i') : undefined;
+    const filter = { isActive: true, _id: { $ne: options.excludeId }, ...(pattern ? { $or: [{ name: pattern }, { email: pattern }] } : {}) };
+    const [docs, total] = await Promise.all([
+      UserModel.find(filter).sort({ name: 1, _id: 1 }).skip(options.offset).limit(options.limit).lean<UserDocument[]>(),
+      UserModel.countDocuments(filter),
+    ]);
+    return { items: docs.map(toUser), total };
   }
 {{/if}}
 {{#if NOTIFICATIONS}}
@@ -121,8 +126,8 @@ export class MongooseUsersRepository implements UsersRepository {
 
   async update(id: string, data: UpdateUserData): Promise<User> {
     try {
-      const doc = isValidId(id) ? await UserModel.findByIdAndUpdate(id, { $set: data }, { new: true, runValidators: true }).lean<UserDocument>() : null;
-      if (!doc) throw new NotFoundError('User not found', 'USER_NOT_FOUND');
+      const doc = isValidId(id) ? await UserModel.findByIdAndUpdate(id, { $set: data }, { returnDocument: 'after', runValidators: true }).lean<UserDocument>() : null;
+      if (!doc) throw new NotFoundError(USERS_MESSAGES.notFound);
       return toUser(doc);
     } catch (error) {
       if (isUniqueViolation(error)) throw TAKEN();
@@ -139,7 +144,7 @@ export class MongooseUsersRepository implements UsersRepository {
 {{/if}}
   async delete(id: string): Promise<void> {
     const doc = isValidId(id) ? await UserModel.findByIdAndDelete(id) : null;
-    if (!doc) throw new NotFoundError('User not found', 'USER_NOT_FOUND');
+    if (!doc) throw new NotFoundError(USERS_MESSAGES.notFound);
 {{#if AUTH}}
     // MongoDB has no foreign keys: delete what belongs to the user (SQL cascades do this).
     await Promise.all([
@@ -153,8 +158,10 @@ export class MongooseUsersRepository implements UsersRepository {
       ConversationMemberModel.deleteMany({ userId: id }),
       MessageModel.deleteMany({ senderId: id }),
 {{/if}}
-{{#if NOTIFICATIONS}}
+{{#if DEVICES}}
       DeviceModel.deleteMany({ userId: id }),
+{{/if}}
+{{#if NOTIFICATIONS}}
       NotificationModel.deleteMany({ userId: id }),
 {{/if}}
     ]);

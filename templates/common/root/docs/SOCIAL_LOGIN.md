@@ -13,8 +13,13 @@ This app ships with working social login code for:
 {{/if}}
 
 All native setup (URL schemes, manifest entries, AppDelegate hooks{{#if SOCIAL_APPLE}}, entitlements{{/if}}) is already done.
-**The only thing left is to replace the placeholder keys** (`YOUR_…`) with your own values.
-Until you do, tapping a social button shows a "not configured" message or the provider's error screen. The app will not crash.
+
+**Status:** {{SOCIAL_STATUS_TEXT}}
+
+Providers you skipped while generating still have placeholder keys (`YOUR_…`) – replace them with your own
+values (the checklist below lists every place). Until you do, tapping that button shows a "not configured"
+message; the app does not crash. Also add the same client ids / app id to the backend (`GOOGLE_CLIENT_IDS`,
+`FACEBOOK_APP_ID` / `FACEBOOK_APP_SECRET`, `APPLE_CLIENT_IDS` in the backend's `.env`) – it verifies every sign-in.
 
 ---
 
@@ -25,12 +30,12 @@ Until you do, tapping a social button shows a "not configured" message or the pr
 {{#if SOCIAL_GOOGLE}}
 | Google | Web client ID | `.env` → `GOOGLE_WEB_CLIENT_ID` |
 | Google | iOS client ID | `.env` → `GOOGLE_IOS_CLIENT_ID` |
-| Google | Reversed iOS client ID | `ios/{{APP_NAME}}/Info.plist` → `CFBundleURLTypes` → replace `{{GOOGLE_IOS_URL_SCHEME_PLACEHOLDER}}` |
+| Google | Reversed iOS client ID | `ios/{{APP_NAME}}/Info.plist` → `CFBundleURLTypes` → replace `com.googleusercontent.apps.YOUR_GOOGLE_IOS_CLIENT_ID` |
 | Google | Android SHA-1 fingerprint | Google Cloud Console (nothing to change in the code) |
 {{/if}}
 {{#if SOCIAL_FACEBOOK}}
 | Facebook | App ID | `android/app/src/main/res/values/strings.xml` → `facebook_app_id` **and** `fb_login_protocol_scheme` (`fb` + app ID) |
-| Facebook | App ID | `ios/{{APP_NAME}}/Info.plist` → `FacebookAppID` **and** `CFBundleURLTypes` → `fb{{FACEBOOK_APP_ID_PLACEHOLDER}}` → `fb<APP_ID>` |
+| Facebook | App ID | `ios/{{APP_NAME}}/Info.plist` → `FacebookAppID` **and** `CFBundleURLTypes` → `fbYOUR_FACEBOOK_APP_ID` → `fb<APP_ID>` |
 | Facebook | Client token | `strings.xml` → `facebook_client_token` and `Info.plist` → `FacebookClientToken` |
 | Facebook | Android key hash | Meta for Developers console (nothing to change in the code) |
 {{/if}}
@@ -64,7 +69,7 @@ If you added keys to `Info.plist` or `strings.xml`, you do **not** need to run `
    GOOGLE_IOS_CLIENT_ID=1234567890-xyz.apps.googleusercontent.com
    ```
 
-5. **iOS URL scheme.** In `ios/{{APP_NAME}}/Info.plist`, replace `{{GOOGLE_IOS_URL_SCHEME_PLACEHOLDER}}` with your
+5. **iOS URL scheme.** In `ios/{{APP_NAME}}/Info.plist`, replace `com.googleusercontent.apps.YOUR_GOOGLE_IOS_CLIENT_ID` with your
    *reversed* iOS client ID. For iOS client `1234567890-xyz.apps.googleusercontent.com` the scheme is
    `com.googleusercontent.apps.1234567890-xyz`.
 
@@ -110,7 +115,7 @@ If you added keys to `Info.plist` or `strings.xml`, you do **not** need to run `
 5. **iOS**: edit `ios/{{APP_NAME}}/Info.plist`:
    - `FacebookAppID` → `1234567890`
    - `FacebookClientToken` → your client token
-   - `CFBundleURLTypes` → replace `fb{{FACEBOOK_APP_ID_PLACEHOLDER}}` with `fb1234567890`
+   - `CFBundleURLTypes` → replace `fbYOUR_FACEBOOK_APP_ID` with `fb1234567890`
 
 6. While the Meta app is in **Development** mode, only people with a role on the app (admins, developers, testers) can log in.
    Switch it to **Live** before release.

@@ -12,5 +12,3 @@ export const pageQuery = z.object({
 
 /** `?page=1&limit=20&search=jane` */
 export const searchPageQuery = pageQuery.extend({ search: z.string().trim().max(100).optional() });
-
-export const emptySchema = z.null();

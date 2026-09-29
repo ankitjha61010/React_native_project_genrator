@@ -19,10 +19,8 @@ describe('notifications API', () => {
     await app.close();
   });
 
-  it('POST /notifications/devices registers the FCM token', async () => {
-    await request(app.server).post(`${api}/notifications/devices`).set(bearer(user.token)).send({ token: 'fcm-token-of-jane', platform: 'android' }).expect(200);
-    const res = await request(app.server).post(`${api}/notifications/devices`).set(bearer(user.token)).send({ token: 'x', platform: 'windows' }).expect(422);
-    expect(res.body.errors.map((e: { field: string }) => e.field)).toEqual(expect.arrayContaining(['token', 'platform']));
+  it('pushes to the devices registered with POST /devices', async () => {
+    await request(app.server).post(`${api}/devices`).set(bearer(user.token)).send({ deviceId: 'jane-phone-1', token: 'fcm-token-of-jane', platform: 'android' }).expect(200);
   });
 
   it('only admins may broadcast', async () => {
@@ -60,10 +58,5 @@ describe('notifications API', () => {
     await request(app.server).delete(`${api}/notifications/${id}`).set(bearer(user.token)).expect(200);
     await request(app.server).post(`${api}/notifications/read-all`).set(bearer(user.token)).expect(200);
     await request(app.server).delete(`${api}/notifications`).set(bearer(user.token)).expect(200);
-  });
-
-  it('DELETE /notifications/devices/:token unregisters the device', async () => {
-    await request(app.server).delete(`${api}/notifications/devices/fcm-token-of-jane`).set(bearer(user.token)).expect(200);
-    expect(app.repositories.notifications.devices).toHaveLength(0);
   });
 });

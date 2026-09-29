@@ -30,23 +30,32 @@ export const config = {
  * Bodies are streamed through untouched (validation, auth and encryption happen in the services).
  */
 export const ROUTES: Array<{ service: ServiceName; paths: string[]; ws?: boolean }> = [
-  { service: 'identity', paths: ['/api/v1/auth', '/api/v1/users', '/uploads/avatars'] },
+  // Accounts + the legal pages (GET /api/v1/legal, /terms-and-conditions…).
+  { service: 'identity', paths: ['/api/v1/auth', '/api/v1/users', '/api/v1/legal', '/uploads/avatars', '/terms-and-conditions', '/privacy-policy', '/delete-account'] },
 {{#if CHAT}}
   // Socket.IO (chat events, presence{{#if NOTIFICATIONS}}, live notifications{{/if}}) lives in the chat service.
   { service: 'chat', paths: ['/api/v1/chat', '/uploads/chat', '/socket.io'], ws: true },
 {{/if}}
 {{#if NOTIFICATIONS}}
-  { service: 'notifications', paths: ['/api/v1/notifications'] },
+  // The users' devices (FCM tokens) belong to the service that sends the pushes.
+  { service: 'notifications', paths: ['/api/v1/notifications', '/api/v1/devices'] },
 {{/if}}
 ];
 
-const envelope = (message: string, code: string) => ({ success: false, message, code, errors: [] });
+/** Every message the gateway itself sends (the services have their own messages files). */
+const GATEWAY_MESSAGES = {
+  serviceUnavailable: { message: 'The service is temporarily unavailable', code: 'SERVICE_UNAVAILABLE' },
+  routeNotFound: (method: string, path: string) => ({ message: `Route ${method} ${path} not found`, code: 'ROUTE_NOT_FOUND' }),
+};
+
+/** The same error shape as the services: `{ success: false, message, data: null, code, errors }`. */
+const envelope = ({ message, code }: { message: string; code: string }) => ({ success: false, message, data: null, code, errors: [] });
 
 function onProxyError(error: Error, _req: IncomingMessage, res: ServerResponse | Socket): void {
   logger.warn({ err: error }, 'Upstream service unreachable');
   if (!('writeHead' in res)) return void res.destroy();
   if (res.headersSent) return void res.end();
-  res.writeHead(502, { 'Content-Type': 'application/json' }).end(JSON.stringify(envelope('The service is temporarily unavailable', 'SERVICE_UNAVAILABLE')));
+  res.writeHead(502, { 'Content-Type': 'application/json' }).end(JSON.stringify(envelope(GATEWAY_MESSAGES.serviceUnavailable)));
 }
 
 /** `GET /api/v1/health`: the gateway and every service (503 when one is down). */
@@ -91,7 +100,7 @@ export function createGateway(services: Record<ServiceName, string> = config.ser
   for (const { proxy } of proxies) app.use(proxy);
 
   app.use((req, res) => {
-    res.status(404).json(envelope(`Route ${req.method} ${req.path} not found`, 'ROUTE_NOT_FOUND'));
+    res.status(404).json(envelope(GATEWAY_MESSAGES.routeNotFound(req.method, req.path)));
   });
 
   const server = createServer(app);

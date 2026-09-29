@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { AppIcon } from '{{IMPORT:components.AppIcon}}';
 {{/if}}
 import { useTheme } from '{{IMPORT:hooks.useTheme}}';
-import { translate } from '{{IMPORT:i18n.index}}';
+import { {{#if RTL}}currentDirection, {{/if}}translate } from '{{IMPORT:i18n.index}}';
 import { BottomTabNavigator } from './BottomTabNavigator';
 import { DrawerContent } from './DrawerContent';
 import type { DrawerParamList } from './navigationTypes';
@@ -38,6 +38,10 @@ export function DrawerNavigator(): React.JSX.Element {
         // Every screen below brings its own (tab / native stack) header.
         headerShown: false,
         drawerType: 'front',
+{{#if RTL}}
+        // The drawer slides in from the start side: left in LTR, right in RTL.
+        drawerPosition: currentDirection() === 'rtl' ? 'right' : 'left',
+{{/if}}
         drawerActiveTintColor: theme.colors.primary,
         drawerInactiveTintColor: theme.colors.text,
         drawerStyle: { backgroundColor: theme.colors.surface },

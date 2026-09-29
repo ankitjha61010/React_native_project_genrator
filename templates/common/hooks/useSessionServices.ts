@@ -1,4 +1,7 @@
 import { useEffect } from 'react';
+{{#if SOCKET}}
+import { AppState } from 'react-native';
+{{/if}}
 import { authApi } from '{{IMPORT:api.auth}}';
 import { configureApiAuth } from '{{IMPORT:api.client}}';
 import { authSessionStorage } from '{{IMPORT:storage.session}}';
@@ -48,8 +51,13 @@ export function useSessionServices(): void {
 
 {{#if SOCKET}}
   // One Socket.IO connection while signed in (online status, chat, live notifications).
+  // Connected = "online" for the others: it disconnects in the background and reconnects in the foreground.
   useEffect(() => {
     socketService.connect();
+    const appState = AppState.addEventListener('change', state => {
+      if (state === 'active') socketService.resume();
+      else if (state === 'background') socketService.pause();
+    });
 {{#if NOTIFICATIONS}}
     const offNotification = socketService.on<{ id: string; type: string; title: string; body: string; data: Record<string, string>; createdAt: string }>(
       SOCKET_EVENTS.PUSH_NOTIFICATION,
@@ -59,6 +67,7 @@ export function useSessionServices(): void {
     );
 {{/if}}
     return () => {
+      appState.remove();
 {{#if NOTIFICATIONS}}
       offNotification();
 {{/if}}

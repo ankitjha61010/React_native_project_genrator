@@ -4,6 +4,7 @@ import { UnauthorizedError } from '{{IMPORT:core.errors}}';
 import type { Services } from '{{IMPORT:app.container}}';
 import { SERVICES } from '{{IMPORT:nest.tokens}}';
 import { IS_PUBLIC, type AuthenticatedRequest } from '{{IMPORT:nest.decorators}}';
+import { AUTH_MESSAGES } from '{{IMPORT:messages.auth}}';
 
 /**
  * Global guard: every route needs `Authorization: Bearer <access token>` unless marked
@@ -21,7 +22,7 @@ export class JwtAuthGuard implements CanActivate {
 
     const req = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const [scheme, token] = (req.headers.authorization ?? '').split(' ');
-    if (scheme?.toLowerCase() !== 'bearer' || !token) throw new UnauthorizedError('Missing bearer token', 'MISSING_TOKEN');
+    if (scheme?.toLowerCase() !== 'bearer' || !token) throw new UnauthorizedError(AUTH_MESSAGES.missingToken);
     req.user = await this.services.sessions.authenticate(token);
     return true;
   }

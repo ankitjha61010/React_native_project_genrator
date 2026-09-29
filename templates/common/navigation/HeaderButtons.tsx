@@ -93,6 +93,12 @@ export function DrawerMenuButton(): React.JSX.Element {
     />
   );
 }
+
+/**
+ * For `headerLeft`. React Navigation calls header options as plain functions, so a component
+ * with hooks must be rendered as an element – never passed as `headerLeft: DrawerMenuButton`.
+ */
+export const renderDrawerButton = () => <DrawerMenuButton />;
 {{/if}}
 
 {{#if NOTIFICATIONS}}
@@ -112,6 +118,9 @@ export function NotificationBellButton(): React.JSX.Element {
     />
   );
 }
+
+/** For `headerRight` (rendered as an element – see renderDrawerButton). */
+export const renderNotificationBell = () => <NotificationBellButton />;
 {{/if}}
 
 const createStyles = (theme: Theme) =>
@@ -125,7 +134,7 @@ const createStyles = (theme: Theme) =>
     badge: {
       position: 'absolute',
       top: 0,
-      right: -2,
+      end: -2,
       minWidth: 16,
       height: 16,
       paddingHorizontal: 3,

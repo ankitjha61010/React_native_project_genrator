@@ -1,7 +1,7 @@
 import type { BackendArchitectureId, BackendFramework } from './types.js';
 
 /** Business features every backend gets (auth only when authentication is enabled). */
-export type BackendFeature = 'auth' | 'users' | 'health' | 'chat' | 'notifications';
+export type BackendFeature = 'auth' | 'users' | 'health' | 'chat' | 'devices' | 'notifications' | 'legal';
 
 /**
  * Architectural layers. Every generated file belongs to exactly one layer; the
@@ -26,7 +26,9 @@ export type BackendLayer =
   | 'routes' // Express routers (per feature)
   | 'dto' // request schemas (zod) / DTO classes (class-validator) + API docs (per feature)
   | 'module' // Nest modules + providers / Express module factories (per feature)
-  | 'docs'; // OpenAPI / Swagger setup
+  | 'messages' // response / error messages of a feature (per feature)
+  | 'model' // ORM models / entities (per feature)
+  | 'docs'; // OpenAPI / Swagger setup (+ per-feature docs)
 
 export interface BackendArchitecture {
   id: BackendArchitectureId;
@@ -70,7 +72,7 @@ export const BACKEND_ARCHITECTURES: BackendArchitecture[] = [
           return f(layer);
         case 'repositoryContract':
         case 'repositoryImpl':
-          return `${f(layer)}/repositories`;
+          return f(layer);
         case 'ports':
           return 'src/shared/ports';
         case 'security':
@@ -91,14 +93,17 @@ export const BACKEND_ARCHITECTURES: BackendArchitecture[] = [
           return fw === 'nestjs' ? `${f(layer)}/dto` : f(layer);
         case 'httpKernel':
           return fw === 'nestjs' ? 'src/shared/http' : 'src/shared/middleware';
+        case 'messages':
+        case 'model':
+          return f(layer);
         case 'docs':
-          return 'src/docs';
+          return feature ? f(layer) : 'src/docs';
       }
     },
     preview: fw => `src/
  ├── features/
  │    ├── auth/        ${fw === 'nestjs' ? 'auth.module · auth.controller · auth.service · dto/' : 'auth.routes · auth.controller · auth.service · auth.schemas'}
- │    ├── users/       … + repositories/
+ │    ├── users/       … + users.repository · user.model · users.messages
  │    └── health/
  ├── shared/           core (logger, errors, response) · security · ${fw === 'nestjs' ? 'http (guards, filters)' : 'middleware'}
  ├── database/         connection · seed
@@ -107,11 +112,12 @@ export const BACKEND_ARCHITECTURES: BackendArchitecture[] = [
     rules: [
       { question: 'Where does a new feature go?', answer: '`src/features/<feature>/` – controller, service, schemas/DTOs and repositories together.' },
       { question: 'Where does shared code go?', answer: '`src/shared/` – only code used by several features (logger, errors, security, HTTP helpers).' },
-      { question: 'Where does data access go?', answer: 'An interface + an ORM implementation in `src/features/<feature>/repositories/`.' },
+      { question: 'Where does data access go?', answer: '`src/features/<feature>/<feature>.repository.ts` (the interface and its ORM class in one file) and the ORM model next to it.' },
+      { question: 'Where are the texts the API sends?', answer: '`src/features/<feature>/<feature>.messages.ts` (shared ones: `src/shared/core/messages.ts`).' },
     ],
     concepts: [
       { title: 'Feature folders', body: 'Everything a feature needs lives in one folder, so a feature can be understood, changed or deleted in one place.' },
-      { title: 'Repositories', body: 'Services depend on repository interfaces; the ORM implementation is injected, which keeps services testable with in-memory repositories.' },
+      { title: 'Repositories', body: 'Services never call the ORM directly – they call a repository. Its interface sits right above the ORM class in the same file; the tests pass in-memory repositories instead.' },
     ],
   },
   {
@@ -157,12 +163,16 @@ export const BACKEND_ARCHITECTURES: BackendArchitecture[] = [
           return fw === 'nestjs' ? 'src/controllers/dto' : 'src/validators';
         case 'module':
           return 'src/modules';
+        case 'messages':
+          return 'src/constants';
+        case 'model':
+          return 'src/database/models';
         case 'docs':
           return 'src/docs';
       }
     },
     preview: fw => `src/
- ├── ${fw === 'nestjs' ? 'controllers/       HTTP layer (+ dto/)' : 'routes/            URL → controller\n ├── controllers/       HTTP layer (+ validators)'}
+ ├── ${fw === 'nestjs' ? 'controllers/       HTTP layer (+ dto/)' : 'routes/            URL → controller method (one file per feature)\n ├── controllers/       read the request, call a service, send the response\n ├── validators/        request schemas (zod)'}
  ├── services/          business layer (auth, users, …) · security · adapters (mail, SMS, push, storage)
  ├── repositories/      data-access layer
  ├── models/            entities, roles & permissions
@@ -176,7 +186,7 @@ export const BACKEND_ARCHITECTURES: BackendArchitecture[] = [
     ],
     concepts: [
       { title: 'Strict layering', body: 'Each layer has one responsibility. Controllers translate HTTP, services hold the rules, repositories talk to the database.' },
-      { title: 'Dependency direction', body: 'Services depend on repository interfaces (not on the ORM), so the data layer can be swapped or mocked.' },
+      { title: 'Dependency direction', body: 'Services use repository interfaces (not the ORM), so the tests can run on in-memory repositories. Each interface lives in the same file as its ORM class.' },
     ],
   },
   {
@@ -222,6 +232,10 @@ export const BACKEND_ARCHITECTURES: BackendArchitecture[] = [
           return `src/presentation/http/${need(feature, layer)}/${fw === 'nestjs' ? 'dto' : 'validators'}`;
         case 'module':
           return 'src/main/modules';
+        case 'messages':
+          return 'src/application/messages';
+        case 'model':
+          return 'src/infrastructure/database/models';
         case 'docs':
           return 'src/presentation/http/docs';
       }
@@ -285,6 +299,10 @@ export const BACKEND_ARCHITECTURES: BackendArchitecture[] = [
           return fw === 'nestjs' ? 'src/controllers/dto' : 'src/validators';
         case 'module':
           return 'src/providers';
+        case 'messages':
+          return 'src/constants';
+        case 'model':
+          return 'src/models';
         case 'docs':
           return 'src/docs';
       }
@@ -292,7 +310,7 @@ export const BACKEND_ARCHITECTURES: BackendArchitecture[] = [
     preview: fw => `src/
  ├── models/            entities + data access (repositories)
  ├── views/             response presenters (what the client sees)
- ├── controllers/       ${fw === 'nestjs' ? 'Nest controllers + DTOs' : 'request handlers + validators'}
+ ├── controllers/       ${fw === 'nestjs' ? 'Nest controllers + DTOs' : 'request handlers (req → service → view)\n ├── validators/        request schemas (zod)'}
  ├── services/          business logic · security · adapters (mail, SMS, push, storage)
 ${fw === 'nestjs' ? '' : ' ├── routes/            URL → controller\n'} ├── ${fw === 'nestjs' ? 'lib/               logger, errors, guards, filters' : 'middlewares/       auth, validation, errors, security\n ├── lib/               logger, errors, response'}
  ├── database/          connection · seed
@@ -347,19 +365,23 @@ ${fw === 'nestjs' ? '' : ' ├── routes/            URL → controller\n'} �
           return `${m(layer)}/dto`;
         case 'httpKernel':
           return 'src/core/http';
+        case 'messages':
+          return m(layer);
+        case 'model':
+          return `${m(layer)}/data`;
         case 'docs':
-          return 'src/core/docs';
+          return feature ? m(layer) : 'src/core/docs';
       }
     },
     preview: fw => `src/
  ├── modules/
- │    ├── auth/        ${fw === 'nestjs' ? 'auth.module (public API) · controller · service · data/' : 'index.ts (createAuthModule – public API) · routes · controller · service · data/'}
+ │    ├── auth/        ${fw === 'nestjs' ? 'auth.module (public API) · controller · service · data/' : 'auth.routes · auth.controller · auth.service · dto/ · data/'}
  │    ├── users/       domain/ · data/ · …
  │    └── health/
  ├── core/             config · database · security · adapters · realtime · http · lib
  └── ${fw === 'nestjs' ? 'main.ts · app.module.ts' : 'app.ts · server.ts · container.ts'}`,
     rules: [
-      { question: 'How do modules talk to each other?', answer: 'Through their public API only: domain types + repository contracts, and what the module exports (Nest module `exports` / the factory in `index.ts`). Never import another module’s services, controllers or data files.' },
+      { question: 'How do modules talk to each other?', answer: 'Through their public API only: domain types, repository interfaces and services (Nest: what a module `exports`; Express: the services container.ts passes to the routes). Never import another module’s controllers or data files.' },
       { question: 'Where does a new module go?', answer: '`src/modules/<name>/` with its own domain, data and HTTP files.' },
       { question: 'What goes into core?', answer: 'Infrastructure every module needs: config, database, security, adapters (mail, SMS, push, storage), realtime, logging, HTTP kernel.' },
     ],
@@ -412,8 +434,12 @@ ${fw === 'nestjs' ? '' : ' ├── routes/            URL → controller\n'} �
           return 'src/shared/infrastructure/database';
         case 'httpKernel':
           return 'src/core/http';
+        case 'messages':
+          return `${m(layer)}/application`;
+        case 'model':
+          return `${m(layer)}/infrastructure/persistence`;
         case 'docs':
-          return 'src/core/docs';
+          return feature ? `${m(layer)}/presentation/http` : 'src/core/docs';
       }
     },
     preview: fw => `src/

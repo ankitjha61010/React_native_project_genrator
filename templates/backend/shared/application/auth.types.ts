@@ -1,5 +1,6 @@
 {{#if AUTH_EMAIL}}
 import { ValidationError } from '{{IMPORT:core.errors}}';
+import { AUTH_MESSAGES } from '{{IMPORT:messages.auth}}';
 {{/if}}
 {{#if SOCIAL}}
 import type { SocialProvider } from '{{IMPORT:domain.authTokens}}';
@@ -121,9 +122,9 @@ export interface AuthSettings {
  */
 export function assertPasswordPolicy(password: string, rules: AuthSettings['password'], field = 'password'): void {
   const problems: string[] = [];
-  if (password.length < rules.minLength) problems.push(`must be at least ${rules.minLength} characters`);
-  if (Buffer.byteLength(password) > rules.maxLength) problems.push(`must be at most ${rules.maxLength} bytes`);
-  if (!/[a-z]/i.test(password) || !/\d/.test(password)) problems.push('must contain letters and numbers');
-  if (problems.length) throw new ValidationError(problems.map(message => ({ field, message: `Password ${message}` })));
+  if (password.length < rules.minLength) problems.push(AUTH_MESSAGES.passwordTooShort(rules.minLength));
+  if (Buffer.byteLength(password) > rules.maxLength) problems.push(AUTH_MESSAGES.passwordTooLong(rules.maxLength));
+  if (!/[a-z]/i.test(password) || !/\d/.test(password)) problems.push(AUTH_MESSAGES.passwordTooWeak);
+  if (problems.length) throw new ValidationError(problems.map(message => ({ field, message })));
 }
 {{/if}}

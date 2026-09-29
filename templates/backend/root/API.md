@@ -18,10 +18,11 @@ Interactive docs: `/api/docs` · OpenAPI 3 JSON: `/api/docs/openapi.json`.
 **Error** – any 4xx / 5xx:
 
 ```json
-{ "success": false, "message": "Validation failed", "code": "VALIDATION_ERROR", "errors": [{ "field": "email", "message": "must be a valid email" }] }
+{ "success": false, "message": "Validation failed", "data": null, "code": "VALIDATION_ERROR", "errors": [{ "field": "email", "message": "must be a valid email" }] }
 ```
 
-Use `code` in the app (stable), show `message` to the user. Common codes: `VALIDATION_ERROR` (422),
+Every route answers in one of these two shapes. Use `code` in the app (stable), show `message` to the user.
+The texts live in the backend's messages files (`<feature>.messages.ts`, shared ones in `messages.ts`) – change them there. Common codes: `VALIDATION_ERROR` (422),
 `UNAUTHORIZED` / `MISSING_TOKEN` / `TOKEN_EXPIRED` / `SESSION_REVOKED` (401), `FORBIDDEN` (403), `…_NOT_FOUND` (404),
 `TOO_MANY_REQUESTS` (429).
 {{#if AUTH}}
@@ -112,8 +113,10 @@ The server verifies it with the provider; an account with the same verified emai
 | PATCH | `/users/me` 🔒 | `name?, countryCode?, phone?, location?, bio?` (`phone: null` removes it) | User |
 | POST | `/users/me/avatar` 🔒 | multipart, field `avatar` (JPEG / PNG / WebP / HEIC, ≤ `UPLOAD_MAX_MB`) | User |
 | DELETE | `/users/me/avatar` 🔒 | – | User |
-| DELETE | `/users/me` 🔒 | – | – (account and its data are deleted) |
-| GET | `/users/search?q=…&limit=20` 🔒 | – | `[{ id, name, avatar }]` |
+{{#if DELETE_ACCOUNT}}
+| DELETE | `/users/me` 🔒 | – | – (the account and its data are deleted for good) |
+{{/if}}
+| GET | `/users/search?search=…&page=1&limit=20` 🔒 | – | `[{ id, name, avatar }]` + meta – other users A → Z (no `search`: everybody) |
 | GET | `/users?page&limit&search` | admin (`users:read`) | User[] + meta |
 | GET / PATCH / DELETE | `/users/:id` | admin (`users:read` / `users:write` / `users:delete`) | User |
 {{else}}
@@ -128,7 +131,12 @@ The server verifies it with the provider; an account with the same verified emai
 Shapes (same as the app's `chat/types/chat.ts`):
 
 ```ts
-Conversation { id, title, avatar?, isGroup, unreadCount, lastMessage?: ChatMessage, participants: { id, name, avatar?, isOnline, lastSeen? }[], updatedAt }
+{{#if GROUP_CHAT}}
+Conversation { id, title, avatar?, isGroup, myRole: 'admin'|'member', unreadCount, lastMessage?: ChatMessage,
+               participants: { id, name, avatar?, isOnline, lastSeen?, role }[], updatedAt }
+{{else}}
+Conversation { id, title, avatar?, unreadCount, lastMessage?: ChatMessage, participants: { id, name, avatar?, isOnline, lastSeen? }[], updatedAt }
+{{/if}}
 ChatMessage  { id, conversationId, senderId, senderName, senderAvatar?, type: 'text'|'image'|'video'|'audio'|'document',
                text?, mediaUrl?, thumbnailUrl?, fileName?, fileSize?, duration?, crop?, createdAt, status: 'sent'|'read', isMe? }
 ```
@@ -136,17 +144,37 @@ ChatMessage  { id, conversationId, senderId, senderName, senderAvatar?, type: 't
 | Method | Path | Body / query | Returns |
 | --- | --- | --- | --- |
 | GET | `/chat/conversations` | – | Conversation[] (newest activity first) |
-| POST | `/chat/conversations` | `participantIds[], title?, isGroup?` | Conversation (a direct chat is reused) |
+| POST | `/chat/conversations` | `participantIds: [otherUserId]` | Conversation (the direct chat is reused) |
 | GET | `/chat/conversations/:id` | – | Conversation |
-| DELETE | `/chat/conversations/:id` | – | – (direct: hidden until a new message; group: leave) |
+| DELETE | `/chat/conversations/:id` | – | – (hidden until a new message{{#if GROUP_CHAT}}; a group: leave it{{/if}}) |
 | GET | `/chat/conversations/:id/messages?before=<messageId>&limit=30` | – | ChatMessage[] oldest → newest, `meta.hasMore` |
 | POST | `/chat/conversations/:id/messages` | `type, text?, mediaUrl?, thumbnailUrl?, fileName?, fileSize?, duration?, crop?` | ChatMessage (201) |
 | POST | `/chat/conversations/:id/read` | – | – |
 | DELETE | `/chat/conversations/:id/messages/:messageId` | – | – (own messages only) |
 | POST | `/chat/upload` | multipart, field `file` | `{ url, type, fileName, fileSize, mimeType }` – send `url` as `mediaUrl` |
 | POST | `/chat/upload-voice` | multipart, field `file` (audio) | same |
+{{#if GROUP_CHAT}}
+| POST | `/chat/groups` | `title, participantIds[], avatarUrl?` | Conversation (201) – you are the admin |
+| PATCH | `/chat/groups/:id` | admin: `title?, avatarUrl?` | Conversation |
+| POST | `/chat/groups/:id/members` | admin: `userIds[]` | Conversation |
+| DELETE | `/chat/groups/:id/members/:userId` | admin | Conversation |
+| PATCH | `/chat/groups/:id/members/:userId` | admin: `role: 'admin' \| 'member'` | Conversation |
+| POST | `/chat/groups/:id/leave` | – | – (the last admin's role goes to the longest-standing member) |
+{{/if}}
 
 All chat routes need `Authorization: Bearer`.
+{{/if}}
+{{#if DEVICES}}
+
+## Devices – `/devices`
+
+One row per app install; a user can have several devices. Pushes go to every device that has a token.
+
+| Method | Path | Body | Returns |
+| --- | --- | --- | --- |
+| POST | `/devices` | `deviceId, token? (FCM), platform: ios \| android \| web, deviceName?, osVersion?, appVersion?` | Device – call after every sign-in, on app start and on token refresh |
+| GET | `/devices` | – | `Device { deviceId, platform, deviceName, osVersion, appVersion, pushEnabled, lastActiveAt, createdAt }[]` |
+| DELETE | `/devices/:deviceId` | – | – (call on logout) |
 {{/if}}
 {{#if NOTIFICATIONS}}
 
@@ -156,8 +184,6 @@ All chat routes need `Authorization: Bearer`.
 
 | Method | Path | Body / query | Returns |
 | --- | --- | --- | --- |
-| POST | `/notifications/devices` | `token (FCM), platform: ios \| android \| web` | – (call after login and on token refresh) |
-| DELETE | `/notifications/devices/:token` | – | – (call on logout) |
 | GET | `/notifications?page&limit` | – | Notification[] + meta (`meta.unreadCount`) |
 | GET | `/notifications/unread-count` | – | `{ count }` |
 | PATCH | `/notifications/:id/read` | – | – |
@@ -187,9 +213,21 @@ io('http://<host>:3000', { transports: ['websocket'], auth: { token: accessToken
 | server → app | `chat:message_read` | `{ conversationId, userId, readAt }` |
 | server → app | `chat:message_deleted` | `{ conversationId, messageId }` |
 | server → app | `presence:typing` / `presence:stop_typing` | `{ roomId, userId, name }` |
+{{#if GROUP_CHAT}}
+| server → app | `chat:conversation_updated` | `{ conversationId, change, byUserId }` – reload the group |
+| server → app | `chat:conversation_removed` | `{ conversationId }` – you left / were removed |
+{{/if}}
 {{/if}}
 | server → app | `presence:user_online` / `presence:user_offline` | `{ userId, lastSeen? }` |
 {{#if NOTIFICATIONS}}
 | server → app | `notification:new` | Notification |
 {{/if}}
+{{/if}}
+{{#if LEGAL}}
+
+## Legal – `/legal` (public)
+
+| Method | Path | Returns |
+| --- | --- | --- |
+| GET | `/legal` | `{ termsUrl, privacyPolicyUrl{{#if DELETE_ACCOUNT}}, deleteAccountUrl{{/if}} }` – set `TERMS_URL` … in .env, or edit the pages in `public/` (served at `/terms-and-conditions`, `/privacy-policy`{{#if DELETE_ACCOUNT}}, `/delete-account`{{/if}}) |
 {{/if}}

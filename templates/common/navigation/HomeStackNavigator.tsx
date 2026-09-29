@@ -5,13 +5,13 @@ import { translate } from '{{IMPORT:i18n.index}}';
 import { HomeScreen } from '{{IMPORT:screens.Home}}';
 {{#if DRAWER}}
 {{#if NOTIFICATIONS}}
-import { DrawerMenuButton, NotificationBellButton } from './HeaderButtons';
+import { renderDrawerButton, renderNotificationBell } from './HeaderButtons';
 {{else}}
-import { DrawerMenuButton } from './HeaderButtons';
+import { renderDrawerButton } from './HeaderButtons';
 {{/if}}
 {{else}}
 {{#if NOTIFICATIONS}}
-import { NotificationBellButton } from './HeaderButtons';
+import { renderNotificationBell } from './HeaderButtons';
 {{/if}}
 {{/if}}
 import type { HomeStackParamList } from './navigationTypes';
@@ -34,10 +34,10 @@ export function HomeStackNavigator(): React.JSX.Element {
         options={{
           title: translate('home', 'home'),
 {{#if DRAWER}}
-          headerLeft: DrawerMenuButton,
+          headerLeft: renderDrawerButton,
 {{/if}}
 {{#if NOTIFICATIONS}}
-          headerRight: NotificationBellButton,
+          headerRight: renderNotificationBell,
 {{/if}}
         }}
       />

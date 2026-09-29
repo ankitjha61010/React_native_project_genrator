@@ -1,195 +1,126 @@
-{{#if AUTH}}
-import { z } from 'zod';
-{{/if}}
+import type { Request, Response } from 'express';
+import type { UsersService } from '{{IMPORT:app.usersService}}';
 {{#if VIEWS}}
 import { userView } from '{{IMPORT:views.user}}';
 {{else}}
-import type { Paginated } from '{{IMPORT:core.pagination}}';
-import { toPublicUser, type User } from '{{IMPORT:domain.user}}';
+import { toPublicUser } from '{{IMPORT:domain.user}}';
 {{/if}}
-import { emptySchema, idParams, searchPageQuery } from '{{IMPORT:ex.schemas}}';
-import { route, type RouteGroup } from '{{IMPORT:ex.route}}';
 {{#if AUTH}}
-import { publicUserSchema, searchUsersQuery, updateProfileSchema, updateUserSchema, userSummarySchema } from '{{IMPORT:ex.users.schemas}}';
+import { currentUser } from '{{IMPORT:ex.mw.auth}}';
+{{/if}}
+import { sendSuccess } from '{{IMPORT:ex.respond}}';
+{{#if AUTH}}
+import { uploadedFile } from '{{IMPORT:ex.mw.upload}}';
+{{/if}}
+import { idParams, searchPageQuery } from '{{IMPORT:ex.schemas}}';
+import { parseBody, parseParams, parseQuery } from '{{IMPORT:ex.validation}}';
+import { USERS_MESSAGES } from '{{IMPORT:messages.users}}';
+{{#if AUTH}}
+import { updateProfileSchema, updateUserSchema } from '{{IMPORT:ex.users.schemas}}';
 {{else}}
-import { createUserSchema, publicUserSchema, updateUserSchema } from '{{IMPORT:ex.users.schemas}}';
+import { createUserSchema, updateUserSchema } from '{{IMPORT:ex.users.schemas}}';
 {{/if}}
 
 {{#if VIEWS}}
-const one = userView.one;
-const page = userView.page;
+const view = userView.one;
 {{else}}
-const one = toPublicUser;
-const page = (users: Paginated<User>) => users.map(toPublicUser);
+/** What the client sees of a user (never the password hash). */
+const view = toPublicUser;
 {{/if}}
 
+/** Handles `/users` requests: reads the input, calls UsersService, sends the response. */
+export class UsersController {
+  constructor(private readonly users: UsersService) {}
 {{#if AUTH}}
-/** `/users` – your own profile, user search, and administration (permission based, see roles.ts). */
-export const usersRoutes: RouteGroup = {
-  prefix: '/users',
-  tag: 'Users',
-  routes: [
-    // `/me…` and `/search` are declared before `/:id` so they aren't read as ids.
-    route({
-      method: 'patch',
-      path: '/me',
-      summary: 'Update your profile (name, mobile number, location, bio)',
-      message: 'Profile updated',
-      auth: true,
-      body: updateProfileSchema,
-      response: publicUserSchema,
-      errors: [401, 409, 422],
-      handler: async ({ user, body }, { users }) => one(await users.updateProfile(user.id, body)),
-    }),
-    route({
-      method: 'post',
-      path: '/me/avatar',
-      summary: 'Upload a profile picture (multipart field `avatar`: JPEG, PNG, WebP or HEIC)',
-      message: 'Avatar updated',
-      auth: true,
-      upload: 'avatar',
-      response: publicUserSchema,
-      errors: [400, 401, 413, 422],
-      handler: async ({ user, file }, { users }) => one(await users.setAvatar(user.id, file)),
-    }),
-    route({
-      method: 'delete',
-      path: '/me/avatar',
-      summary: 'Remove your profile picture',
-      message: 'Avatar removed',
-      auth: true,
-      response: publicUserSchema,
-      errors: [401],
-      handler: async ({ user }, { users }) => one(await users.removeAvatar(user.id)),
-    }),
-    route({
-      method: 'delete',
-      path: '/me',
-      summary: 'Delete your account and its data',
-      message: 'Account deleted',
-      auth: true,
-      response: emptySchema,
-      errors: [401],
-      handler: ({ user }, { users }) => users.deleteAccount(user.id),
-    }),
-    route({
-      method: 'get',
-      path: '/search',
-      summary: 'Find other users by name or email (e.g. to start a chat)',
-      message: 'Users',
-      auth: true,
-      query: searchUsersQuery,
-      response: z.array(userSummarySchema),
-      errors: [401, 422],
-      handler: ({ user, query }, { users }) => users.search(user.id, query.q, query.limit),
-    }),
-    route({
-      method: 'get',
-      path: '',
-      summary: 'List users (paginated, searchable) – permission users:read',
-      message: 'Users',
-      permission: 'users:read',
-      query: searchPageQuery,
-      response: publicUserSchema,
-      paginated: true,
-      errors: [401, 403, 422],
-      handler: async ({ query }, { users }) => page(await users.list(query)),
-    }),
-    route({
-      method: 'get',
-      path: '/:id',
-      summary: 'Get a user – permission users:read',
-      message: 'User',
-      permission: 'users:read',
-      params: idParams,
-      response: publicUserSchema,
-      errors: [401, 403, 404],
-      handler: async ({ params }, { users }) => one(await users.getById(params.id)),
-    }),
-    route({
-      method: 'patch',
-      path: '/:id',
-      summary: 'Update a user (name, role, active) – permission users:write',
-      message: 'User updated',
-      permission: 'users:write',
-      params: idParams,
-      body: updateUserSchema,
-      response: publicUserSchema,
-      errors: [401, 403, 404, 422],
-      handler: async ({ params, body, user }, { users }) => one(await users.update(params.id, body, user.id)),
-    }),
-    route({
-      method: 'delete',
-      path: '/:id',
-      summary: 'Delete a user – permission users:delete',
-      message: 'User deleted',
-      permission: 'users:delete',
-      params: idParams,
-      response: emptySchema,
-      errors: [401, 403, 404],
-      handler: ({ params, user }, { users }) => users.delete(params.id, user.id),
-    }),
-  ],
-};
-{{else}}
-/** `/users` – CRUD. There is no authentication: protect these routes before going live. */
-export const usersRoutes: RouteGroup = {
-  prefix: '/users',
-  tag: 'Users',
-  routes: [
-    route({
-      method: 'get',
-      path: '',
-      summary: 'List users (paginated, searchable)',
-      message: 'Users',
-      query: searchPageQuery,
-      response: publicUserSchema,
-      paginated: true,
-      errors: [422],
-      handler: async ({ query }, { users }) => page(await users.list(query)),
-    }),
-    route({
-      method: 'post',
-      path: '',
-      summary: 'Create a user',
-      message: 'User created',
-      status: 201,
-      body: createUserSchema,
-      response: publicUserSchema,
-      errors: [409, 422],
-      handler: async ({ body }, { users }) => one(await users.create(body)),
-    }),
-    route({
-      method: 'get',
-      path: '/:id',
-      summary: 'Get a user',
-      message: 'User',
-      params: idParams,
-      response: publicUserSchema,
-      errors: [404],
-      handler: async ({ params }, { users }) => one(await users.getById(params.id)),
-    }),
-    route({
-      method: 'patch',
-      path: '/:id',
-      summary: 'Update a user',
-      message: 'User updated',
-      params: idParams,
-      body: updateUserSchema,
-      response: publicUserSchema,
-      errors: [404, 422],
-      handler: async ({ params, body }, { users }) => one(await users.update(params.id, body)),
-    }),
-    route({
-      method: 'delete',
-      path: '/:id',
-      summary: 'Delete a user',
-      message: 'User deleted',
-      params: idParams,
-      response: emptySchema,
-      errors: [404],
-      handler: ({ params }, { users }) => users.delete(params.id),
-    }),
-  ],
-};
+
+  /** PATCH /users/me */
+  updateProfile = async (req: Request, res: Response) => {
+    const input = parseBody(updateProfileSchema, req);
+    const user = await this.users.updateProfile(currentUser(req).id, input);
+    sendSuccess(res, USERS_MESSAGES.profileUpdated, view(user));
+  };
+
+  /** POST /users/me/avatar (multipart field `avatar`) */
+  setAvatar = async (req: Request, res: Response) => {
+    const user = await this.users.setAvatar(currentUser(req).id, uploadedFile(req, 'avatar'));
+    sendSuccess(res, USERS_MESSAGES.avatarUpdated, view(user));
+  };
+
+  /** DELETE /users/me/avatar */
+  removeAvatar = async (req: Request, res: Response) => {
+    const user = await this.users.removeAvatar(currentUser(req).id);
+    sendSuccess(res, USERS_MESSAGES.avatarRemoved, view(user));
+  };
+
+{{#if DELETE_ACCOUNT}}
+  /** DELETE /users/me – the user deletes their own account (and its data) */
+  deleteAccount = async (req: Request, res: Response) => {
+    await this.users.deleteAccount(currentUser(req).id);
+    sendSuccess(res, USERS_MESSAGES.accountDeleted);
+  };
+
 {{/if}}
+  /** GET /users/search?search=jane&page=1&limit=20 – other users A → Z (no search: everybody) */
+  search = async (req: Request, res: Response) => {
+    sendSuccess(res, USERS_MESSAGES.list, await this.users.search(currentUser(req).id, parseQuery(searchPageQuery, req)));
+  };
+
+  /** GET /users?page=1&limit=20&search=jane (admin) */
+  list = async (req: Request, res: Response) => {
+    const users = await this.users.list(parseQuery(searchPageQuery, req));
+    sendSuccess(res, USERS_MESSAGES.list, {{#if VIEWS}}userView.page(users){{else}}users.map(view){{/if}});
+  };
+
+  /** GET /users/:id (admin) */
+  getById = async (req: Request, res: Response) => {
+    const { id } = parseParams(idParams, req);
+    sendSuccess(res, USERS_MESSAGES.user, view(await this.users.getById(id)));
+  };
+
+  /** PATCH /users/:id (admin: name, role, active) */
+  update = async (req: Request, res: Response) => {
+    const { id } = parseParams(idParams, req);
+    const user = await this.users.update(id, parseBody(updateUserSchema, req), currentUser(req).id);
+    sendSuccess(res, USERS_MESSAGES.updated, view(user));
+  };
+
+  /** DELETE /users/:id (admin) */
+  delete = async (req: Request, res: Response) => {
+    const { id } = parseParams(idParams, req);
+    await this.users.delete(id, currentUser(req).id);
+    sendSuccess(res, USERS_MESSAGES.deleted);
+  };
+{{else}}
+
+  /** GET /users?page=1&limit=20&search=jane */
+  list = async (req: Request, res: Response) => {
+    const users = await this.users.list(parseQuery(searchPageQuery, req));
+    sendSuccess(res, USERS_MESSAGES.list, {{#if VIEWS}}userView.page(users){{else}}users.map(view){{/if}});
+  };
+
+  /** POST /users */
+  create = async (req: Request, res: Response) => {
+    const user = await this.users.create(parseBody(createUserSchema, req));
+    sendSuccess(res, USERS_MESSAGES.created, view(user), { status: 201 });
+  };
+
+  /** GET /users/:id */
+  getById = async (req: Request, res: Response) => {
+    const { id } = parseParams(idParams, req);
+    sendSuccess(res, USERS_MESSAGES.user, view(await this.users.getById(id)));
+  };
+
+  /** PATCH /users/:id */
+  update = async (req: Request, res: Response) => {
+    const { id } = parseParams(idParams, req);
+    sendSuccess(res, USERS_MESSAGES.updated, view(await this.users.update(id, parseBody(updateUserSchema, req))));
+  };
+
+  /** DELETE /users/:id */
+  delete = async (req: Request, res: Response) => {
+    const { id } = parseParams(idParams, req);
+    await this.users.delete(id);
+    sendSuccess(res, USERS_MESSAGES.deleted);
+  };
+{{/if}}
+}

@@ -6,15 +6,16 @@ import { isRole{{#if NOTIFICATIONS}}, type Role{{/if}} } from '{{IMPORT:domain.r
 import type { User } from '{{IMPORT:domain.user}}';
 import type { CreateUserData, UpdateUserData, UsersRepository } from '{{IMPORT:contract.users}}';
 import { isNotFound, isUniqueViolation, type PrismaClient } from '{{IMPORT:db.connection}}';
+import { USERS_MESSAGES } from '{{IMPORT:messages.users}}';
 
 type UserRecord = NonNullable<Awaited<ReturnType<PrismaClient['user']['findUnique']>>>;
 
 {{#if AUTH}}
 const toUser = (record: UserRecord): User => ({ ...record, role: isRole(record.role) ? record.role : 'user' });
-const TAKEN = () => new ConflictError('Email or mobile number is already registered', 'ACCOUNT_EXISTS');
+const TAKEN = () => new ConflictError(USERS_MESSAGES.accountExists);
 {{else}}
 const toUser = (record: UserRecord): User => record;
-const TAKEN = () => new ConflictError('Email is already registered', 'EMAIL_TAKEN');
+const TAKEN = () => new ConflictError(USERS_MESSAGES.emailTaken);
 {{/if}}
 {{#if POSTGRES}}
 const contains = (value: string) => ({ contains: value, mode: 'insensitive' as const });
@@ -46,13 +47,13 @@ export class PrismaUsersRepository implements UsersRepository {
     return (await this.prisma.user.findMany({ where: { id: { in: ids } } })).map(toUser);
   }
 
-  async search(term: string, options: { excludeId: string; limit: number }): Promise<User[]> {
-    const records = await this.prisma.user.findMany({
-      where: { isActive: true, id: { not: options.excludeId }, OR: [{ name: contains(term) }, { email: contains(term) }] },
-      orderBy: { name: 'asc' },
-      take: options.limit,
-    });
-    return records.map(toUser);
+  async search(term: string, options: { excludeId: string; offset: number; limit: number }): Promise<{ items: User[]; total: number }> {
+    const where = { isActive: true, id: { not: options.excludeId }, ...(term ? { OR: [{ name: contains(term) }, { email: contains(term) }] } : {}) };
+    const [records, total] = await Promise.all([
+      this.prisma.user.findMany({ where, orderBy: [{ name: 'asc' }, { id: 'asc' }], skip: options.offset, take: options.limit }),
+      this.prisma.user.count({ where }),
+    ]);
+    return { items: records.map(toUser), total };
   }
 {{/if}}
 {{#if NOTIFICATIONS}}
@@ -85,7 +86,7 @@ export class PrismaUsersRepository implements UsersRepository {
     try {
       return toUser(await this.prisma.user.update({ where: { id }, data }));
     } catch (error) {
-      if (isNotFound(error)) throw new NotFoundError('User not found', 'USER_NOT_FOUND');
+      if (isNotFound(error)) throw new NotFoundError(USERS_MESSAGES.notFound);
       if (isUniqueViolation(error)) throw TAKEN();
       throw error;
     }
@@ -101,7 +102,7 @@ export class PrismaUsersRepository implements UsersRepository {
     try {
       await this.prisma.user.delete({ where: { id } });
     } catch (error) {
-      if (isNotFound(error)) throw new NotFoundError('User not found', 'USER_NOT_FOUND');
+      if (isNotFound(error)) throw new NotFoundError(USERS_MESSAGES.notFound);
       throw error;
     }
   }

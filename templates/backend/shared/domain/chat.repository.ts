@@ -1,5 +1,16 @@
 import type { Conversation, ConversationMember, MediaCrop, Message, MessageType } from '{{IMPORT:domain.chat}}';
 
+export interface CreateConversationData {
+  createdById: string;
+  /** Every member, the creator included.{{#if GROUP_CHAT}} In a group the creator becomes its admin.{{/if}} */
+  memberIds: string[];
+{{#if GROUP_CHAT}}
+  isGroup: boolean;
+  title: string | null;
+  avatarUrl: string | null;
+{{/if}}
+}
+
 export interface CreateMessageData {
   conversationId: string;
   senderId: string;
@@ -15,8 +26,12 @@ export interface CreateMessageData {
 
 /** Conversations, their members and messages. */
 export interface ChatRepository {
-  createConversation(data: { isGroup: boolean; title: string | null; createdById: string; memberIds: string[] }): Promise<Conversation>;
+  createConversation(data: CreateConversationData): Promise<Conversation>;
   findConversation(id: string): Promise<Conversation | null>;
+{{#if GROUP_CHAT}}
+  /** Group name / image. */
+  updateConversation(id: string, data: Partial<Pick<Conversation, 'title' | 'avatarUrl'>>): Promise<Conversation>;
+{{/if}}
   /** The 1:1 conversation between two users, if any. */
   findDirectConversation(userId: string, otherUserId: string): Promise<Conversation | null>;
   /** Every conversation the user is a member of, newest activity first. */
@@ -25,7 +40,11 @@ export interface ChatRepository {
 
   listMembers(conversationIds: string[]): Promise<ConversationMember[]>;
   findMember(conversationId: string, userId: string): Promise<ConversationMember | null>;
-  updateMember(conversationId: string, userId: string, data: Partial<Pick<ConversationMember, 'lastReadAt' | 'clearedAt'>>): Promise<void>;
+  updateMember(conversationId: string, userId: string, data: Partial<Pick<ConversationMember, 'lastReadAt' | 'clearedAt'{{#if GROUP_CHAT}} | 'role'{{/if}}>>): Promise<void>;
+{{#if GROUP_CHAT}}
+  /** New group members (role `member`). */
+  addMembers(conversationId: string, userIds: string[]): Promise<void>;
+{{/if}}
   removeMember(conversationId: string, userId: string): Promise<void>;
 
   /** Stores the message and bumps the conversation's `lastMessageAt`. */

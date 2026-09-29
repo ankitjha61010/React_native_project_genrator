@@ -1,8 +1,8 @@
-import { In, IsNull, type DataSource, type Repository } from 'typeorm';
+import { IsNull, type DataSource, type Repository } from 'typeorm';
 import { pageOffset, type PageQuery } from '{{IMPORT:core.pagination}}';
-import type { Broadcast, BroadcastAudience, Device, DevicePlatform, Notification, NotificationType } from '{{IMPORT:domain.notification}}';
+import type { Broadcast, BroadcastAudience, Notification, NotificationType } from '{{IMPORT:domain.notification}}';
 import type { CreateNotificationData, NotificationsRepository } from '{{IMPORT:contract.notifications}}';
-import { BroadcastOrmEntity, DeviceOrmEntity, NotificationOrmEntity } from '{{IMPORT:typeorm.notifications}}';
+import { BroadcastOrmEntity, NotificationOrmEntity } from '{{IMPORT:typeorm.notifications}}';
 
 const toNotification = (e: NotificationOrmEntity): Notification => ({
   id: e.id,
@@ -15,7 +15,6 @@ const toNotification = (e: NotificationOrmEntity): Notification => ({
   broadcastId: e.broadcastId,
   createdAt: e.createdAt,
 });
-const toDevice = (e: DeviceOrmEntity): Device => ({ id: e.id, userId: e.userId, token: e.token, platform: e.platform as DevicePlatform, createdAt: e.createdAt, updatedAt: e.updatedAt });
 const toBroadcast = (e: BroadcastOrmEntity): Broadcast => ({
   id: e.id,
   title: e.title,
@@ -30,12 +29,10 @@ const toBroadcast = (e: BroadcastOrmEntity): Broadcast => ({
 
 export class TypeOrmNotificationsRepository implements NotificationsRepository {
   private readonly notifications: Repository<NotificationOrmEntity>;
-  private readonly devices: Repository<DeviceOrmEntity>;
   private readonly broadcasts: Repository<BroadcastOrmEntity>;
 
   constructor(dataSource: DataSource) {
     this.notifications = dataSource.getRepository(NotificationOrmEntity);
-    this.devices = dataSource.getRepository(DeviceOrmEntity);
     this.broadcasts = dataSource.getRepository(BroadcastOrmEntity);
   }
 
@@ -74,23 +71,6 @@ export class TypeOrmNotificationsRepository implements NotificationsRepository {
 
   async deleteAll(userId: string): Promise<void> {
     await this.notifications.delete({ userId });
-  }
-
-  async saveDevice(data: { userId: string; token: string; platform: DevicePlatform }): Promise<Device> {
-    await this.devices.upsert(data, ['token']);
-    return toDevice(await this.devices.findOneByOrFail({ token: data.token }));
-  }
-
-  async removeDevice(userId: string, token: string): Promise<void> {
-    await this.devices.delete({ userId, token });
-  }
-
-  async listDevices(userIds: string[]): Promise<Device[]> {
-    return userIds.length ? (await this.devices.findBy({ userId: In(userIds) })).map(toDevice) : [];
-  }
-
-  async deleteDevicesByToken(tokens: string[]): Promise<void> {
-    if (tokens.length) await this.devices.delete({ token: In(tokens) });
   }
 
   async createBroadcast(data: Omit<Broadcast, 'id' | 'createdAt'>): Promise<Broadcast> {

@@ -9,13 +9,10 @@ import {
   Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { authApi } from '{{IMPORT:api.auth}}';
-import { userMessage } from '{{IMPORT:api.errors}}';
 {{#if PHONE_INPUT}}
 import { defaultCountry, findCountryByDialCode, type Country } from '{{IMPORT:assets.countries}}';
 import { PhoneInput } from '{{IMPORT:components.PhoneInput}}';
 {{/if}}
-import { authSessionStorage } from '{{IMPORT:storage.session}}';
 import { AppScreen } from '{{IMPORT:components.AppScreen}}';
 import { AppText } from '{{IMPORT:components.AppText}}';
 {{#if VECTOR_ICONS}}
@@ -26,16 +23,15 @@ import { AppButton } from '{{IMPORT:components.AppButton}}';
 import { FadeInView } from '{{IMPORT:components.FadeInView}}';
 import { MediaPickerModal, type MediaPickerOption } from '{{IMPORT:components.MediaPickerModal}}';
 import { MediaEditorModal, type MediaItem } from '{{IMPORT:components.MediaEditorModal}}';
-import { useAuthSession } from '{{IMPORT:hooks.useAuthSession}}';
 import { useImagePicker } from '{{IMPORT:hooks.useImagePicker}}';
+import { useProfile } from '{{IMPORT:hooks.useProfile}}';
 import { useStyles } from '{{IMPORT:hooks.useTheme}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
-import { flash } from '{{IMPORT:utils.flashMessage}}';
 
 export function EditProfileScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
   const styles = useStyles(createStyles);
-  const { user, signIn } = useAuthSession();
+  const { user, saving, saveProfile } = useProfile();
   const { pick } = useImagePicker();
 
   const [name, setName] = useState(user?.name ?? '');
@@ -53,7 +49,6 @@ export function EditProfileScreen(): React.JSX.Element {
   const [avatarCrop, setAvatarCrop] = useState<MediaItem['crop'] | undefined>(undefined);
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [editingMedia, setEditingMedia] = useState<MediaItem | null>(null);
-  const [saving, setSaving] = useState(false);
 
   const handleMediaOption = async (option: MediaPickerOption) => {
     setShowImagePicker(false);
@@ -99,11 +94,11 @@ export function EditProfileScreen(): React.JSX.Element {
     }
   };
 
+  /** Backend → the updated user → every screen (useProfile). */
   const handleSave = async () => {
-    setSaving(true);
-    try {
-      const digits = phone.replace(/\D/g, '');
-      let updated = await authApi.updateProfile({
+    const digits = phone.replace(/\D/g, '');
+    const saved = await saveProfile(
+      {
         name: name.trim(),
 {{#if PHONE_INPUT}}
         ...(digits ? { countryCode: country.dialCode, phone: digits } : { phone: null }),
@@ -112,19 +107,10 @@ export function EditProfileScreen(): React.JSX.Element {
 {{/if}}
         location: location.trim() || null,
         bio: bio.trim() || null,
-      });
-      if (pickedAvatar) updated = await authApi.uploadAvatar(pickedAvatar);
-      // Keep the signed-in session (tokens) and store the new profile.
-      const session = await authSessionStorage.load();
-      if (session) await signIn({ ...session, user: updated });
-      flash.success({ intlType: 'common', value: 'ok' });
-      navigation.goBack();
-    } catch (error) {
-      // e.g. "Mobile number is already registered".
-      flash.error({ message: userMessage(error) ?? 'Could not save your profile, please try again.' });
-    } finally {
-      setSaving(false);
-    }
+      },
+      pickedAvatar,
+    );
+    if (saved) navigation.goBack();
   };
 
   return (
@@ -321,7 +307,7 @@ const createStyles = (theme: Theme) =>
     changeBadge: {
       position: 'absolute',
       bottom: 0,
-      right: 0,
+      end: 0,
       width: 36,
       height: 36,
       borderRadius: 18,
@@ -343,7 +329,7 @@ const createStyles = (theme: Theme) =>
       gap: theme.spacing.spacing6,
     },
     fieldLabel: {
-      marginLeft: 4,
+      marginStart: 4,
       letterSpacing: 0.5,
     },
     buttonSection: {

@@ -1,4 +1,6 @@
+{{#if AUTH_MOBILE}}
 import type { SentCode } from '{{IMPORT:api.auth}}';
+{{/if}}
 import type { AuthSession, LoginCredentials, {{#if AUTH_EMAIL}}RegisterInput, {{/if}}{{#if AUTH_MOBILE}}PhoneNumber, {{/if}}User } from '{{IMPORT:auth.types}}';
 {{#if HAS_SOCIAL_AUTH}}
 import type { SocialAuthResult } from '{{IMPORT:auth.socialAuth}}';

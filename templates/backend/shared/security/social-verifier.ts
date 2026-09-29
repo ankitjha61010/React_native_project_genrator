@@ -5,6 +5,7 @@ import { sha256 } from '{{IMPORT:core.crypto}}';
 import { UnauthorizedError } from '{{IMPORT:core.errors}}';
 import type { SocialProvider } from '{{IMPORT:domain.authTokens}}';
 import type { SocialCredential, SocialProfile, SocialVerifier } from '{{IMPORT:port.socialVerifier}}';
+import { AUTH_MESSAGES } from '{{IMPORT:messages.auth}}';
 
 export interface SocialConfig {
 {{#if SOCIAL_GOOGLE}}
@@ -19,7 +20,7 @@ export interface SocialConfig {
 {{/if}}
 }
 
-const invalid = (provider: string) => new UnauthorizedError(`Invalid ${provider} sign-in token`, 'INVALID_SOCIAL_TOKEN');
+const invalid = (provider: string) => new UnauthorizedError(AUTH_MESSAGES.invalidSocialToken(provider));
 const text = (value: unknown): string | null => (typeof value === 'string' && value ? value : null);
 {{#if SOCIAL_GOOGLE}}
 
@@ -64,7 +65,7 @@ export class ProviderSocialVerifier implements SocialVerifier {
 {{#if SOCIAL_GOOGLE}}
 
   private async google(idToken: string): Promise<SocialProfile> {
-    if (!this.config.googleClientIds.length) throw new UnauthorizedError('Google sign-in is not configured (GOOGLE_CLIENT_IDS)', 'SOCIAL_NOT_CONFIGURED');
+    if (!this.config.googleClientIds.length) throw new UnauthorizedError(AUTH_MESSAGES.socialNotConfigured('Google', 'GOOGLE_CLIENT_IDS'));
     const claims = await this.jwt(idToken, GOOGLE_KEYS, ['https://accounts.google.com', 'accounts.google.com'], this.config.googleClientIds, 'Google');
     return {
       provider: 'google',
@@ -80,7 +81,7 @@ export class ProviderSocialVerifier implements SocialVerifier {
 
   private async facebook(accessToken: string): Promise<SocialProfile> {
     const { facebookAppId: appId, facebookAppSecret: secret } = this.config;
-    if (!appId || !secret) throw new UnauthorizedError('Facebook sign-in is not configured (FACEBOOK_APP_ID / SECRET)', 'SOCIAL_NOT_CONFIGURED');
+    if (!appId || !secret) throw new UnauthorizedError(AUTH_MESSAGES.socialNotConfigured('Facebook', 'FACEBOOK_APP_ID / FACEBOOK_APP_SECRET'));
     const graph = 'https://graph.facebook.com/v21.0';
     const debug = await fetch(`${graph}/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${appId}|${secret}`);
     const check = (await debug.json()) as { data?: { is_valid?: boolean; app_id?: string; user_id?: string } };
@@ -95,7 +96,7 @@ export class ProviderSocialVerifier implements SocialVerifier {
 
   /** iOS Limited Login returns an OIDC token instead of an access token. */
   private async facebookLimited(token: string): Promise<SocialProfile> {
-    if (!this.config.facebookAppId) throw new UnauthorizedError('Facebook sign-in is not configured (FACEBOOK_APP_ID)', 'SOCIAL_NOT_CONFIGURED');
+    if (!this.config.facebookAppId) throw new UnauthorizedError(AUTH_MESSAGES.socialNotConfigured('Facebook', 'FACEBOOK_APP_ID'));
     const claims = await this.jwt(token, FACEBOOK_KEYS, ['https://www.facebook.com', 'https://limited.facebook.com'], [this.config.facebookAppId], 'Facebook');
     return { provider: 'facebook', providerUserId: String(claims.sub), email: text(claims.email), emailVerified: !!claims.email, name: text(claims.name), avatarUrl: text(claims.picture) };
   }

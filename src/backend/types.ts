@@ -1,3 +1,5 @@
+import type { SocialCredentials } from '../config/socialAuth.js';
+
 /** What the CLI generates. */
 export type ProjectType = 'frontend' | 'backend' | 'fullstack';
 
@@ -50,8 +52,14 @@ export interface BackendAuthMethods {
 export interface BackendModules {
   /** Conversations, messages, media upload, Socket.IO (typing, presence, read receipts). */
   chat: boolean;
-  /** Push devices (FCM), notification inbox, admin broadcasts. */
+  /** Group conversations (needs chat): admins / members, name, image, add / remove members, leave. */
+  groupChat: boolean;
+  /** Push notifications: user devices (FCM tokens), notification inbox, admin broadcasts. */
   notifications: boolean;
+  /** GET /legal + editable Terms & Conditions / Privacy Policy pages served by the backend. */
+  legal: boolean;
+  /** DELETE /users/me (the user deletes their account) + a public "delete your account" page. */
+  deleteAccount: boolean;
 }
 
 /**
@@ -80,6 +88,8 @@ export interface BackendOptions {
   apiEncryption: boolean;
   /** iOS bundle id / Android application id of the app (audience of Apple sign-in tokens). */
   appPackage: string;
+  /** Social sign-in keys entered while generating (written to .env; empty = set them later). */
+  socialCredentials?: SocialCredentials;
   /** Full-stack: the AES key / IV written to both .env files (generated when missing). */
   encryptionSecrets?: { key: string; iv: string };
   /** Monolith (one API) or gateway + services. */
@@ -96,6 +106,13 @@ export interface BackendOptions {
   sharedName?: string;
   swagger: boolean;
   security: BackendSecurity;
+  /**
+   * Redis: shared rate limits, Socket.IO adapter, cache helper, OTP / verification codes.
+   * Always on for microservices (their events travel over Redis).
+   */
+  redis: boolean;
+  /** Dockerfile + .dockerignore + docker-compose.yml (database, Redis, the API). */
+  docker: boolean;
   installDependencies: boolean;
   initGit: boolean;
 }
@@ -112,4 +129,4 @@ export const DEFAULT_SECURITY: BackendSecurity = {
 
 export const DEFAULT_AUTH_METHODS: BackendAuthMethods = { email: true, mobileOtp: false, google: false, facebook: false, apple: false };
 
-export const DEFAULT_MODULES: BackendModules = { chat: false, notifications: false };
+export const DEFAULT_MODULES: BackendModules = { chat: false, groupChat: false, notifications: false, legal: true, deleteAccount: true };

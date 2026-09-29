@@ -1,8 +1,8 @@
 import { pageOffset, type PageQuery } from '{{IMPORT:core.pagination}}';
-import type { Broadcast, BroadcastAudience, Device, DevicePlatform, Notification, NotificationData, NotificationType } from '{{IMPORT:domain.notification}}';
+import type { Broadcast, BroadcastAudience, Notification, NotificationData, NotificationType } from '{{IMPORT:domain.notification}}';
 import type { CreateNotificationData, NotificationsRepository } from '{{IMPORT:contract.notifications}}';
 import { isValidId } from '{{IMPORT:db.connection}}';
-import { BroadcastModel, DeviceModel, NotificationModel, type BroadcastDocument, type DeviceDocument, type NotificationDocument } from '{{IMPORT:mongoose.notifications}}';
+import { BroadcastModel, NotificationModel, type BroadcastDocument, type NotificationDocument } from '{{IMPORT:mongoose.notifications}}';
 
 const toNotification = (d: NotificationDocument): Notification => ({
   id: d._id.toString(),
@@ -15,7 +15,6 @@ const toNotification = (d: NotificationDocument): Notification => ({
   broadcastId: d.broadcastId?.toString() ?? null,
   createdAt: d.createdAt,
 });
-const toDevice = (d: DeviceDocument): Device => ({ id: d._id.toString(), userId: d.userId.toString(), token: d.token, platform: d.platform as DevicePlatform, createdAt: d.createdAt, updatedAt: d.updatedAt });
 const toBroadcast = (d: BroadcastDocument): Broadcast => ({
   id: d._id.toString(),
   title: d.title,
@@ -67,24 +66,6 @@ export class MongooseNotificationsRepository implements NotificationsRepository 
 
   async deleteAll(userId: string): Promise<void> {
     await NotificationModel.deleteMany({ userId });
-  }
-
-  async saveDevice(data: { userId: string; token: string; platform: DevicePlatform }): Promise<Device> {
-    const doc = await DeviceModel.findOneAndUpdate({ token: data.token }, { $set: data }, { upsert: true, new: true }).lean<DeviceDocument>();
-    return toDevice(doc);
-  }
-
-  async removeDevice(userId: string, token: string): Promise<void> {
-    await DeviceModel.deleteOne({ userId, token });
-  }
-
-  async listDevices(userIds: string[]): Promise<Device[]> {
-    const valid = userIds.filter(isValidId);
-    return valid.length ? (await DeviceModel.find({ userId: { $in: valid } }).lean<DeviceDocument[]>()).map(toDevice) : [];
-  }
-
-  async deleteDevicesByToken(tokens: string[]): Promise<void> {
-    if (tokens.length) await DeviceModel.deleteMany({ token: { $in: tokens } });
   }
 
   async createBroadcast(data: Omit<Broadcast, 'id' | 'createdAt'>): Promise<Broadcast> {

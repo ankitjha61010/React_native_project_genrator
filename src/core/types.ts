@@ -1,3 +1,5 @@
+import type { SocialCredentials, SocialProviders } from '../config/socialAuth.js';
+
 export type ArchitectureId =
   | 'atomic'
   | 'feature-based'
@@ -20,8 +22,6 @@ export interface FirebaseFiles {
   iosConfigPath?: string;
 }
 
-/** Which social login providers the app offers. Apple is iOS-only at runtime. */
-export type SocialLoginOption = 'none' | 'google' | 'facebook' | 'google-facebook' | 'google-apple' | 'all';
 
 /** Everything the generators need to know, collected from prompts or CLI flags. */
 export interface ProjectOptions {
@@ -56,12 +56,20 @@ export interface ProjectOptions {
   authEmail: boolean;
   /** Mobile OTP authentication (Phone login, OTP verification, Forgot PIN). */
   authMobile: boolean;
-  /** Social login providers (see SOCIAL_LOGIN_CHOICES). */
-  socialAuth: SocialLoginOption;
+  /** Social login providers – each one on or off. */
+  socialAuth: SocialProviders;
+  /** Entered while generating ("Configure"); skipped providers keep YOUR_… placeholders. */
+  socialCredentials: SocialCredentials;
   /** Socket.io client integration. */
   socket: boolean;
   /** Real-time WhatsApp-style chat module with media/audio/video/documents. */
   chat: boolean;
+  /** Group chats (needs chat): admins / members, name, image, add / remove members, leave. */
+  groupChat: boolean;
+  /** Terms & Conditions / Privacy Policy links, read from the backend (GET /legal). */
+  termsAndConditions: boolean;
+  /** Profile → Delete account (DELETE /users/me). */
+  deleteAccount: boolean;
   /** Side drawer menu wrapping the bottom tabs. */
   drawer: boolean;
   initGit: boolean;

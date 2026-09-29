@@ -1,6 +1,9 @@
 import { config } from '{{IMPORT:config.env}}';
 import { logger } from '{{IMPORT:core.logger}}';
 import { createDatabase } from '{{IMPORT:db.connection}}';
+{{#if REDIS}}
+import { closeRedis } from '{{IMPORT:db.redis}}';
+{{/if}}
 import { createInfrastructure, createServices } from '{{IMPORT:app.container}}';
 {{#if SOCKET_SERVER}}
 import { attachSocketServer, SocketHub } from '{{IMPORT:realtime.server}}';
@@ -63,6 +66,9 @@ async function main(): Promise<void> {
       await infra.eventBus.close();
 {{/if}}
       await database.disconnect().catch(err => logger.error({ err }, 'Error while disconnecting the database'));
+{{#if REDIS}}
+      await closeRedis();
+{{/if}}
       process.exit(error ? 1 : 0);
     });
     // Finish in-flight requests, drop idle keep-alive connections.

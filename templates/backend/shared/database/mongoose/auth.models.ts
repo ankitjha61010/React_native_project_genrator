@@ -22,7 +22,7 @@ refreshTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 export type RefreshTokenDocument = InferSchemaType<typeof refreshTokenSchema> & { userId: Types.ObjectId; createdAt: Date };
 export const RefreshTokenModel = model('RefreshToken', refreshTokenSchema);
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
 
 const verificationCodeSchema = new Schema(
   {

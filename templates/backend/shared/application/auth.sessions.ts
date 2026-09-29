@@ -12,8 +12,10 @@ import type { RefreshTokensRepository } from '{{IMPORT:contract.auth}}';
 import type { UsersRepository } from '{{IMPORT:contract.users}}';
 import type { TokenService } from '{{IMPORT:port.tokenService}}';
 import type { AccessTokens, {{#if AUTH_REFRESH}}AuthResult, {{/if}}AuthTokens, ClientContext } from '{{IMPORT:app.authTypes}}';
+import { USERS_MESSAGES } from '{{IMPORT:messages.users}}';
+import { AUTH_MESSAGES } from '{{IMPORT:messages.auth}}';
 
-const INVALID_SESSION = () => new UnauthorizedError('Your session is no longer valid, please log in again', 'SESSION_REVOKED');
+const INVALID_SESSION = () => new UnauthorizedError(AUTH_MESSAGES.sessionRevoked);
 
 /**
  * Sessions = tokens. Issues access tokens{{#if AUTH_REFRESH}} + refresh tokens (stored hashed){{/if}}, resolves the
@@ -46,19 +48,19 @@ export class Sessions {
     const payload = this.tokens.verifyRefreshToken(refreshToken);
     const stored = await this.refreshTokens.findById(payload.jti);
     if (!stored || stored.userId !== payload.sub || !safeEqual(stored.tokenHash, sha256(refreshToken))) {
-      throw new UnauthorizedError('Invalid refresh token', 'INVALID_TOKEN');
+      throw new UnauthorizedError(AUTH_MESSAGES.invalidRefreshToken);
     }
     if (stored.revokedAt) {
 {{#if AUTH_ROTATION}}
       // A rotated token was used again: it was probably stolen. Kill the whole family.
       await this.refreshTokens.revokeFamily(stored.familyId);
       this.logger.warn({ userId: stored.userId, familyId: stored.familyId, ip: client.ip }, 'Refresh token reuse detected');
-      throw new UnauthorizedError('Refresh token reuse detected, please log in again', 'TOKEN_REUSED');
+      throw new UnauthorizedError(AUTH_MESSAGES.refreshTokenReused);
 {{else}}
-      throw new UnauthorizedError('Refresh token has been revoked', 'TOKEN_REVOKED');
+      throw new UnauthorizedError(AUTH_MESSAGES.refreshTokenRevoked);
 {{/if}}
     }
-    if (stored.expiresAt <= new Date()) throw new UnauthorizedError('Refresh token expired', 'TOKEN_EXPIRED');
+    if (stored.expiresAt <= new Date()) throw new UnauthorizedError(AUTH_MESSAGES.refreshTokenExpired);
 
     const user = await this.users.findById(stored.userId);
     if (!user?.isActive) {
@@ -101,7 +103,7 @@ export class Sessions {
   /** Invalidates every access token (token version) {{#if AUTH_REFRESH}}and refresh token {{/if}}of the user. */
   async revokeAll(userId: string): Promise<void> {
     const user = await this.users.findById(userId);
-    if (!user) throw new NotFoundError('User not found', 'USER_NOT_FOUND');
+    if (!user) throw new NotFoundError(USERS_MESSAGES.notFound);
     await this.users.update(userId, { tokenVersion: user.tokenVersion + 1 });
 {{#if AUTH_REFRESH}}
     await this.refreshTokens.revokeAllForUser(userId);

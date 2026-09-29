@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import { resolveDependencies, getProfile } from '../config/compatibility.js';
 import { STATE_MANAGEMENT_LABELS, STORAGE_LABELS } from '../config/constants.js';
-import { SOCIAL_LOGIN_CHOICES, socialProviders } from '../config/socialAuth.js';
+import { describeSocial } from '../config/socialAuth.js';
 import { architectureTree, prepareGeneration } from '../core/context.js';
 import { allPlannedPaths } from '../core/plan.js';
 import type { ProjectOptions } from '../core/types.js';
@@ -22,7 +22,7 @@ export const NATIVE_CHANGES = [
 
 /** Extra native edits made for the selected social login providers. */
 export function socialNativeChanges(options: Pick<ProjectOptions, 'socialAuth'>): string[] {
-  const p = socialProviders(options.socialAuth);
+  const p = options.socialAuth;
   return [
     ...(p.facebook
       ? [
@@ -62,7 +62,7 @@ export async function describeDryRun(options: ProjectOptions): Promise<string> {
     `Firebase Analytics: ${options.analytics ? 'yes (screen tracking + analyticsService)' : 'no'}`,
     `Vector icons: ${options.vectorIcons ? 'yes (MaterialDesignIcons, iOS UIAppFonts configured)' : 'no'}`,
     `Drawer: ${options.drawer ? 'yes (side drawer around the bottom tabs)' : 'no (bottom tabs only)'}`,
-    `Social login: ${SOCIAL_LOGIN_CHOICES.find(c => c.value === options.socialAuth)?.label ?? options.socialAuth}`,
+    `Social login: ${describeSocial(options.socialAuth)}`,
     '',
     chalk.bold('Project:'),
     `${options.appName} (${options.packageName}) → ${options.parentDir}/${options.directoryName ?? options.appName}`,

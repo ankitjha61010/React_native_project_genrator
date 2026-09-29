@@ -4,7 +4,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { userMessage } from '{{IMPORT:api.errors}}';
+import { errorMessage } from '{{IMPORT:api.errors}}';
 import { {{SYMBOL:auth.service}} } from '{{IMPORT:auth.service}}';
 import { AppButton } from '{{IMPORT:components.AppButton}}';
 import { AppInput } from '{{IMPORT:components.AppInput}}';
@@ -54,7 +54,7 @@ export function OtpVerifyScreen(): React.JSX.Element {
       navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
     } catch (error) {
       // e.g. "Wrong code, 4 attempts left".
-      flash.error({ message: userMessage(error) ?? 'Invalid verification code.' });
+      flash.error({ message: errorMessage(error) });
     }
   });
 
@@ -66,7 +66,7 @@ export function OtpVerifyScreen(): React.JSX.Element {
       setWait(sent.resendIn);
       flash.success({ intlType: 'auth', value: 'codeSent' });
     } catch (error) {
-      flash.error({ message: userMessage(error) ?? 'Could not send the code, please try again.' });
+      flash.error({ message: errorMessage(error) });
     } finally {
       setResending(false);
     }

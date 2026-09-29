@@ -4,7 +4,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigation } from '@react-navigation/native';
-import { userMessage } from '{{IMPORT:api.errors}}';
+import { errorMessage } from '{{IMPORT:api.errors}}';
 import { {{SYMBOL:auth.service}} } from '{{IMPORT:auth.service}}';
 import { AppButton } from '{{IMPORT:components.AppButton}}';
 import { AppInput } from '{{IMPORT:components.AppInput}}';
@@ -38,7 +38,7 @@ export function ForgotPasswordScreen(): React.JSX.Element {
       flash.success({ intlType: 'auth', value: 'codeSent' });
       navigation.navigate('ResetPassword', { email: data.email.trim().toLowerCase() });
     } catch (error) {
-      flash.error({ message: userMessage(error) ?? 'Could not send the code, please try again.' });
+      flash.error({ message: errorMessage(error) });
     }
   });
 

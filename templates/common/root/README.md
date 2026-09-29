@@ -12,6 +12,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a deep dive into the archit
 
 ## Table of contents
 
+0. [Where is what](#where-is-what)
 1. [Dependencies](#dependencies)
 2. [Folder structure](#folder-structure)
 3. [Installation](#installation)
@@ -34,6 +35,45 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a deep dive into the archit
 17. [Building iOS](#building-ios)
 
 ---
+
+## Where is what
+
+Every feature follows the same path: **Screen** (UI only) → **hook** (screen state + logic) → **API file**
+(requests only) → backend endpoint.
+
+| Feature | Screen | Hook | API | Backend |
+| --- | --- | --- | --- | --- |
+| Login | `{{PATH_SCREENS_LOGIN}}` | `{{PATH_AUTH_LOGIC}}` | `{{PATH_API_AUTH}}` | `POST /auth/login` |
+| Profile / edit profile | `{{PATH_SCREENS_PROFILE}}` · `{{PATH_SCREENS_EDITPROFILE}}` | `{{PATH_HOOKS_USEPROFILE}}` | `{{PATH_API_USER}}` | `PATCH /users/me`, `POST /users/me/avatar` |
+{{#if AUTH_EMAIL}}
+| Change password | `{{PATH_SCREENS_CHANGEPASSWORD}}` | `{{PATH_HOOKS_USECHANGEPASSWORD}}` | `{{PATH_API_AUTH}}` | `POST /auth/change-password` |
+{{/if}}
+{{#if DELETE_ACCOUNT}}
+| Delete account | `{{PATH_SCREENS_PROFILE}}` | `{{PATH_HOOKS_USEPROFILE}}` | `{{PATH_API_USER}}` | `DELETE /users/me` |
+{{/if}}
+{{#if TERMS}}
+| Terms & Conditions | `{{PATH_COMPONENTS_LEGALLINKS}}` | `useLegalPages` (same file) | `{{PATH_API_LEGAL}}` | `GET /legal` |
+{{/if}}
+{{#if NOTIFICATIONS}}
+| Device registration | – | `{{PATH_NOTIFICATION_SERVICE}}` | `{{PATH_NOTIFICATION_DEVICEINFO}}` · `{{PATH_API_DEVICE}}` | `POST /devices`, `DELETE /devices/:deviceId` |
+{{/if}}
+{{#if CHAT}}
+| Chat list | `{{PATH_CHAT_CHATLISTSCREEN}}` | `{{PATH_CHAT_USECHATLIST}}` | `{{PATH_CHAT_SERVICE}}` | `/chat/conversations` |
+| Chat room (typing, online, files, voice) | `{{PATH_CHAT_CHATROOMSCREEN}}` | `{{PATH_CHAT_USECHATROOM}}` | `{{PATH_CHAT_SERVICE}}` · `{{PATH_CHAT_VOICESERVICE}}` | `/chat/conversations/:id/messages`, `/chat/upload` |
+| New chat (user list) | `{{PATH_CHAT_NEWCHATSCREEN}}` | `{{PATH_CHAT_USEUSERLIST}}` | `{{PATH_API_USER}}` | `GET /users/search` |
+{{#if GROUP_CHAT}}
+| Groups | `{{PATH_CHAT_CREATEGROUPSCREEN}}` · `{{PATH_CHAT_GROUPINFOSCREEN}}` | `{{PATH_CHAT_USECREATEGROUP}}` · `{{PATH_CHAT_USEGROUPINFO}}` | `{{PATH_CHAT_GROUPSERVICE}}` | `/chat/groups…` |
+{{/if}}
+{{/if}}
+{{#if SOCKET}}
+
+Realtime (Socket.IO): `{{PATH_SOCKET_SERVICE}}` (one connection while signed in – it disconnects in the
+background, so others see you offline) and the event names in `{{PATH_SOCKET_EVENTS}}`.
+{{/if}}
+Session state: `{{PATH_HOOKS_USEAUTHSESSION}}` (`user`, `signIn`, `updateUser`, `signOut`) with its side effects in `{{PATH_API_SESSION}}`.
+{{#if RTL}}
+Layout direction (RTL / LTR): `{{PATH_I18N_DIRECTION}}`.
+{{/if}}
 
 ## Dependencies
 
@@ -158,10 +198,15 @@ Code lives in `{{DIR_NOTIFICATION}}`:
 | File | Responsibility |
 | --- | --- |
 | `notificationPermissions.ts` | Ask/check permission (iOS + Android 13 `POST_NOTIFICATIONS`) |
-| `notificationToken.ts` | Get / refresh the FCM token – **TODO: send it to your backend** in `syncFcmToken` |
+| `notificationToken.ts` | Get / refresh the FCM token |
+| `deviceInfo.ts` | This install: id (created once), FCM token, platform, model, OS / app version → `POST /devices` (`registerDevice`) |
 | `notificationDisplay.ts` | `displayNotification(message)` – shows an FCM message with Notifee (Android channel `default`) |
 | `notificationHandlers.ts` | `registerNotificationHandlers()` (called in `index.js`) and tap handling |
-| `notificationService.ts` | `notificationService.initialize()` – permission, token, tap listeners |
+| `notificationService.ts` | `notificationService.initialize()` – permission, device registration, token refresh, tap listeners |
+
+**Devices.** A user can be signed in on several devices; each one is a row on the backend (`/devices`). The app
+registers its device right after register / login / social login and on every app start (so `lastActiveAt` stays
+current), again when FCM rotates the token, and removes it on logout (`DELETE /devices/:deviceId`).
 
 **Entry point (`index.js`)**: `registerNotificationHandlers()` runs before the app renders and registers:
 
@@ -250,8 +295,6 @@ Step-by-step guide (consoles, SHA-1 and key hashes, backend token verification):
 | --- | --- |
 | `API_BASE_URL` | Base URL used by the Axios client |
 | `APP_ENV` | `development` \| `staging` \| `production` |
-| `TERMS_URL` | Terms & Conditions page – opened in the in-app WebView from Login, Profile{{#if DRAWER}} and the drawer{{/if}} (dummy URL, replace it) |
-| `PRIVACY_POLICY_URL` | Privacy Policy page – same places (dummy URL, replace it) |
 {{#if API_ENCRYPTION}}
 | `API_ENCRYPTION_ENABLED` | `true` (default) encrypts requests/decrypts responses; `false` sends plain JSON |
 | `API_ENCRYPTION_KEY` | AES-256 key, exactly 32 characters – must match the backend |
@@ -362,18 +405,20 @@ go in `value1`, `value2`, `value3`:
 Arabic (`ar`) is included as the sample RTL language. A language is RTL when it has `rtl: true` in
 `{{PATH_I18N_LANGUAGES}}`.
 
-- RTL is native. When the new language has a different direction than the running app,
-  `{{PATH_I18N_DIRECTION}}` persists it with `I18nManager.forceRTL` and restarts the app once
-  (`react-native-restart`). After that the whole app is mirrored: rows, text alignment, the stack header,
-  the tab bar and swipe-back gestures. Switching between two languages with the same direction needs no restart.
-- The same check runs at startup, so an app installed on an Arabic device starts right-to-left.
-- `useDirection()` returns `{ direction, isRTL }`. Use it to flip directional icons, as `AppHeader` does for
-  its back arrow.
+- **One place decides the direction:** `{{PATH_I18N_DIRECTION}}`. The saved language → its direction →
+  `I18nManager` (native) → the whole UI. Nothing is flipped screen by screen.
+- On every start and every language change, `applyLayoutDirection()` writes the native flags again (so an
+  interrupted switch can never leave LTR / RTL mixed) and restarts the app once when the direction changes
+  (`react-native-restart`). The selected language and its direction survive restarts.
+- `NavigationContainer` gets the direction explicitly, so native headers, the drawer (it opens from the start
+  side) and swipe-back gestures follow the app's direction – never the device locale.
+- `useDirection()` returns `{ direction, isRTL, backIcon, forwardIcon, backArrow }` – use these icon names for
+  anything that points "back" or "forward" (AppHeader, chat header, profile rows do).
 - Text: `AppText` and `AppInput` align to the start (right in RTL). For `Text`, React Native mirrors
   `textAlign: 'left'` but not the default `'auto'`, so `AppText` sets `'left'`. For `TextInput` it's the
   opposite: leave `textAlign` unset and set `writingDirection`, as `AppInput` does.
-- Write styles with `start`/`end` instead of `left`/`right` (`marginStart`, `paddingEnd`, `start: 0`).
-  `flexDirection: 'row'` mirrors automatically.
+- Write styles with `start` / `end` instead of `left` / `right` (`marginStart`, `paddingEnd`, `end: 0`,
+  `borderBottomStartRadius`). `flexDirection: 'row'` mirrors automatically.
 {{/if}}
 
 ## Adding screens
@@ -389,7 +434,9 @@ Arabic (`ar`) is included as the sample RTL language. A language is RTL when it 
 
 | Service | Location | Notes |
 | --- | --- | --- |
-| API | `{{DIR_API}}` | `apiClient` (Axios) with auth header, 401 → refresh once → `onUnauthorized`, errors normalised to `ApiError`. Use `api.get/post/...`. Configure refresh with `configureApiAuth({ refreshAccessToken })`. |
+| API | `{{DIR_API}}` | `apiClient` (Axios) with auth header, 401 → refresh once → `onUnauthorized`, errors normalised to `ApiError`. One file per backend area: `authApi` (sign-in, sessions, change password), `userApi` (profile, avatar{{#if DELETE_ACCOUNT}}, delete account{{/if}}{{#if CHAT}}, people to chat with{{/if}}){{#if NOTIFICATIONS}}, `deviceApi`{{/if}}{{#if TERMS}}, `legalApi` (Terms / Privacy links from the backend){{/if}}. |
+| Errors | `{{PATH_API_ERRORS}}` | `errorMessage(error)` – a readable, translated message for any failed request (400 / 401 / 403 / 404 / 409 / 422 / 5xx, offline, timeout, uploads). Never show raw errors. |
+| Session | `{{PATH_API_SESSION}}` | What sign-in / sign-out does besides the state (persist, revoke, clear device{{#if SOCKET}}, disconnect the socket{{/if}}) – used by `useAuthSession` (`signIn`, `updateUser`, `signOut`). |
 {{#if API_ENCRYPTION}}
 | API encryption | `{{PATH_API_ENCRYPTION}}` | AES-256-CBC via crypto-js. Request bodies are sent as `{ "data": "<cipher>" }` and responses (including errors) are decrypted in the interceptors. Opt out per request with `{ skipEncryption: true }`. Change `toEncryptedBody`/`fromEncryptedBody` to match your backend's format. |
 {{/if}}

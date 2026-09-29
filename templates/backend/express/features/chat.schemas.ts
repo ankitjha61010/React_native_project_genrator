@@ -1,16 +1,34 @@
 import { z } from 'zod';
-import { MESSAGE_TYPES } from '{{IMPORT:domain.chat}}';
+import { {{#if GROUP_CHAT}}MEMBER_ROLES, {{/if}}MESSAGE_TYPES } from '{{IMPORT:domain.chat}}';
 
 export const conversationParams = z.object({ conversationId: z.string().min(1).max(64) });
 export const messageParams = conversationParams.extend({ messageId: z.string().min(1).max(64) });
 
 export const startConversationSchema = z
-  .object({
-    participantIds: z.array(z.string().min(1).max(64)).min(1).max(100),
-    title: z.string().trim().min(1).max(120).optional().meta({ description: 'Groups only' }),
-    isGroup: z.boolean().optional(),
-  })
+  .object({ participantIds: z.array(z.string().min(1).max(64)).length(1).meta({ description: 'The other person' }) })
   .meta({ id: 'StartConversationRequest' });
+{{#if GROUP_CHAT}}
+
+const userIds = z.array(z.string().min(1).max(64)).min(1).max(256);
+
+export const memberParams = conversationParams.extend({ userId: z.string().min(1).max(64) });
+
+export const createGroupSchema = z
+  .object({
+    title: z.string().trim().min(1).max(120),
+    participantIds: userIds,
+    avatarUrl: z.url().max(1024).nullable().optional().meta({ description: 'Upload the image first (POST /chat/upload)' }),
+  })
+  .meta({ id: 'CreateGroupRequest' });
+
+export const updateGroupSchema = z
+  .object({ title: z.string().trim().min(1).max(120).optional(), avatarUrl: z.url().max(1024).nullable().optional() })
+  .meta({ id: 'UpdateGroupRequest' });
+
+export const addMembersSchema = z.object({ userIds }).meta({ id: 'AddMembersRequest' });
+
+export const memberRoleSchema = z.object({ role: z.enum(MEMBER_ROLES) }).meta({ id: 'MemberRoleRequest' });
+{{/if}}
 
 const cropSchema = z
   .object({
@@ -71,10 +89,24 @@ export const conversationSchema = z
     id: z.string(),
     title: z.string(),
     avatar: z.url().optional(),
+{{#if GROUP_CHAT}}
     isGroup: z.boolean(),
+    myRole: z.enum(MEMBER_ROLES),
+{{/if}}
     unreadCount: z.number(),
     lastMessage: chatMessageSchema.optional(),
-    participants: z.array(z.object({ id: z.string(), name: z.string(), avatar: z.url().optional(), isOnline: z.boolean(), lastSeen: z.iso.datetime().optional() })),
+    participants: z.array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        avatar: z.url().optional(),
+        isOnline: z.boolean(),
+        lastSeen: z.iso.datetime().optional(),
+{{#if GROUP_CHAT}}
+        role: z.enum(MEMBER_ROLES),
+{{/if}}
+      }),
+    ),
     updatedAt: z.iso.datetime(),
   })
   .meta({ id: 'Conversation' });

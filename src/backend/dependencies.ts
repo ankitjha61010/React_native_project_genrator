@@ -47,6 +47,8 @@ export const BACKEND_VERSIONS: Record<string, string> = {
   jose: '6.2.12',
   'firebase-admin': '14.5.0',
   ioredis: '5.11.1',
+  'rate-limit-redis': '6.0.1',
+  '@socket.io/redis-adapter': '8.3.0',
   // Microservices gateway / workspace
   'http-proxy-middleware': '4.2.0',
   concurrently: '10.0.5',
@@ -137,8 +139,12 @@ export function resolveBackendDependencies(o: BackendOptions): BackendDependenci
     }
     if (o.modules.notifications) add(runtime, 'firebase-admin');
   }
-  // Microservices: Redis events between the services.
-  if (o.service) add(runtime, 'ioredis');
+  // Redis: always for microservices (events), optional for a monolith.
+  if (o.redis || o.service) {
+    add(runtime, 'ioredis');
+    if (o.framework === 'express' && (s.rateLimit || (auth && s.authRateLimit))) add(runtime, 'rate-limit-redis');
+    if (auth && (o.modules.chat || o.modules.notifications) && o.service !== 'notifications') add(runtime, '@socket.io/redis-adapter');
+  }
 
   switch (o.orm) {
     case 'prisma':

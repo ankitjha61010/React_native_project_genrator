@@ -72,6 +72,9 @@ export const DEPENDENCY_REGISTRY = {
     notifications: { dependencies: ['@react-native-firebase/app', '@react-native-firebase/messaging', '@notifee/react-native'], devDependencies: [] },
     analytics: { dependencies: ['@react-native-firebase/app', '@react-native-firebase/analytics'], devDependencies: [] },
     socket: { dependencies: ['socket.io-client'], devDependencies: [] },
+    // Voice messages need a recorder / player; "send a file" needs the system document picker.
+    // react-native-nitro-sound runs on react-native-nitro-modules (already there for MMKV).
+    chat: { dependencies: ['react-native-nitro-sound', 'react-native-nitro-modules', '@react-native-documents/picker'], devDependencies: [] },
     socialGoogle: { dependencies: ['@react-native-google-signin/google-signin'], devDependencies: [] },
     socialFacebook: { dependencies: ['react-native-fbsdk-next'], devDependencies: [] },
     socialApple: { dependencies: ['@invertase/react-native-apple-authentication'], devDependencies: [] },

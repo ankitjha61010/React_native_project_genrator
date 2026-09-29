@@ -1,0 +1,15 @@
+# Not sent to `docker build` (smaller, faster builds – and no secrets in the image).
+node_modules
+dist
+coverage
+*.log
+.git
+.env
+.env.*
+!.env.example
+{{#if UPLOADS}}
+uploads
+{{/if}}
+{{#if PRISMA}}
+src/generated
+{{/if}}

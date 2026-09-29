@@ -29,6 +29,7 @@ import {
 } from '{{IMPORT:auth.socialAuth}}';
 {{/if}}
 {{#if HAS_SOCIAL_AUTH}}
+import { ApiError, errorMessage } from '{{IMPORT:api.errors}}';
 import { flash } from '{{IMPORT:utils.flashMessage}}';
 {{/if}}
 import type { IntlKey } from '{{IMPORT:i18n.index}}';
@@ -60,7 +61,8 @@ export function LoginForm({ control, onSubmit, submitting = false }: LoginFormPr
     } catch (error) {
       // Closing the provider sheet is not an error.
       if (error instanceof SocialAuthCancelledError) return;
-      flash.error({ message: error instanceof Error ? error.message : `${label} sign in failed` });
+      // Backend answers get the readable API message; SDK errors ("not configured"…) keep theirs.
+      flash.error({ message: error instanceof ApiError ? errorMessage(error) : error instanceof Error ? error.message : `${label} sign in failed` });
     } finally {
       setSocialLoading(null);
     }

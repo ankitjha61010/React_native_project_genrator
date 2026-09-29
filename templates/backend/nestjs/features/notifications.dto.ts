@@ -1,16 +1,5 @@
 import { IsIn, IsObject, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
-import { BROADCAST_AUDIENCES, DEVICE_PLATFORMS, NOTIFICATION_TYPES, type BroadcastAudience, type DevicePlatform, type NotificationData, type NotificationType } from '{{IMPORT:domain.notification}}';
-
-export class RegisterDeviceDto {
-  /** FCM registration token. */
-  @IsString()
-  @MinLength(10)
-  @MaxLength(512)
-  token: string;
-
-  @IsIn(DEVICE_PLATFORMS)
-  platform: DevicePlatform;
-}
+import { BROADCAST_AUDIENCES, NOTIFICATION_TYPES, type BroadcastAudience, type NotificationData, type NotificationType } from '{{IMPORT:domain.notification}}';
 
 export class BroadcastDto {
   @IsString()

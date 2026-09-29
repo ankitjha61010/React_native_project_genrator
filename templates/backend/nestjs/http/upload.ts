@@ -8,6 +8,7 @@ import type { Request } from 'express';
 import { config } from '{{IMPORT:config.env}}';
 import { ValidationError } from '{{IMPORT:core.errors}}';
 import type { UploadedFile } from '{{IMPORT:port.fileStorage}}';
+import { COMMON_MESSAGES } from '{{IMPORT:core.messages}}';
 
 /** multipart/form-data with one file in `field` (size limit UPLOAD_MAX_MB). */
 export const Upload = (field: string) =>
@@ -22,6 +23,6 @@ export const Upload = (field: string) =>
 /** The uploaded file as the application's `UploadedFile` (422 when missing). */
 export const UploadedFileOf = createParamDecorator((field: string, context: ExecutionContext): UploadedFile => {
   const file = context.switchToHttp().getRequest<Request>().file;
-  if (!file) throw new ValidationError([{ field, message: 'A file is required' }]);
+  if (!file) throw new ValidationError([{ field, message: COMMON_MESSAGES.fileRequired }]);
   return { buffer: file.buffer, originalName: file.originalname, mimeType: file.mimetype, size: file.size };
 });

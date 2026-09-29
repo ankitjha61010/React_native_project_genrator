@@ -3,6 +3,9 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { WebViewScreen } from '{{IMPORT:screens.WebView}}';
 import { useSessionServices } from '{{IMPORT:hooks.useSessionServices}}';
 import { EditProfileScreen } from '{{IMPORT:screens.EditProfile}}';
+{{#if AUTH_EMAIL}}
+import { ChangePasswordScreen } from '{{IMPORT:screens.ChangePassword}}';
+{{/if}}
 import { SettingsScreen } from '{{IMPORT:screens.Settings}}';
 {{#if NOTIFICATIONS}}
 import { NotificationsScreen } from '{{IMPORT:screens.Notifications}}';
@@ -11,6 +14,10 @@ import { translate } from '{{IMPORT:i18n.index}}';
 {{#if CHAT}}
 import { ChatRoomScreen } from '{{IMPORT:chat.ChatRoomScreen}}';
 import { NewChatScreen } from '{{IMPORT:chat.NewChatScreen}}';
+{{#if GROUP_CHAT}}
+import { CreateGroupScreen } from '{{IMPORT:chat.CreateGroupScreen}}';
+import { GroupInfoScreen } from '{{IMPORT:chat.GroupInfoScreen}}';
+{{/if}}
 {{/if}}
 {{#if DRAWER}}
 import { DrawerNavigator } from './DrawerNavigator';
@@ -36,14 +43,13 @@ export function MainNavigator(): React.JSX.Element {
       <Stack.Screen name="Tabs" component={BottomTabNavigator} options={{ headerShown: false }} />
 {{/if}}
       <Stack.Screen name="WebView" component={WebViewScreen} options={({ route }) => ({ title: route.params.title ?? '' })} />
-      <Stack.Screen
-        name="EditProfile"
-        component={EditProfileScreen}
-        options={{ title: 'Edit Profile' }}
-      />
+      <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: translate('common', 'editProfile') }} />
+{{#if AUTH_EMAIL}}
+      <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} options={{ title: translate('common', 'changePassword') }} />
+{{/if}}
       <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: translate('common', 'settings') }} />
 {{#if NOTIFICATIONS}}
-      <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Notifications' }} />
+      <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: translate('common', 'notifications') }} />
 {{/if}}
 {{#if CHAT}}
       <Stack.Screen
@@ -51,7 +57,11 @@ export function MainNavigator(): React.JSX.Element {
         component={ChatRoomScreen}
         options={{ headerShown: false }}
       />
-      <Stack.Screen name="NewChat" component={NewChatScreen} options={{ title: 'New chat' }} />
+      <Stack.Screen name="NewChat" component={NewChatScreen} options={{ title: translate('common', 'newChat') }} />
+{{#if GROUP_CHAT}}
+      <Stack.Screen name="CreateGroup" component={CreateGroupScreen} options={{ title: translate('common', 'newGroup') }} />
+      <Stack.Screen name="GroupInfo" component={GroupInfoScreen} options={{ title: translate('common', 'groupInfo') }} />
+{{/if}}
 {{/if}}
     </Stack.Navigator>
   );

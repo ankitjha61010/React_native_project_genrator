@@ -1,5 +1,5 @@
 import { Column, CreateDateColumn, Entity, {{#if AUTH}}Index, {{/if}}PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
-import { TIMESTAMP } from './columns.js';
+import { TIMESTAMP } from '{{IMPORT:typeorm.columns}}';
 
 @Entity({ name: 'users' })
 {{#if AUTH}}

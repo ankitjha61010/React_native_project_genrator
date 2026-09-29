@@ -1,23 +1,9 @@
 import { useCallback } from 'react';
-import type { AuthSession } from '{{IMPORT:auth.types}}';
-import { endServerSession } from '{{IMPORT:api.auth}}';
-import { authSessionStorage } from '{{IMPORT:storage.session}}';
-{{#if NOTIFICATIONS}}
-import { notificationInbox } from '{{IMPORT:notification.inbox}}';
-{{/if}}
-{{#if HAS_SOCIAL_AUTH}}
-import { socialAuthService } from '{{IMPORT:auth.socialAuth}}';
-{{/if}}
-import {
-  selectAuthToken,
-  selectAuthUser,
-  sessionCleared,
-  sessionStarted,
-  useAppDispatch,
-  useAppSelector,
-} from '{{IMPORT:store.index}}';
+import type { AuthSession, User } from '{{IMPORT:auth.types}}';
+import { sessionService } from '{{IMPORT:api.session}}';
+import { selectAuthToken, selectAuthUser, sessionCleared, sessionStarted, useAppDispatch, useAppSelector, userUpdated } from '{{IMPORT:store.index}}';
 
-/** Session access for screens/hooks, backed by the Redux store. */
+/** Session access for screens/hooks, backed by the Redux store (side effects: sessionService). */
 export function useAuthSession() {
   const dispatch = useAppDispatch();
   const user = useAppSelector(selectAuthUser);
@@ -25,35 +11,36 @@ export function useAuthSession() {
 
   const signIn = useCallback(
     async (session: AuthSession) => {
-      await authSessionStorage.save(session);
+      await sessionService.start(session);
       dispatch(sessionStarted(session));
     },
     [dispatch],
   );
 
-  const signOut = useCallback(async () => {
-    // Revoke the session on the server first – it needs the stored tokens.
-    await endServerSession();
-    await authSessionStorage.clear();
-{{#if NOTIFICATIONS}}
-    // The next user must not see this user's notifications.
-    await notificationInbox.clear();
-{{/if}}
-{{#if HAS_SOCIAL_AUTH}}
-    // Also end the Google / Facebook SDK session so the next login shows the account picker.
-    await socialAuthService.signOut();
-{{/if}}
-    dispatch(sessionCleared());
-  }, [dispatch]);
+  /** Keeps the session, replaces the user (after Edit Profile / avatar upload). */
+  const updateUser = useCallback(
+    async (next: User) => {
+      await sessionService.saveUser(next);
+      dispatch(userUpdated(next));
+    },
+    [dispatch],
+  );
+
+  /** `server: false` after the account was deleted. */
+  const signOut = useCallback(
+    async (options?: { server?: boolean }) => {
+      await sessionService.end(options);
+      dispatch(sessionCleared());
+    },
+    [dispatch],
+  );
 
   /** Loads a persisted session. Resolves true when the user is signed in. */
   const restore = useCallback(async () => {
-    const session = await authSessionStorage.load();
-    if (session) {
-      dispatch(sessionStarted(session));
-    }
+    const session = await sessionService.restore();
+    if (session) dispatch(sessionStarted(session));
     return session !== null;
   }, [dispatch]);
 
-  return { user, token, isAuthenticated: token !== null, signIn, signOut, restore };
+  return { user, token, isAuthenticated: token !== null, signIn, updateUser, signOut, restore };
 }

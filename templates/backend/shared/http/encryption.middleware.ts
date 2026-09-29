@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import { config } from '{{IMPORT:config.env}}';
 import { errorResponse } from '{{IMPORT:core.response}}';
+import { COMMON_MESSAGES } from '{{IMPORT:core.messages}}';
 
 /**
  * AES-256-CBC (PKCS#7) with a fixed key and IV – exactly what the app's apiEncryption.ts
@@ -31,7 +32,7 @@ export function apiEncryption(req: Request, res: Response, next: NextFunction): 
     try {
       req.body = JSON.parse(decryptText((body as { data: string }).data));
     } catch {
-      res.status(400).json(errorResponse('The request body could not be decrypted', 'DECRYPTION_FAILED'));
+      res.status(400).json(errorResponse(COMMON_MESSAGES.decryptionFailed));
       return;
     }
   }

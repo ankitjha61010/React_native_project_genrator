@@ -1,16 +1,16 @@
-import { I18nManager } from 'react-native';
-import type { LayoutDirection } from '{{IMPORT:i18n.index}}';
+import { currentDirection, directionIcons, type LayoutDirection } from '{{IMPORT:i18n.index}}';
 
 /**
- * Layout direction of the running app (see `i18n/direction.ts`).
+ * Layout direction of the running app (decided in `i18n/direction.ts` – it only changes with
+ * a restart, so this never re-renders).
  *
- *   const { isRTL } = useDirection();
- *   <AppIcon name={isRTL ? 'chevron-left' : 'chevron-right'} />
+ *   const { isRTL, backIcon, forwardIcon } = useDirection();
+ *   <AppIcon name={forwardIcon} />
  *
- * Layout mirrors automatically, as long as styles use start/end instead of left/right:
- * `marginStart`, `paddingEnd`, `start: 0`…
+ * Layout mirrors automatically, as long as styles use start / end instead of left / right:
+ * `marginStart`, `paddingEnd`, `start: 0`, `borderTopStartRadius`…
  */
-export function useDirection(): { direction: LayoutDirection; isRTL: boolean } {
-  const isRTL = I18nManager.isRTL;
-  return { direction: isRTL ? 'rtl' : 'ltr', isRTL };
+export function useDirection(): { direction: LayoutDirection; isRTL: boolean } & ReturnType<typeof directionIcons> {
+  const direction = currentDirection();
+  return { direction, isRTL: direction === 'rtl', ...directionIcons() };
 }

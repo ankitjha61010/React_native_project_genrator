@@ -1,0 +1,83 @@
+# Development: start the database{{#if REDIS}} and Redis{{/if}}, then run the API on your machine –
+#   docker compose up -d db{{#if REDIS}} redis{{/if}}
+{{#if SQL}}
+#   npm run db:deploy && npm run db:seed && npm run dev
+{{else}}
+#   npm run db:seed && npm run dev
+{{/if}}
+#
+# Everything in containers (the API is built from the Dockerfile):
+#   docker compose up -d --build
+services:
+  db:
+{{#if POSTGRES}}
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: {{DB_NAME}}
+    ports:
+      - '5432:5432'
+    volumes:
+      - db-data:/var/lib/postgresql/data
+{{/if}}
+{{#if MYSQL}}
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: {{DB_NAME}}
+    ports:
+      - '3306:3306'
+    volumes:
+      - db-data:/var/lib/mysql
+{{/if}}
+{{#if MONGO}}
+    image: mongo:8
+    ports:
+      - '27017:27017'
+    volumes:
+      - db-data:/data/db
+{{/if}}
+{{#if REDIS}}
+
+  redis:
+    image: redis:8
+    ports:
+      - '6379:6379'
+{{/if}}
+
+  api:
+    build: .
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      # Inside Docker the database{{#if REDIS}} and Redis are{{else}} is{{/if}} reached by service name, not localhost.
+{{#if POSTGRES}}
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/{{DB_NAME}}?schema=public
+{{/if}}
+{{#if MYSQL}}
+      DATABASE_URL: mysql://root:root@db:3306/{{DB_NAME}}
+{{/if}}
+{{#if MONGO}}
+      DATABASE_URL: mongodb://db:27017/{{DB_NAME}}
+{{/if}}
+{{#if REDIS}}
+      REDIS_URL: redis://redis:6379
+{{/if}}
+    ports:
+      - '{{PORT}}:{{PORT}}'
+    depends_on:
+      - db
+{{#if REDIS}}
+      - redis
+{{/if}}
+{{#if UPLOADS}}
+    volumes:
+      - uploads:/app/uploads
+{{/if}}
+
+volumes:
+  db-data:
+{{#if UPLOADS}}
+  uploads:
+{{/if}}

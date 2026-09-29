@@ -1,11 +1,11 @@
-import { {{#if AUTH_REFRESH}}IsNull, LessThan, {{else}}{{#if CODES}}IsNull, {{/if}}{{/if}}{{#if CODES}}MoreThan, {{/if}}type DataSource, type Repository } from 'typeorm';
+import { {{#if AUTH_REFRESH}}IsNull, LessThan, {{else}}{{#if DB_CODES}}IsNull, {{/if}}{{/if}}{{#if DB_CODES}}MoreThan, {{/if}}type DataSource, type Repository } from 'typeorm';
 {{#if SOCIAL}}
 import { ConflictError } from '{{IMPORT:core.errors}}';
 {{/if}}
 {{#if AUTH_REFRESH}}
 import type { RefreshToken } from '{{IMPORT:domain.authTokens}}';
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
 import type { CodePurpose, VerificationCode } from '{{IMPORT:domain.authTokens}}';
 {{/if}}
 {{#if SOCIAL}}
@@ -16,13 +16,14 @@ import { isUniqueViolation } from '{{IMPORT:db.connection}}';
 import type { CreateRefreshTokenData, RefreshTokensRepository } from '{{IMPORT:contract.auth}}';
 import { RefreshTokenOrmEntity } from '{{IMPORT:typeorm.auth}}';
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
 import type { VerificationCodesRepository } from '{{IMPORT:contract.auth}}';
 import { VerificationCodeOrmEntity } from '{{IMPORT:typeorm.auth}}';
 {{/if}}
 {{#if SOCIAL}}
 import type { SocialAccountsRepository } from '{{IMPORT:contract.auth}}';
 import { SocialAccountOrmEntity } from '{{IMPORT:typeorm.auth}}';
+import { AUTH_MESSAGES } from '{{IMPORT:messages.auth}}';
 {{/if}}
 {{#if AUTH_REFRESH}}
 
@@ -72,7 +73,7 @@ export class TypeOrmRefreshTokensRepository implements RefreshTokensRepository {
   }
 }
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
 
 const toCode = (e: VerificationCodeOrmEntity): VerificationCode => ({
   id: e.id,
@@ -139,7 +140,7 @@ export class TypeOrmSocialAccountsRepository implements SocialAccountsRepository
     try {
       return toAccount(await this.repo.save(this.repo.create(data)));
     } catch (error) {
-      if (isUniqueViolation(error)) throw new ConflictError('This account is already linked', 'SOCIAL_ACCOUNT_LINKED');
+      if (isUniqueViolation(error)) throw new ConflictError(AUTH_MESSAGES.socialAccountLinked);
       throw error;
     }
   }

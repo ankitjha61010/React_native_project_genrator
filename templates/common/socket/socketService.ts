@@ -8,11 +8,15 @@ import { SOCKET_EVENTS, type SocketEventName } from './socketEvents';
 /**
  * The app's single Socket.IO connection (same host as the API). It authenticates with the
  * access token on every (re)connect, and emits made before the connection is up are buffered.
+ *
+ * The socket object lives for the whole signed-in session, so listeners added with `on()`
+ * survive network drops, reconnects and app background / foreground (`pause` / `resume`).
+ * Being connected is what makes the user "online" for the others (the server tracks it).
  */
 export class SocketService {
   private socket: Socket | null = null;
 
-  /** Connects (once). Called when the user is signed in (useSessionServices). */
+  /** Connects (or reconnects). Called when the user is signed in (useSessionServices). */
   connect(): Socket {
     if (this.socket) {
       if (!this.socket.connected) this.socket.connect();
@@ -39,6 +43,16 @@ export class SocketService {
     return this.socket;
   }
 
+  /** App went to the background: disconnect (the others see "offline" + last seen). Listeners stay. */
+  pause(): void {
+    this.socket?.disconnect();
+  }
+
+  /** App is back in the foreground: connect again (the others see "online"). */
+  resume(): void {
+    if (this.socket && !this.socket.connected) this.socket.connect();
+  }
+
   /** Emits an event (buffered until connected). `ack` receives the server's answer. */
   emit<T = unknown>(event: SocketEventName | string, data?: T, ack?: (response: unknown) => void): void {
     const socket = this.connect();
@@ -55,8 +69,17 @@ export class SocketService {
     };
   }
 
-  /** On sign out. */
+  /**
+   * Runs `callback` after every (re)connect – e.g. reload online status and messages missed
+   * while offline or in the background. Returns the unsubscribe function.
+   */
+  onReconnect(callback: () => void): () => void {
+    return this.on(SOCKET_EVENTS.CONNECT, callback);
+  }
+
+  /** On sign out: closes the connection and forgets every listener. */
   disconnect(): void {
+    this.socket?.removeAllListeners();
     this.socket?.disconnect();
     this.socket = null;
   }

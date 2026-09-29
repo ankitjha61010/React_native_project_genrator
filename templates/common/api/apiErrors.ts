@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { translate } from '{{IMPORT:i18n.index}}';
 
 export type ApiErrorCode =
   | 'NETWORK'
@@ -7,6 +8,7 @@ export type ApiErrorCode =
   | 'UNAUTHORIZED'
   | 'FORBIDDEN'
   | 'NOT_FOUND'
+  | 'CONFLICT'
   | 'VALIDATION'
   | 'SERVER'
 {{#if API_ENCRYPTION}}
@@ -44,7 +46,8 @@ function codeForStatus(status: number): ApiErrorCode {
   if (status === 401) return 'UNAUTHORIZED';
   if (status === 403) return 'FORBIDDEN';
   if (status === 404) return 'NOT_FOUND';
-  if (status === 400 || status === 422) return 'VALIDATION';
+  if (status === 409) return 'CONFLICT';
+  if (status === 400 || status === 413 || status === 422) return 'VALIDATION';
   if (status >= 500) return 'SERVER';
   return 'UNKNOWN';
 }
@@ -77,12 +80,38 @@ export function toApiError(error: unknown): ApiError {
 }
 
 /**
- * The message to show the user for a failed request: the backend's message for client errors
- * (wrong password, email taken…), undefined otherwise (show a generic error).
+ * The message to show the user for ANY failed request – never a raw backend / axios error:
+ *   - 4xx with a message from the backend (wrong password, email taken, only admins…) → that message
+ *     (the backend keeps them readable, in its messages files); 422 → the first field problem,
+ *   - offline / timeout / 5xx / anything else → a translated, friendly text.
+ *
+ *   flash.error({ message: errorMessage(error) });
+ *
  * Also works for errors Redux serialized (thunks).
  */
-export function userMessage(error: unknown): string | undefined {
-  if (error instanceof ApiError) return error.status && error.status < 500 ? error.message : undefined;
-  const serialized = error as { name?: unknown; message?: unknown } | null;
-  return serialized?.name === 'ApiError' && typeof serialized.message === 'string' ? serialized.message : undefined;
+export function errorMessage(error: unknown): string {
+  const apiError = error instanceof ApiError ? error : fromSerialized(error);
+  if (!apiError) return translate('common', 'genericError');
+  const { code, status, message, fields } = apiError;
+  if (code === 'NETWORK') return translate('common', 'networkError');
+  if (code === 'TIMEOUT') return translate('common', 'timeoutError');
+  if (code === 'SERVER') return translate('common', 'serverError');
+  if (status !== undefined && status >= 400 && status < 500) {
+    if (fields[0]?.message) return fields[0].message;
+    if (message) return message;
+  }
+  if (code === 'UNAUTHORIZED') return translate('common', 'sessionExpired');
+  if (code === 'FORBIDDEN') return translate('common', 'notAllowed');
+  if (code === 'NOT_FOUND') return translate('common', 'notFoundError');
+  return translate('common', 'genericError');
+}
+
+/** A thunk's serialized ApiError (`{ name, message, code }`). */
+function fromSerialized(error: unknown): Pick<ApiError, 'code' | 'status' | 'message' | 'fields'> | undefined {
+  const serialized = error as { name?: unknown; message?: unknown; code?: unknown } | null;
+  if (serialized?.name !== 'ApiError' || typeof serialized.message !== 'string') return undefined;
+  const code = (typeof serialized.code === 'string' ? serialized.code : 'UNKNOWN') as ApiErrorCode;
+  // Client errors keep their (readable) message.
+  const status = code === 'VALIDATION' || code === 'CONFLICT' || code === 'NOT_FOUND' || code === 'FORBIDDEN' ? 400 : undefined;
+  return { code, status, message: serialized.message, fields: [] };
 }

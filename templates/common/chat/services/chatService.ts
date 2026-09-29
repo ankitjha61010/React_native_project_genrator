@@ -1,16 +1,12 @@
 import { api } from '{{IMPORT:api.client}}';
-import type { ChatMessage, Conversation } from '{{IMPORT:chat.types}}';
+import { forDevice } from '{{IMPORT:config.env}}';
+import type { ChatMessage, Conversation, MessageType } from '{{IMPORT:chat.types}}';
 import { CHAT_ENDPOINTS } from '../chatEndpoints';
 
-/** Someone to start a chat with (GET /users/search). */
-export interface ChatContact {
-  id: string;
-  name: string;
-  avatar: string | null;
-}
-
+/** POST /chat/upload answer – send `url` as the message's `mediaUrl`. */
 interface UploadedMedia {
   url: string;
+  type: MessageType;
   fileName: string;
   fileSize: string;
   mimeType: string;
@@ -32,71 +28,95 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   pdf: 'application/pdf',
   doc: 'application/msword',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  zip: 'application/zip',
+  csv: 'text/csv',
   txt: 'text/plain',
 };
 
-const FALLBACK_MIME: Record<ChatMessage['type'], string> = {
+const FALLBACK_MIME: Record<MessageType, string> = {
   text: 'text/plain',
   image: 'image/jpeg',
   video: 'video/mp4',
   audio: 'audio/mp4',
-  document: 'application/pdf',
+  document: 'application/octet-stream',
 };
 
 /** A file on the device (not yet on the server). */
-const isLocalFile = (uri: string) => !/^https?:\/\//.test(uri);
+export const isLocalFile = (uri: string) => !/^https?:\/\//.test(uri);
 
-function mimeOf(uri: string, type: ChatMessage['type']): string {
-  const extension = /\.([a-z0-9]+)(?:\?|$)/i.exec(uri)?.[1]?.toLowerCase();
+function mimeOf(name: string, type: MessageType, known?: string): string {
+  if (known) return known;
+  const extension = /\.([a-z0-9]+)(?:\?|$)/i.exec(name)?.[1]?.toLowerCase();
   return (extension && MIME_BY_EXTENSION[extension]) || FALLBACK_MIME[type];
 }
 
-async function upload(uri: string, type: ChatMessage['type'], fileName?: string): Promise<UploadedMedia> {
+/** Uploads a local file (multipart) – the answer is the stored file's URL. */
+function upload(uri: string, type: MessageType, fileName?: string, mimeType?: string): Promise<UploadedMedia> {
   const name = fileName ?? uri.split('/').pop() ?? 'file';
   const endpoint = type === 'audio' ? CHAT_ENDPOINTS.UPLOAD_VOICE_NOTE : CHAT_ENDPOINTS.UPLOAD_MEDIA;
-  return api.upload<UploadedMedia>(endpoint, 'file', { uri, name, type: mimeOf(name, type) });
+  return api.upload<UploadedMedia>(endpoint, 'file', { uri, name, type: mimeOf(name, type, mimeType) });
 }
+
+/** Server URLs point at `localhost` in development – the Android emulator needs 10.0.2.2. */
+const url = (value?: string) => (value ? forDevice(value) : value);
+
+export function normalizeMessage(message: ChatMessage): ChatMessage {
+  return { ...message, mediaUrl: url(message.mediaUrl), thumbnailUrl: url(message.thumbnailUrl), senderAvatar: url(message.senderAvatar) };
+}
+
+export function normalizeConversation(conversation: Conversation): Conversation {
+  return {
+    ...conversation,
+    avatar: url(conversation.avatar),
+    lastMessage: conversation.lastMessage ? normalizeMessage(conversation.lastMessage) : undefined,
+    participants: conversation.participants.map(p => ({ ...p, avatar: url(p.avatar) })),
+  };
+}
+
+/** What the input bar sends: text, or a local / uploaded file with its details. */
+export type MessageDraft = Pick<ChatMessage, 'type'> & Partial<Pick<ChatMessage, 'text' | 'mediaUrl' | 'thumbnailUrl' | 'fileName' | 'fileSize' | 'mimeType' | 'duration' | 'crop'>>;
 
 /** Chat requests (the backend's /chat routes). Live updates arrive over Socket.IO. */
 export const chatService = {
-  fetchConversations: () => api.get<Conversation[]>(CHAT_ENDPOINTS.GET_CONVERSATIONS),
+  fetchConversations: async () => (await api.get<Conversation[]>(CHAT_ENDPOINTS.CONVERSATIONS)).map(normalizeConversation),
 
-  fetchConversation: (conversationId: string) => api.get<Conversation>(CHAT_ENDPOINTS.GET_CONVERSATION_DETAILS(conversationId)),
+  fetchConversation: async (conversationId: string) => normalizeConversation(await api.get<Conversation>(CHAT_ENDPOINTS.CONVERSATION(conversationId))),
 
-  /** Opens the direct chat with one person (reuses it if it exists) or creates a group. */
-  startConversation: (participantIds: string[], group?: { title: string }) =>
-    api.post<Conversation>(CHAT_ENDPOINTS.CREATE_CONVERSATION, { participantIds, ...(group ? { isGroup: true, title: group.title } : {}) }),
+  /** Opens the direct chat with one person (the existing one is reused). */
+  startConversation: async (otherUserId: string) => normalizeConversation(await api.post<Conversation>(CHAT_ENDPOINTS.CONVERSATIONS, { participantIds: [otherUserId] })),
 
-  deleteConversation: (conversationId: string) => api.delete<null>(CHAT_ENDPOINTS.DELETE_CONVERSATION(conversationId)),
+  /** Hides a direct chat until a new message arrives{{#if GROUP_CHAT}}; leaves a group{{/if}}. */
+  deleteConversation: (conversationId: string) => api.delete<null>(CHAT_ENDPOINTS.CONVERSATION(conversationId)),
 
   /** Oldest → newest. Pass the oldest loaded message id as `before` to load earlier ones. */
   async fetchMessages(conversationId: string, before?: string): Promise<{ items: ChatMessage[]; hasMore: boolean }> {
-    const page = await api.page<ChatMessage>(CHAT_ENDPOINTS.GET_MESSAGES(conversationId), { params: { limit: 30, ...(before ? { before } : {}) } });
-    return { items: page.items, hasMore: Boolean(page.meta.hasMore) };
+    const page = await api.page<ChatMessage>(CHAT_ENDPOINTS.MESSAGES(conversationId), { params: { limit: 30, ...(before ? { before } : {}) } });
+    return { items: page.items.map(normalizeMessage), hasMore: Boolean(page.meta.hasMore) };
   },
 
-  /** Uploads local media first, then sends the message (members get it over Socket.IO). */
-  async sendMessage(conversationId: string, message: Partial<ChatMessage>): Promise<ChatMessage> {
-    const type = message.type ?? 'text';
-    const body: Partial<ChatMessage> = { type, text: message.text, fileName: message.fileName, fileSize: message.fileSize, duration: message.duration, crop: message.crop };
-    if (message.mediaUrl) {
-      if (isLocalFile(message.mediaUrl)) {
-        const uploaded = await upload(message.mediaUrl, type, message.fileName);
-        Object.assign(body, { mediaUrl: uploaded.url, fileName: message.fileName ?? uploaded.fileName, fileSize: message.fileSize ?? uploaded.fileSize });
-      } else {
-        body.mediaUrl = message.mediaUrl;
-      }
+  /** Uploads a local file first (image / video / document / voice note), then sends the message. */
+  async sendMessage(conversationId: string, draft: MessageDraft): Promise<ChatMessage> {
+    const { mimeType, ...body } = draft;
+    if (body.mediaUrl && isLocalFile(body.mediaUrl)) {
+      const uploaded = await upload(body.mediaUrl, body.type, body.fileName, mimeType);
+      Object.assign(body, { mediaUrl: uploaded.url, fileName: body.fileName ?? uploaded.fileName, fileSize: body.fileSize ?? uploaded.fileSize });
     }
-    if (message.thumbnailUrl) {
-      body.thumbnailUrl = isLocalFile(message.thumbnailUrl) ? (await upload(message.thumbnailUrl, 'image')).url : message.thumbnailUrl;
+    if (body.thumbnailUrl && isLocalFile(body.thumbnailUrl)) {
+      body.thumbnailUrl = (await upload(body.thumbnailUrl, 'image')).url;
     }
-    return api.post<ChatMessage>(CHAT_ENDPOINTS.SEND_MESSAGE(conversationId), body);
+    return normalizeMessage(await api.post<ChatMessage>(CHAT_ENDPOINTS.MESSAGES(conversationId), body));
   },
 
   markRead: (conversationId: string) => api.post<null>(CHAT_ENDPOINTS.MARK_READ(conversationId)),
 
-  deleteMessage: (conversationId: string, messageId: string) => api.delete<null>(CHAT_ENDPOINTS.DELETE_MESSAGE(conversationId, messageId)),
+  deleteMessage: (conversationId: string, messageId: string) => api.delete<null>(CHAT_ENDPOINTS.MESSAGE(conversationId, messageId)),
+{{#if GROUP_CHAT}}
 
-  searchContacts: (query: string) => api.get<ChatContact[]>(CHAT_ENDPOINTS.SEARCH_USERS, { params: { q: query } }),
+  /** Uploads a picked group image; send the URL with createGroup / updateGroup. */
+  uploadImage: async (uri: string, fileName?: string, mimeType?: string) => (await upload(uri, 'image', fileName, mimeType)).url,
+{{/if}}
 };

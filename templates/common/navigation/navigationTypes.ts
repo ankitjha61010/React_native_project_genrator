@@ -45,6 +45,9 @@ export type MainStackParamList = {
 {{/if}}
   WebView: { url: string; title?: string };
   EditProfile: undefined;
+{{#if AUTH_EMAIL}}
+  ChangePassword: undefined;
+{{/if}}
   Settings: undefined;
 {{#if NOTIFICATIONS}}
   /** `highlightId`: the notification that was tapped (shown highlighted). */
@@ -59,6 +62,10 @@ export type MainStackParamList = {
     isGroup?: boolean;
   };
   NewChat: undefined;
+{{#if GROUP_CHAT}}
+  CreateGroup: undefined;
+  GroupInfo: { conversationId: string };
+{{/if}}
 {{/if}}
 };
 

@@ -8,6 +8,7 @@ import type { User } from '{{IMPORT:domain.user}}';
 import type { CreateUserData, UpdateUserData, UsersRepository } from '{{IMPORT:contract.users}}';
 import { isUniqueViolation } from '{{IMPORT:db.connection}}';
 import { UserOrmEntity } from '{{IMPORT:typeorm.user}}';
+import { USERS_MESSAGES } from '{{IMPORT:messages.users}}';
 
 {{#if POSTGRES}}
 const LIKE = 'ILIKE';
@@ -15,9 +16,9 @@ const LIKE = 'ILIKE';
 const LIKE = 'LIKE';
 {{/if}}
 {{#if AUTH}}
-const TAKEN = () => new ConflictError('Email or mobile number is already registered', 'ACCOUNT_EXISTS');
+const TAKEN = () => new ConflictError(USERS_MESSAGES.accountExists);
 {{else}}
-const TAKEN = () => new ConflictError('Email is already registered', 'EMAIL_TAKEN');
+const TAKEN = () => new ConflictError(USERS_MESSAGES.emailTaken);
 {{/if}}
 
 function toUser(e: UserOrmEntity): User {
@@ -76,15 +77,17 @@ export class TypeOrmUsersRepository implements UsersRepository {
     return ids.length ? (await this.repo.findBy({ id: In(ids) })).map(toUser) : [];
   }
 
-  async search(term: string, options: { excludeId: string; limit: number }): Promise<User[]> {
-    const entities = await this.repo
+  async search(term: string, options: { excludeId: string; offset: number; limit: number }): Promise<{ items: User[]; total: number }> {
+    const qb = this.repo
       .createQueryBuilder('user')
       .where('user.isActive = :active AND user.id != :me', { active: true, me: options.excludeId })
-      .andWhere(`(user.name ${LIKE} :term OR user.email ${LIKE} :term)`, { term: `%${term}%` })
       .orderBy('user.name', 'ASC')
-      .take(options.limit)
-      .getMany();
-    return entities.map(toUser);
+      .addOrderBy('user.id', 'ASC')
+      .skip(options.offset)
+      .take(options.limit);
+    if (term) qb.andWhere(`(user.name ${LIKE} :term OR user.email ${LIKE} :term)`, { term: `%${term}%` });
+    const [entities, total] = await qb.getManyAndCount();
+    return { items: entities.map(toUser), total };
   }
 {{/if}}
 {{#if NOTIFICATIONS}}
@@ -113,7 +116,7 @@ export class TypeOrmUsersRepository implements UsersRepository {
 
   async update(id: string, data: UpdateUserData): Promise<User> {
     const entity = await this.repo.findOneBy({ id });
-    if (!entity) throw new NotFoundError('User not found', 'USER_NOT_FOUND');
+    if (!entity) throw new NotFoundError(USERS_MESSAGES.notFound);
     try {
       return toUser(await this.repo.save(this.repo.merge(entity, data)));
     } catch (error) {
@@ -131,6 +134,6 @@ export class TypeOrmUsersRepository implements UsersRepository {
 {{/if}}
   async delete(id: string): Promise<void> {
     const result = await this.repo.delete({ id });
-    if (!result.affected) throw new NotFoundError('User not found', 'USER_NOT_FOUND');
+    if (!result.affected) throw new NotFoundError(USERS_MESSAGES.notFound);
   }
 }

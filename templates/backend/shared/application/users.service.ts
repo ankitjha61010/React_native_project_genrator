@@ -4,7 +4,7 @@ import type { Logger } from '{{IMPORT:core.logger}}';
 {{else}}
 import { NotFoundError } from '{{IMPORT:core.errors}}';
 {{/if}}
-import { Paginated, type PageQuery } from '{{IMPORT:core.pagination}}';
+import { {{#if AUTH}}pageOffset, {{/if}}Paginated, type PageQuery } from '{{IMPORT:core.pagination}}';
 {{#if AUTH}}
 import type { Role } from '{{IMPORT:domain.roles}}';
 import { normalizePhone, toUserSummary, type User, type UserSummary } from '{{IMPORT:domain.user}}';
@@ -13,6 +13,7 @@ import type { FileStorage, UploadedFile } from '{{IMPORT:port.fileStorage}}';
 import { normalizeEmail, type User } from '{{IMPORT:domain.user}}';
 {{/if}}
 import type { UsersRepository } from '{{IMPORT:contract.users}}';
+import { USERS_MESSAGES } from '{{IMPORT:messages.users}}';
 {{#if AUTH}}
 
 /** Fields an administrator may change. */
@@ -47,12 +48,20 @@ export interface UpdateUserInput {
 }
 {{/if}}
 
+{{#if GROUP_CHAT}}
+/** Runs before a user is deleted, e.g. to hand their group admin role to another member. */
+export type BeforeUserDeleted = (userId: string) => Promise<void>;
+
+{{/if}}
 export class UsersService {
 {{#if AUTH}}
   constructor(
     private readonly users: UsersRepository,
     private readonly storage: FileStorage,
     private readonly logger: Logger,
+{{#if GROUP_CHAT}}
+    private readonly beforeDelete: BeforeUserDeleted = async () => undefined,
+{{/if}}
   ) {}
 {{else}}
   constructor(private readonly users: UsersRepository) {}
@@ -65,7 +74,7 @@ export class UsersService {
 
   async getById(id: string): Promise<User> {
     const user = await this.users.findById(id);
-    if (!user) throw new NotFoundError('User not found', 'USER_NOT_FOUND');
+    if (!user) throw new NotFoundError(USERS_MESSAGES.notFound);
     return user;
   }
 {{#if NO_AUTH}}
@@ -98,11 +107,11 @@ export class UsersService {
       if (!input.phone) {
         Object.assign(changes, { countryCode: null, phone: null, phoneVerifiedAt: null });
       } else {
-        if (!input.countryCode && !user.countryCode) throw new BadRequestError('countryCode is required with phone', 'COUNTRY_CODE_REQUIRED');
+        if (!input.countryCode && !user.countryCode) throw new BadRequestError(USERS_MESSAGES.countryCodeRequired);
         const next = normalizePhone(input.countryCode ?? user.countryCode ?? '', input.phone);
         if (next.countryCode !== user.countryCode || next.phone !== user.phone) {
           const owner = await this.users.findByPhone(next.countryCode, next.phone);
-          if (owner && owner.id !== userId) throw new ConflictError('Mobile number is already registered', 'PHONE_TAKEN');
+          if (owner && owner.id !== userId) throw new ConflictError(USERS_MESSAGES.phoneTaken);
           // A new number has to be verified again.
           Object.assign(changes, next, { phoneVerifiedAt: null });
         }
@@ -113,7 +122,7 @@ export class UsersService {
 
   /** Replaces the avatar (the old file is deleted). */
   async setAvatar(userId: string, file: UploadedFile): Promise<User> {
-    if (!AVATAR_MIME_TYPES.includes(file.mimeType)) throw new BadRequestError('The avatar must be a JPEG, PNG, WebP or HEIC image', 'INVALID_FILE_TYPE');
+    if (!AVATAR_MIME_TYPES.includes(file.mimeType)) throw new BadRequestError(USERS_MESSAGES.invalidAvatar);
     const user = await this.getById(userId);
     const stored = await this.storage.save(file, 'avatars');
     const updated = await this.users.update(userId, { avatarUrl: stored.url });
@@ -127,18 +136,26 @@ export class UsersService {
     return this.users.update(userId, { avatarUrl: null });
   }
 
-  /** Deletes the signed-in user's account and data (required by the App Store / Play Store). */
+{{#if DELETE_ACCOUNT}}
+  /**
+   * Deletes the signed-in user's account for good (App Store / Play Store requirement): the user
+   * row and everything that belongs to it ({{#if AUTH_REFRESH}}sessions, {{/if}}{{#if SOCIAL}}social accounts, {{/if}}{{#if CHAT}}chat memberships and messages, {{/if}}{{#if DEVICES}}devices, {{/if}}{{#if NOTIFICATIONS}}notifications, {{/if}}the avatar file).
+   */
   async deleteAccount(userId: string): Promise<void> {
     const user = await this.getById(userId);
+{{#if GROUP_CHAT}}
+    await this.beforeDelete(userId);
+{{/if}}
     await this.users.delete(userId);
     if (user.avatarUrl) await this.storage.delete(user.avatarUrl).catch(() => undefined);
     this.logger.info({ userId }, 'Account deleted by the user');
   }
 
-  /** Other users by name / email (e.g. to start a chat). */
-  async search(userId: string, term: string, limit = 20): Promise<UserSummary[]> {
-    const users = term.trim() ? await this.users.search(term.trim(), { excludeId: userId, limit }) : [];
-    return users.map(toUserSummary);
+{{/if}}
+  /** Other users by name / email, A → Z (the app's "New chat" list). An empty search lists everybody. */
+  async search(userId: string, query: PageQuery): Promise<Paginated<UserSummary>> {
+    const { items, total } = await this.users.search(query.search?.trim() ?? '', { excludeId: userId, offset: pageOffset(query), limit: query.limit });
+    return Paginated.of(items.map(toUserSummary), total, query);
   }
 
   // ── administration ─────────────────────────────────────────────────────────
@@ -147,7 +164,7 @@ export class UsersService {
   async update(id: string, input: UpdateUserInput, actorId: string): Promise<User> {
     const user = await this.getById(id);
     if (id === actorId && (input.role !== undefined || input.isActive === false)) {
-      throw new ForbiddenError('You cannot change your own role or disable your own account', 'SELF_MODIFICATION');
+      throw new ForbiddenError(USERS_MESSAGES.selfModification);
     }
     const securityChange = (input.role !== undefined && input.role !== user.role) || (input.isActive !== undefined && input.isActive !== user.isActive);
     return this.users.update(id, {
@@ -159,7 +176,11 @@ export class UsersService {
   }
 
   async delete(id: string, actorId: string): Promise<void> {
-    if (id === actorId) throw new ForbiddenError('Use DELETE /users/me to delete your own account', 'SELF_MODIFICATION');
+    if (id === actorId) throw new ForbiddenError(USERS_MESSAGES.selfDelete);
+{{#if GROUP_CHAT}}
+    await this.getById(id);
+    await this.beforeDelete(id);
+{{/if}}
     await this.users.delete(id);
   }
 {{/if}}

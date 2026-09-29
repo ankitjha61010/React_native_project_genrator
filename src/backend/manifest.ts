@@ -22,6 +22,12 @@ export interface BackendManifestEntry {
   when?: (ctx: BackendContext) => boolean;
   /** Extra template flags for this file only. */
   flags?: Record<string, boolean>;
+  /**
+   * Feature-Based / Layered / MVC / Modular: an interface lives in the same file as its only
+   * implementation. This file's code goes to the top of the first of these files that exists
+   * (Clean / Enterprise keep it in its own file and layer).
+   */
+  mergeInto?: string[];
 }
 
 // ── conditions ────────────────────────────────────────────────────────────────
@@ -34,8 +40,21 @@ const email: Condition = ctx => auth(ctx) && ctx.options.authMethods.email;
 const otp: Condition = ctx => auth(ctx) && ctx.options.authMethods.mobileOtp;
 const social: Condition = ctx => auth(ctx) && (ctx.options.authMethods.google || ctx.options.authMethods.facebook || ctx.options.authMethods.apple);
 const codes: Condition = ctx => email(ctx) || otp(ctx);
+const docker: Condition = ({ options }) => options.docker;
+const redis: Condition = ({ options }) => options.redis || options.service !== undefined;
+/** Codes live in Redis (with a TTL) instead of a database table. */
+const redisCodes: Condition = ctx => codes(ctx) && redis(ctx) && !(ctx.options.service === 'chat' || ctx.options.service === 'notifications');
+const dbCodes: Condition = ctx => codes(ctx) && !redisCodes(ctx);
+/** Database tables / repositories of the auth feature. */
+const authTables: Condition = ctx => refresh(ctx) || dbCodes(ctx) || social(ctx);
 const chat: Condition = ctx => auth(ctx) && ctx.options.modules.chat;
 const notifications: Condition = ctx => auth(ctx) && ctx.options.modules.notifications;
+/** The users' devices (FCM tokens) – part of push notifications. */
+const devices: Condition = notifications;
+/** GET /legal + the Terms & Conditions / Privacy Policy pages (monolith / identity service). */
+const legal: Condition = ctx => ctx.options.modules.legal && !replica(ctx);
+/** DELETE /users/me – the user deletes their own account. */
+const deleteAccount: Condition = ctx => auth(ctx) && ctx.options.modules.deleteAccount && !replica(ctx);
 const realtime: Condition = ctx => chat(ctx) || notifications(ctx);
 const encryption: Condition = ({ options }) => options.apiEncryption;
 const prisma: Condition = ({ options }) => options.orm === 'prisma';
@@ -61,6 +80,14 @@ const all =
   ctx =>
     conditions.every(c => c(ctx));
 
+/** Clean / Enterprise: every interface in its own file and layer. */
+const strict = ({ arch }: BackendContext) => arch.id === 'clean' || arch.id === 'enterprise';
+/** ORM repository file: `users.repository.ts` (next to nothing else) or `prisma-users.repository.ts` (next to its interface). */
+const repoFile =
+  (feature: string) =>
+  (ctx: BackendContext): string =>
+    strict(ctx) ? `${ctx.options.orm}-${feature}.repository.ts` : `${feature}.repository.ts`;
+
 const HASHER_FILES = { bcrypt: 'bcrypt-password-hasher.ts', argon2: 'argon2-password-hasher.ts', configurable: 'configurable-password-hasher.ts', none: '' };
 const DB_CONNECTION_FILES = { prisma: 'prisma.client.ts', typeorm: 'data-source.ts', mongoose: 'mongoose.connection.ts' };
 
@@ -70,7 +97,9 @@ const FEATURES: Array<[BackendFeature, Condition]> = [
   ['auth', authApi],
   ['users', usersApi],
   ['chat', chat],
+  ['devices', devices],
   ['notifications', notifications],
+  ['legal', legal],
 ];
 
 export const BACKEND_MANIFEST: BackendManifestEntry[] = [
@@ -87,9 +116,18 @@ export const BACKEND_MANIFEST: BackendManifestEntry[] = [
   { id: 'root.oxlint', template: 'root/oxlintrc.json', file: '.oxlintrc.json' },
   { id: 'root.prettier', template: 'root/prettierrc', file: '.prettierrc' },
   { id: 'root.prettierignore', template: 'root/prettierignore', file: '.prettierignore' },
+  // Docker (optional): image of the API + a compose file for the database / Redis.
+  { id: 'root.dockerfile', template: 'root/Dockerfile', file: 'Dockerfile', when: docker },
+  { id: 'root.dockerignore', template: 'root/dockerignore', file: '.dockerignore', when: docker },
+  // Microservices: one docker-compose.yml at the workspace root instead.
+  { id: 'root.compose', template: 'root/docker-compose.yml', file: 'docker-compose.yml', when: ctx => docker(ctx) && !ctx.options.service },
   { id: 'root.readme', template: 'root/README.md', file: 'README.md' },
   { id: 'root.architectureDoc', template: 'root/ARCHITECTURE.md', file: 'docs/ARCHITECTURE.md' },
   { id: 'root.apiDoc', template: 'root/API.md', file: 'docs/API.md' },
+  // Legal pages the app opens (edit them, or point TERMS_URL / PRIVACY_POLICY_URL / DELETE_ACCOUNT_URL at your own).
+  { id: 'root.terms', template: 'root/public/terms-and-conditions.html', file: 'public/terms-and-conditions.html', when: legal },
+  { id: 'root.privacy', template: 'root/public/privacy-policy.html', file: 'public/privacy-policy.html', when: legal },
+  { id: 'root.deleteAccountPage', template: 'root/public/delete-account.html', file: 'public/delete-account.html', when: ctx => legal(ctx) && deleteAccount(ctx) },
 
   // ── configuration & core kernel (framework independent) ───────────────────
   { id: 'config.env', template: 'shared/config/env.ts', layer: 'config', file: 'env.ts' },
@@ -98,29 +136,43 @@ export const BACKEND_MANIFEST: BackendManifestEntry[] = [
   { id: 'core.response', template: 'shared/core/api-response.ts', layer: 'core', file: 'api-response.ts' },
   { id: 'core.pagination', template: 'shared/core/pagination.ts', layer: 'core', file: 'pagination.ts' },
   { id: 'core.crypto', template: 'shared/core/crypto.ts', layer: 'core', file: 'crypto.ts', when: auth },
+  // Response / error messages: the shared ones + one file per feature (change the wording there).
+  { id: 'core.messages', template: 'shared/core/messages.ts', layer: 'core', file: 'messages.ts' },
   { id: 'core.sanitize', template: 'shared/core/sanitize.ts', layer: 'core', file: 'sanitize.ts', when: sanitize },
+
+  // Users / auth messages are also used by the repositories and token checks of every service.
+  ...FEATURES.map(([feature, enabled]): BackendManifestEntry => ({
+    id: `messages.${feature}`,
+    template: `shared/messages/${feature}.messages.ts`,
+    layer: 'messages',
+    feature,
+    file: `${feature}.messages.ts`,
+    when: feature === 'users' ? () => true : feature === 'auth' ? auth : enabled,
+  })),
 
   // ── domain: entities + repository contracts ──────────────────────────────
   { id: 'domain.user', template: 'shared/domain/user.entity.ts', layer: 'domain', feature: 'users', file: 'user.entity.ts' },
   { id: 'domain.roles', template: 'shared/domain/roles.ts', layer: 'domain', feature: 'users', file: 'roles.ts', when: auth },
   { id: 'domain.authTokens', template: 'shared/domain/auth-token.entity.ts', layer: 'domain', feature: 'auth', file: 'auth-token.entity.ts', when: ctx => refresh(ctx) || codes(ctx) || social(ctx) },
   { id: 'domain.chat', template: 'shared/domain/chat.entity.ts', layer: 'domain', feature: 'chat', file: 'chat.entity.ts', when: chat },
+  { id: 'domain.device', template: 'shared/domain/device.entity.ts', layer: 'domain', feature: 'devices', file: 'device.entity.ts', when: devices },
   { id: 'domain.notification', template: 'shared/domain/notification.entity.ts', layer: 'domain', feature: 'notifications', file: 'notification.entity.ts', when: notifications },
-  { id: 'contract.users', template: 'shared/domain/users.repository.ts', layer: 'repositoryContract', feature: 'users', file: 'users.repository.ts' },
-  { id: 'contract.auth', template: 'shared/domain/auth.repository.ts', layer: 'repositoryContract', feature: 'auth', file: 'auth.repository.ts', when: ctx => refresh(ctx) || codes(ctx) || social(ctx) },
-  { id: 'contract.chat', template: 'shared/domain/chat.repository.ts', layer: 'repositoryContract', feature: 'chat', file: 'chat.repository.ts', when: chat },
-  { id: 'contract.notifications', template: 'shared/domain/notifications.repository.ts', layer: 'repositoryContract', feature: 'notifications', file: 'notifications.repository.ts', when: notifications },
+  { id: 'contract.users', template: 'shared/domain/users.repository.ts', layer: 'repositoryContract', feature: 'users', file: 'users.repository.ts', mergeInto: ['repo.users'] },
+  { id: 'contract.auth', template: 'shared/domain/auth.repository.ts', layer: 'repositoryContract', feature: 'auth', file: 'auth.repository.ts', when: ctx => refresh(ctx) || codes(ctx) || social(ctx), mergeInto: ['repo.auth', 'repo.redisCodes'] },
+  { id: 'contract.chat', template: 'shared/domain/chat.repository.ts', layer: 'repositoryContract', feature: 'chat', file: 'chat.repository.ts', when: chat, mergeInto: ['repo.chat'] },
+  { id: 'contract.devices', template: 'shared/domain/devices.repository.ts', layer: 'repositoryContract', feature: 'devices', file: 'devices.repository.ts', when: devices, mergeInto: ['repo.devices'] },
+  { id: 'contract.notifications', template: 'shared/domain/notifications.repository.ts', layer: 'repositoryContract', feature: 'notifications', file: 'notifications.repository.ts', when: notifications, mergeInto: ['repo.notifications'] },
 
   // ── ports (interfaces of technical services) + implementations ─────────────
-  { id: 'port.healthCheck', template: 'shared/ports/health-check.ts', layer: 'ports', file: 'health-check.ts' },
-  { id: 'port.passwordHasher', template: 'shared/ports/password-hasher.ts', layer: 'ports', file: 'password-hasher.ts', when: email },
-  { id: 'port.tokenService', template: 'shared/ports/token-service.ts', layer: 'ports', file: 'token-service.ts', when: auth },
-  { id: 'port.mailer', template: 'shared/ports/mailer.ts', layer: 'ports', file: 'mailer.ts', when: email },
-  { id: 'port.smsSender', template: 'shared/ports/sms-sender.ts', layer: 'ports', file: 'sms-sender.ts', when: otp },
-  { id: 'port.socialVerifier', template: 'shared/ports/social-verifier.ts', layer: 'ports', file: 'social-verifier.ts', when: social },
-  { id: 'port.fileStorage', template: 'shared/ports/file-storage.ts', layer: 'ports', file: 'file-storage.ts', when: uploads },
-  { id: 'port.pushSender', template: 'shared/ports/push-sender.ts', layer: 'ports', file: 'push-sender.ts', when: chatPush },
-  { id: 'port.realtime', template: 'shared/ports/realtime.ts', layer: 'ports', file: 'realtime.ts', when: realtime },
+  { id: 'port.healthCheck', template: 'shared/ports/health-check.ts', layer: 'ports', file: 'health-check.ts', mergeInto: ['app.healthService'] },
+  { id: 'port.passwordHasher', template: 'shared/ports/password-hasher.ts', layer: 'ports', file: 'password-hasher.ts', when: email, mergeInto: ['impl.passwordHasher'] },
+  { id: 'port.tokenService', template: 'shared/ports/token-service.ts', layer: 'ports', file: 'token-service.ts', when: auth, mergeInto: ['impl.tokenService'] },
+  { id: 'port.mailer', template: 'shared/ports/mailer.ts', layer: 'ports', file: 'mailer.ts', when: email, mergeInto: ['impl.mailer'] },
+  { id: 'port.smsSender', template: 'shared/ports/sms-sender.ts', layer: 'ports', file: 'sms-sender.ts', when: otp, mergeInto: ['impl.smsSender'] },
+  { id: 'port.socialVerifier', template: 'shared/ports/social-verifier.ts', layer: 'ports', file: 'social-verifier.ts', when: social, mergeInto: ['impl.socialVerifier'] },
+  { id: 'port.fileStorage', template: 'shared/ports/file-storage.ts', layer: 'ports', file: 'file-storage.ts', when: uploads, mergeInto: ['impl.fileStorage'] },
+  { id: 'port.pushSender', template: 'shared/ports/push-sender.ts', layer: 'ports', file: 'push-sender.ts', when: chatPush, mergeInto: ['impl.pushSender'] },
+  { id: 'port.realtime', template: 'shared/ports/realtime.ts', layer: 'ports', file: 'realtime.ts', when: realtime, mergeInto: ['realtime.server', 'events.realtime'] },
   { id: 'impl.passwordHasher', template: 'shared/security/password-hasher.impl.ts', layer: 'security', file: ({ options }) => HASHER_FILES[options.hashing], when: email },
   { id: 'impl.tokenService', template: 'shared/security/jwt-token.service.ts', layer: 'security', file: 'jwt-token.service.ts', when: auth },
   { id: 'impl.socialVerifier', template: 'shared/security/social-verifier.ts', layer: 'security', file: 'social-verifier.ts', when: social },
@@ -130,7 +182,7 @@ export const BACKEND_MANIFEST: BackendManifestEntry[] = [
   { id: 'impl.fileStorage', template: 'shared/adapters/local-file-storage.ts', layer: 'adapters', file: 'local-file-storage.ts', when: uploads },
   { id: 'realtime.server', template: 'shared/realtime/socket.server.ts', layer: 'realtime', file: 'socket.server.ts', when: socketServer },
   // Microservices: events between the services (Redis).
-  { id: 'port.eventBus', template: 'shared/ports/event-bus.ts', layer: 'ports', file: 'event-bus.ts', when: events },
+  { id: 'port.eventBus', template: 'shared/ports/event-bus.ts', layer: 'ports', file: 'event-bus.ts', when: events, mergeInto: ['impl.eventBus'] },
   { id: 'impl.eventBus', template: 'shared/adapters/event-bus.ts', layer: 'adapters', file: 'event-bus.ts', when: events },
   { id: 'events.realtime', template: 'shared/events/realtime.ts', layer: 'adapters', file: 'event-realtime.ts', when: ({ options }) => options.service === 'notifications' },
   { id: 'events.usersPublisher', template: 'shared/events/users-publisher.ts', layer: 'adapters', file: 'publishing-users.repository.ts', when: identity },
@@ -140,6 +192,9 @@ export const BACKEND_MANIFEST: BackendManifestEntry[] = [
   // ── database ──────────────────────────────────────────────────────────────
   { id: 'db.connection', template: 'shared/database/{orm}/connection.ts', layer: 'database', file: ({ options }) => DB_CONNECTION_FILES[options.orm] },
   { id: 'db.repositories', template: 'shared/repositories/{orm}/index.ts', layer: 'database', file: 'repositories.ts' },
+  // Redis (optional in a monolith, always on in microservices): one shared connection + a cache helper.
+  { id: 'db.redis', template: 'shared/database/redis.ts', layer: 'database', file: 'redis.ts', when: redis },
+  { id: 'db.cache', template: 'shared/database/cache.ts', layer: 'database', file: 'cache.ts', when: redis },
   // Replica services get their users from the identity service – nothing to seed.
   { id: 'db.seed', template: 'shared/database/seed.ts', layer: 'database', file: 'seed.ts', when: usersApi },
   // Prisma
@@ -148,22 +203,26 @@ export const BACKEND_MANIFEST: BackendManifestEntry[] = [
   { id: 'prisma.migration', template: 'shared/database/prisma/migration.sql', file: 'prisma/migrations/20260101000000_init/migration.sql', when: prisma },
   { id: 'prisma.migrationLock', template: 'shared/database/prisma/migration_lock.toml', file: 'prisma/migrations/migration_lock.toml', when: prisma },
   // TypeORM
-  { id: 'typeorm.columns', template: 'shared/database/typeorm/columns.ts', layer: 'database', file: 'entities/columns.ts', when: typeorm },
-  { id: 'typeorm.user', template: 'shared/database/typeorm/user.orm-entity.ts', layer: 'database', file: 'entities/user.orm-entity.ts', when: typeorm },
-  { id: 'typeorm.auth', template: 'shared/database/typeorm/auth.orm-entities.ts', layer: 'database', file: 'entities/auth.orm-entities.ts', when: ctx => typeorm(ctx) && (refresh(ctx) || codes(ctx) || social(ctx)) },
-  { id: 'typeorm.chat', template: 'shared/database/typeorm/chat.orm-entities.ts', layer: 'database', file: 'entities/chat.orm-entities.ts', when: all(typeorm, chat) },
-  { id: 'typeorm.notifications', template: 'shared/database/typeorm/notification.orm-entities.ts', layer: 'database', file: 'entities/notification.orm-entities.ts', when: all(typeorm, notifications) },
+  { id: 'typeorm.columns', template: 'shared/database/typeorm/columns.ts', layer: 'database', file: 'typeorm-columns.ts', when: typeorm },
+  { id: 'typeorm.user', template: 'shared/database/typeorm/user.orm-entity.ts', layer: 'model', feature: 'users', file: 'user.orm-entity.ts', when: typeorm },
+  { id: 'typeorm.auth', template: 'shared/database/typeorm/auth.orm-entities.ts', layer: 'model', feature: 'auth', file: 'auth.orm-entities.ts', when: ctx => typeorm(ctx) && authTables(ctx) },
+  { id: 'typeorm.chat', template: 'shared/database/typeorm/chat.orm-entities.ts', layer: 'model', feature: 'chat', file: 'chat.orm-entities.ts', when: all(typeorm, chat) },
+  { id: 'typeorm.device', template: 'shared/database/typeorm/device.orm-entity.ts', layer: 'model', feature: 'devices', file: 'device.orm-entity.ts', when: all(typeorm, devices) },
+  { id: 'typeorm.notifications', template: 'shared/database/typeorm/notification.orm-entities.ts', layer: 'model', feature: 'notifications', file: 'notification.orm-entities.ts', when: all(typeorm, notifications) },
   { id: 'typeorm.migration', template: 'shared/database/typeorm/init.migration.ts', layer: 'database', file: 'migrations/1767225600000-Init.ts', when: typeorm },
   // Mongoose
-  { id: 'mongoose.user', template: 'shared/database/mongoose/user.model.ts', layer: 'database', file: 'models/user.model.ts', when: mongoose },
-  { id: 'mongoose.auth', template: 'shared/database/mongoose/auth.models.ts', layer: 'database', file: 'models/auth.models.ts', when: ctx => mongoose(ctx) && (refresh(ctx) || codes(ctx) || social(ctx)) },
-  { id: 'mongoose.chat', template: 'shared/database/mongoose/chat.models.ts', layer: 'database', file: 'models/chat.models.ts', when: all(mongoose, chat) },
-  { id: 'mongoose.notifications', template: 'shared/database/mongoose/notification.models.ts', layer: 'database', file: 'models/notification.models.ts', when: all(mongoose, notifications) },
+  { id: 'mongoose.user', template: 'shared/database/mongoose/user.model.ts', layer: 'model', feature: 'users', file: 'user.model.ts', when: mongoose },
+  { id: 'mongoose.auth', template: 'shared/database/mongoose/auth.models.ts', layer: 'model', feature: 'auth', file: 'auth.models.ts', when: ctx => mongoose(ctx) && authTables(ctx) },
+  { id: 'mongoose.chat', template: 'shared/database/mongoose/chat.models.ts', layer: 'model', feature: 'chat', file: 'chat.models.ts', when: all(mongoose, chat) },
+  { id: 'mongoose.device', template: 'shared/database/mongoose/device.model.ts', layer: 'model', feature: 'devices', file: 'device.model.ts', when: all(mongoose, devices) },
+  { id: 'mongoose.notifications', template: 'shared/database/mongoose/notification.models.ts', layer: 'model', feature: 'notifications', file: 'notification.models.ts', when: all(mongoose, notifications) },
   // Repositories (one file per feature; the template picks the ORM implementation)
-  { id: 'repo.users', template: 'shared/repositories/{orm}/users.repository.ts', layer: 'repositoryImpl', feature: 'users', file: ({ options }) => `${options.orm}-users.repository.ts` },
-  { id: 'repo.auth', template: 'shared/repositories/{orm}/auth.repository.ts', layer: 'repositoryImpl', feature: 'auth', file: ({ options }) => `${options.orm}-auth.repository.ts`, when: ctx => refresh(ctx) || codes(ctx) || social(ctx) },
-  { id: 'repo.chat', template: 'shared/repositories/{orm}/chat.repository.ts', layer: 'repositoryImpl', feature: 'chat', file: ({ options }) => `${options.orm}-chat.repository.ts`, when: chat },
-  { id: 'repo.notifications', template: 'shared/repositories/{orm}/notifications.repository.ts', layer: 'repositoryImpl', feature: 'notifications', file: ({ options }) => `${options.orm}-notifications.repository.ts`, when: notifications },
+  { id: 'repo.users', template: 'shared/repositories/{orm}/users.repository.ts', layer: 'repositoryImpl', feature: 'users', file: repoFile('users') },
+  { id: 'repo.auth', template: 'shared/repositories/{orm}/auth.repository.ts', layer: 'repositoryImpl', feature: 'auth', file: repoFile('auth'), when: authTables },
+  { id: 'repo.chat', template: 'shared/repositories/{orm}/chat.repository.ts', layer: 'repositoryImpl', feature: 'chat', file: repoFile('chat'), when: chat },
+  { id: 'repo.redisCodes', template: 'shared/repositories/redis-codes.repository.ts', layer: 'repositoryImpl', feature: 'auth', file: 'redis-verification-codes.repository.ts', when: redisCodes },
+  { id: 'repo.devices', template: 'shared/repositories/{orm}/devices.repository.ts', layer: 'repositoryImpl', feature: 'devices', file: repoFile('devices'), when: devices },
+  { id: 'repo.notifications', template: 'shared/repositories/{orm}/notifications.repository.ts', layer: 'repositoryImpl', feature: 'notifications', file: repoFile('notifications'), when: notifications },
 
   // ── application: one service per feature + the composition root ───────────
   { id: 'app.authTypes', template: 'shared/application/auth.types.ts', layer: 'application', feature: 'auth', file: 'auth.types.ts', when: auth },
@@ -172,7 +231,9 @@ export const BACKEND_MANIFEST: BackendManifestEntry[] = [
   { id: 'app.authService', template: 'shared/application/auth.service.ts', layer: 'application', feature: 'auth', file: 'auth.service.ts', when: authApi },
   { id: 'app.usersService', template: 'shared/application/users.service.ts', layer: 'application', feature: 'users', file: 'users.service.ts', when: usersApi },
   { id: 'app.healthService', template: 'shared/application/health.service.ts', layer: 'application', feature: 'health', file: 'health.service.ts' },
+  { id: 'app.chatUtils', template: 'shared/application/chat.utils.ts', layer: 'application', feature: 'chat', file: 'chat.utils.ts', when: chat },
   { id: 'app.chatService', template: 'shared/application/chat.service.ts', layer: 'application', feature: 'chat', file: 'chat.service.ts', when: chat },
+  { id: 'app.devicesService', template: 'shared/application/devices.service.ts', layer: 'application', feature: 'devices', file: 'devices.service.ts', when: devices },
   { id: 'app.notificationsService', template: 'shared/application/notifications.service.ts', layer: 'application', feature: 'notifications', file: 'notifications.service.ts', when: notifications },
   { id: 'app.container', template: 'shared/bootstrap/container.ts', layer: 'bootstrap', file: 'container.ts' },
 
@@ -183,8 +244,11 @@ export const BACKEND_MANIFEST: BackendManifestEntry[] = [
   // ── Express ───────────────────────────────────────────────────────────────
   { id: 'ex.server', template: 'express/bootstrap/server.ts', layer: 'bootstrap', file: 'server.ts', when: express },
   { id: 'ex.app', template: 'express/bootstrap/app.ts', layer: 'bootstrap', file: 'app.ts', when: express },
-  { id: 'ex.routes', template: 'express/bootstrap/routes.ts', layer: 'bootstrap', file: 'routes.ts', when: express },
-  { id: 'ex.route', template: 'express/http/route.ts', layer: 'httpKernel', file: 'route.ts', when: express },
+  // Layered / MVC have a routes/ folder: the list of every router is its index.ts.
+  { id: 'ex.routes', template: 'express/bootstrap/routes.ts', layer: 'bootstrap', file: ({ arch }) => (arch.dir('routes', 'express', 'users') === 'src/routes' ? 'routes/index.ts' : 'routes.ts'), when: express },
+  { id: 'ex.validation', template: 'express/http/validation.ts', layer: 'httpKernel', file: 'validation.ts', when: express },
+  { id: 'ex.mw.auth', template: 'express/http/auth.middleware.ts', layer: 'httpKernel', file: 'auth.middleware.ts', when: all(express, auth) },
+  { id: 'ex.mw.upload', template: 'express/http/upload.middleware.ts', layer: 'httpKernel', file: 'upload.middleware.ts', when: all(express, uploads) },
   { id: 'ex.schemas', template: 'express/http/common.schemas.ts', layer: 'httpKernel', file: 'common.schemas.ts', when: express },
   { id: 'ex.respond', template: 'express/http/respond.ts', layer: 'httpKernel', file: 'respond.ts', when: express },
   { id: 'ex.mw.errorHandler', template: 'express/http/error-handler.middleware.ts', layer: 'httpKernel', file: 'error-handler.middleware.ts', when: express },
@@ -196,12 +260,14 @@ export const BACKEND_MANIFEST: BackendManifestEntry[] = [
   { id: 'ex.docs.helpers', template: 'express/docs/openapi.helpers.ts', layer: 'docs', file: 'openapi.helpers.ts', when: all(express, swagger) },
   { id: 'ex.docs.openapi', template: 'express/docs/openapi.ts', layer: 'docs', file: 'openapi.ts', when: all(express, swagger) },
   { id: 'ex.docs.router', template: 'express/docs/docs.router.ts', layer: 'docs', file: 'docs.router.ts', when: all(express, swagger) },
-  // One route table per feature (+ its request / response schemas).
+  // Per feature: routes (URL → controller method), controller (req/res → service), request schemas, Swagger docs.
   ...FEATURES.flatMap(([feature, enabled]): BackendManifestEntry[] => [
+    { id: `ex.${feature}.routes`, template: `express/features/${feature}.routes.ts`, layer: 'routes', feature, file: `${feature}.routes.ts`, when: all(express, enabled) },
     { id: `ex.${feature}.controller`, template: `express/features/${feature}.controller.ts`, layer: 'http', feature, file: `${feature}.controller.ts`, when: all(express, enabled) },
-    ...(feature === 'health'
+    ...(feature === 'health' || feature === 'legal'
       ? []
       : [{ id: `ex.${feature}.schemas`, template: `express/features/${feature}.schemas.ts`, layer: 'dto' as const, feature, file: `${feature}.schemas.ts`, when: all(express, enabled) }]),
+    { id: `ex.${feature}.docs`, template: `express/docs/${feature}.docs.ts`, layer: 'docs', feature, file: `${feature}.docs.ts`, when: all(express, enabled, swagger) },
   ]),
 
   // ── NestJS ────────────────────────────────────────────────────────────────
@@ -220,6 +286,7 @@ export const BACKEND_MANIFEST: BackendManifestEntry[] = [
   { id: 'nest.accessGuard', template: 'nestjs/http/access.guard.ts', layer: 'httpKernel', file: 'access.guard.ts', when: all(nest, auth) },
   { id: 'nest.sanitize', template: 'nestjs/http/sanitize.middleware.ts', layer: 'httpKernel', file: 'sanitize.middleware.ts', when: all(nest, sanitize) },
   { id: 'nest.requestLogger', template: 'nestjs/http/request-logger.middleware.ts', layer: 'httpKernel', file: 'request-logger.middleware.ts', when: nest },
+  { id: 'nest.throttlerStorage', template: 'nestjs/http/redis-throttler.storage.ts', layer: 'httpKernel', file: 'redis-throttler.storage.ts', when: all(nest, redis, rateLimit) },
   { id: 'nest.upload', template: 'nestjs/http/upload.ts', layer: 'httpKernel', file: 'upload.ts', when: all(nest, uploads) },
   { id: 'nest.swagger', template: 'nestjs/docs/swagger.ts', layer: 'docs', file: 'swagger.ts', when: all(nest, swagger) },
   { id: 'nest.endpoint', template: 'nestjs/http/endpoint.ts', layer: 'httpKernel', file: 'endpoint.ts', when: nest },
@@ -229,7 +296,7 @@ export const BACKEND_MANIFEST: BackendManifestEntry[] = [
     return [
       { id: `nest.${feature}.controller`, template: `nestjs/features/${feature}.controller.ts`, layer: 'http', feature, file: `${feature}.controller.ts`, when: on },
       { id: `nest.${feature}.module`, template: 'nestjs/features/feature.module.ts', layer: 'module', feature, file: `${feature}.module.ts`, when: ctx => on(ctx) && ctx.arch.featureModules, flags: { [`MODULE_${feature.toUpperCase()}`]: true } },
-      ...(feature === 'health'
+      ...(feature === 'health' || feature === 'legal'
         ? []
         : [{ id: `nest.${feature}.dto`, template: `nestjs/features/${feature}.dto.ts`, layer: 'dto' as const, feature, file: `${feature}.dto.ts`, when: on }]),
     ];
@@ -246,11 +313,15 @@ export const BACKEND_MANIFEST: BackendManifestEntry[] = [
   { id: 'test.unit.users', template: 'shared/test/users.spec.ts', file: 'test/unit/users.spec.ts', when: usersApi },
   { id: 'test.unit.events', template: 'shared/test/events.spec.ts', file: 'test/unit/events.spec.ts', when: ctx => identity(ctx) || replica(ctx) },
   { id: 'test.unit.chat', template: 'shared/test/chat.spec.ts', file: 'test/unit/chat.spec.ts', when: chat },
+  { id: 'test.unit.devices', template: 'shared/test/devices.spec.ts', file: 'test/unit/devices.spec.ts', when: devices },
   { id: 'test.unit.notifications', template: 'shared/test/notifications.spec.ts', file: 'test/unit/notifications.spec.ts', when: notifications },
+  { id: 'test.unit.cache', template: 'shared/test/cache.spec.ts', file: 'test/unit/cache.spec.ts', when: redis },
   { id: 'test.unit.encryption', template: 'shared/test/encryption.spec.ts', file: 'test/unit/encryption.spec.ts', when: encryption },
   { id: 'test.e2e.health', template: 'shared/test/health.e2e-spec.ts', file: 'test/e2e/health.e2e-spec.ts' },
   { id: 'test.e2e.auth', template: 'shared/test/auth.e2e-spec.ts', file: 'test/e2e/auth.e2e-spec.ts', when: authApi },
   { id: 'test.e2e.users', template: 'shared/test/users.e2e-spec.ts', file: 'test/e2e/users.e2e-spec.ts', when: usersApi },
   { id: 'test.e2e.chat', template: 'shared/test/chat.e2e-spec.ts', file: 'test/e2e/chat.e2e-spec.ts', when: chat },
+  { id: 'test.e2e.devices', template: 'shared/test/devices.e2e-spec.ts', file: 'test/e2e/devices.e2e-spec.ts', when: devices },
   { id: 'test.e2e.notifications', template: 'shared/test/notifications.e2e-spec.ts', file: 'test/e2e/notifications.e2e-spec.ts', when: notifications },
+  { id: 'test.e2e.legal', template: 'shared/test/legal.e2e-spec.ts', file: 'test/e2e/legal.e2e-spec.ts', when: legal },
 ];

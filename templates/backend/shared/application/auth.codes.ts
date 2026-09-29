@@ -3,6 +3,7 @@ import { BadRequestError, TooManyRequestsError } from '{{IMPORT:core.errors}}';
 import type { CodePurpose } from '{{IMPORT:domain.authTokens}}';
 import type { VerificationCodesRepository } from '{{IMPORT:contract.auth}}';
 import type { AuthSettings } from '{{IMPORT:app.authTypes}}';
+import { AUTH_MESSAGES } from '{{IMPORT:messages.auth}}';
 
 export interface SentCode {
   /** Seconds until the code expires. */
@@ -32,7 +33,7 @@ export class VerificationCodes {
     const latest = await this.codes.findLatest(purpose, target);
     const wait = latest ? latest.createdAt.getTime() + resendAfter - Date.now() : 0;
     if (wait > 0) {
-      throw new TooManyRequestsError(`Please wait ${Math.ceil(wait / 1000)} seconds before requesting a new code`, 'CODE_RESEND_TOO_SOON');
+      throw new TooManyRequestsError(AUTH_MESSAGES.resendTooSoon(Math.ceil(wait / 1000)));
     }
 
     const code = randomDigits(6);
@@ -56,12 +57,12 @@ export class VerificationCodes {
   async verify(purpose: CodePurpose, target: string, code: string): Promise<void> {
     const record = await this.codes.findActive(purpose, target, new Date());
     if (!record || record.attempts >= this.settings.maxAttempts) {
-      throw new BadRequestError('The code is invalid or has expired, please request a new one', 'INVALID_CODE');
+      throw new BadRequestError(AUTH_MESSAGES.invalidCode);
     }
     if (!safeEqual(record.codeHash, hash(target, code.trim()))) {
       await this.codes.incrementAttempts(record.id);
       const left = this.settings.maxAttempts - record.attempts - 1;
-      throw new BadRequestError(left > 0 ? `Wrong code, ${left} attempt${left === 1 ? '' : 's'} left` : 'Wrong code, please request a new one', 'INVALID_CODE');
+      throw new BadRequestError(AUTH_MESSAGES.wrongCode(left));
     }
     await this.codes.markUsed(record.id);
   }

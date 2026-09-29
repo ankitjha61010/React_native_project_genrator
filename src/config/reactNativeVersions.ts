@@ -69,6 +69,9 @@ const ECOSYSTEM_2026_08: Record<string, string> = {
   'react-native-fbsdk-next': '13.4.3',
   '@invertase/react-native-apple-authentication': '2.5.1',
   'socket.io-client': '^4.8.1',
+  // Chat: voice messages (record + play, a Nitro module like MMKV) and "send a file".
+  'react-native-nitro-sound': '0.2.20',
+  '@react-native-documents/picker': '12.0.2',
 };
 
 const SUPPORTED_2026_08: Record<string, string> = {

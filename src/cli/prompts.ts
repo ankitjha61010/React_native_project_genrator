@@ -5,8 +5,8 @@ import chalk from 'chalk';
 import { getArchitecture, isArchitectureId } from '../architectures/index.js';
 import { isStateManagement, isStorageEngine, STATE_MANAGEMENT_LABELS, STORAGE_LABELS } from '../config/constants.js';
 import { DEFAULT_REACT_NATIVE_VERSION } from '../config/reactNativeVersions.js';
-import { SOCIAL_LOGIN_CHOICES } from '../config/socialAuth.js';
-import type { ArchitectureId, ProjectOptions, SocialLoginOption, StateManagement, StorageEngine } from '../core/types.js';
+import { NO_SOCIAL, validateFacebookAppId, validateGoogleClientId, type SocialCredentials, type SocialProviders } from '../config/socialAuth.js';
+import type { ArchitectureId, ProjectOptions, StateManagement, StorageEngine } from '../core/types.js';
 import { GeneratorError } from '../utils/errors.js';
 import { validateGoogleServiceInfoPlist, validateGoogleServicesJson } from '../utils/firebaseFiles.js';
 import { resolveUserPath } from '../utils/paths.js';
@@ -73,6 +73,67 @@ async function askYesNo(
   });
 }
 
+type ProviderChoice = 'configure' | 'skip' | 'none';
+
+/**
+ * Google / Facebook / Apple, one question each:
+ *   1. Configure – enter the keys now (they are written into .env, Info.plist, strings.xml and the backend),
+ *   2. Skip – add the provider with YOUR_… placeholders (listed in docs/SOCIAL_LOGIN.md),
+ *   3. Don't include.
+ * Flags: --social-auth picks the providers, credential flags configure them.
+ */
+async function askSocialLogin(flags: CliFlags, interactive: boolean): Promise<{ providers: SocialProviders; credentials: SocialCredentials }> {
+  const credentials: SocialCredentials = {
+    googleWebClientId: flags.googleWebClientId?.trim() || undefined,
+    googleIosClientId: flags.googleIosClientId?.trim() || undefined,
+    facebookAppId: flags.facebookAppId?.trim() || undefined,
+    facebookClientToken: flags.facebookClientToken?.trim() || undefined,
+    facebookAppSecret: flags.facebookAppSecret?.trim() || undefined,
+    appleServiceId: flags.appleServiceId?.trim() || undefined,
+  };
+  if (flags.socialAuth || !interactive) {
+    const providers = flags.socialAuth ?? { google: Boolean(credentials.googleWebClientId), facebook: Boolean(credentials.facebookAppId), apple: false };
+    for (const [id, valid] of [
+      ['--google-web-client-id', credentials.googleWebClientId ? validateGoogleClientId(credentials.googleWebClientId) : true],
+      ['--google-ios-client-id', credentials.googleIosClientId ? validateGoogleClientId(credentials.googleIosClientId) : true],
+      ['--facebook-app-id', credentials.facebookAppId ? validateFacebookAppId(credentials.facebookAppId) : true],
+    ] as const) {
+      if (valid !== true) throw new GeneratorError(`Invalid ${id}: ${valid}`);
+    }
+    log.success(`Social login: ${chalk.cyan(Object.entries(providers).filter(([, on]) => on).map(([name]) => name).join(', ') || 'none')}`);
+    return { providers, credentials };
+  }
+
+  const ask = (provider: string, configureHint: string) =>
+    select<ProviderChoice>({
+      message: `${provider} Login?`,
+      choices: [
+        { name: '1. Configure', value: 'configure', description: configureHint },
+        { name: '2. Skip', value: 'skip', description: 'Add it with YOUR_… placeholder keys – fill them in later (docs/SOCIAL_LOGIN.md)' },
+        { name: "3. Don't include", value: 'none', description: `No ${provider} button and no ${provider} SDK` },
+      ],
+      default: 'none',
+    });
+
+  const google = await ask('Google', 'Enter the OAuth client IDs now (Google Cloud Console → APIs & Services → Credentials)');
+  if (google === 'configure') {
+    credentials.googleWebClientId = (await input({ message: 'Google Web client ID:', validate: value => validateGoogleClientId(value) })).trim();
+    credentials.googleIosClientId =
+      (await input({ message: 'Google iOS client ID (leave empty to add it later):', validate: value => validateGoogleClientId(value, true) })).trim() || undefined;
+  }
+  const facebook = await ask('Facebook', 'Enter the App ID and Client Token now (Meta for Developers → App settings)');
+  if (facebook === 'configure') {
+    credentials.facebookAppId = (await input({ message: 'Facebook App ID:', validate: validateFacebookAppId })).trim();
+    credentials.facebookClientToken = (await input({ message: 'Facebook Client Token (App settings → Advanced):', validate: v => (v.trim() ? true : 'Enter the client token (or choose Skip).') })).trim();
+    credentials.facebookAppSecret = (await input({ message: 'Facebook App Secret – for the backend (leave empty to add it later):' })).trim() || undefined;
+  }
+  const apple = await ask('Apple', 'Sign in with Apple uses your bundle id – optionally enter a Services ID (web / Android)');
+  if (apple === 'configure') {
+    credentials.appleServiceId = (await input({ message: 'Apple Services ID (leave empty – the bundle id is enough for the iOS app):' })).trim() || undefined;
+  }
+  return { providers: { google: google !== 'none', facebook: facebook !== 'none', apple: apple !== 'none' }, credentials };
+}
+
 /**
  * Collects every option. Values passed as flags are used as-is (after validation);
  * missing ones are prompted for, or defaulted with --yes.
@@ -137,9 +198,13 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     notifications: true,
     authEmail: true,
     authMobile: false,
-    socialAuth: 'none',
+    socialAuth: { ...NO_SOCIAL },
+    socialCredentials: {},
     socket: false,
     chat: false,
+    groupChat: false,
+    termsAndConditions: true,
+    deleteAccount: true,
     drawer: false,
     initGit: flags.git,
     installDependencies: flags.install,
@@ -254,11 +319,51 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     true,
   );
 
+  // Authentication: Email Authentication (Sign In, Sign Up, Forgot Password, Reset Password)
+  const authEmail = await askYesNo(
+    flags.authEmail,
+    interactive,
+    'Do you want to enable Email Authentication (Sign In, Sign Up, Forgot & Reset Password)?',
+    'Email authentication',
+    true,
+  );
+
+  // Authentication: Mobile OTP Authentication (Phone Login, OTP Verification, Forgot PIN)
+  const authMobile = await askYesNo(
+    flags.authMobile,
+    interactive,
+    'Do you want to enable Mobile OTP Authentication (Sign In with Phone, OTP verification)?',
+    'Mobile OTP authentication',
+    false,
+  );
+
+  // Social logins – each provider on its own: configure now, add with placeholders, or leave out.
+  const { providers: socialAuth, credentials: socialCredentials } = await askSocialLogin(flags, interactive);
+
+  // Real-Time Chat (WhatsApp style with Media, Audio, Video, Docs)
+  const chat = await askYesNo(
+    flags.chat,
+    interactive,
+    'Do you want Chat functionality (chat list, chat room, photos / videos / files / voice messages)?',
+    'Chat',
+    false,
+  );
+
+  // Group chats (admins, members, name & image) – only with chat.
+  const groupChat = chat
+    ? await askYesNo(flags.groupChat, interactive, 'Do you want Group Chat (create groups, admins / members, add / remove members, leave)?', 'Group chat', false)
+    : false;
+
+  // Socket.io Real-time Client (chat always has it)
+  const socket = chat
+    ? true
+    : await askYesNo(flags.socket, interactive, 'Do you want to implement Socket.io client for real-time events & listeners?', 'Socket.io client', false);
+
   // Push Notifications (FCM + Notifee)
   const notifications = await askYesNo(
     flags.notifications,
     interactive,
-    'Do you want to implement push notifications (Firebase Messaging + Notifee background handlers)?',
+    'Do you want FCM / Push Notification support (device registration, FCM token, Notifee)?',
     'Push notifications',
     true,
   );
@@ -305,56 +410,17 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     false,
   );
 
-  // Authentication: Email Authentication (Sign In, Sign Up, Forgot Password, Reset Password)
-  const authEmail = await askYesNo(
-    flags.authEmail,
+  // Terms & Conditions / Privacy Policy – the links come from the backend (GET /legal).
+  const termsAndConditions = await askYesNo(
+    flags.terms,
     interactive,
-    'Do you want to enable Email Authentication (Sign In, Sign Up, Forgot & Reset Password)?',
-    'Email authentication',
+    'Do you want Terms & Conditions (links read from the backend, opened in the app)?',
+    'Terms & Conditions',
     true,
   );
 
-  // Authentication: Mobile OTP Authentication (Phone Login, OTP Verification, Forgot PIN)
-  const authMobile = await askYesNo(
-    flags.authMobile,
-    interactive,
-    'Do you want to enable Mobile OTP Authentication (Sign In with Phone, OTP verification)?',
-    'Mobile OTP authentication',
-    false,
-  );
-
-  // Social Logins (Google / Facebook / Apple)
-  let socialAuth: SocialLoginOption;
-  if (flags.socialAuth !== undefined) {
-    socialAuth = flags.socialAuth;
-    log.success(`Social login: ${chalk.cyan(socialAuth)}`);
-  } else if (interactive) {
-    socialAuth = await select({
-      message: 'Do you want to add Social Login (Google / Facebook / Apple)?',
-      choices: SOCIAL_LOGIN_CHOICES.map(c => ({ name: c.label, value: c.value, description: c.description })),
-      default: 'none',
-    });
-  } else {
-    socialAuth = 'none';
-  }
-
-  // Socket.io Real-time Client
-  const socket = await askYesNo(
-    flags.socket,
-    interactive,
-    'Do you want to implement Socket.io client for real-time events & listeners?',
-    'Socket.io client',
-    false,
-  );
-
-  // Real-Time Chat (WhatsApp style with Media, Audio, Video, Docs)
-  const chat = await askYesNo(
-    flags.chat,
-    interactive,
-    'Do you want to implement a WhatsApp-style Real-Time Chat module (Chat list, Chat room, Audio/Video/Image/Doc messages)?',
-    'Real-time Chat module',
-    false,
-  );
+  // Profile → Delete account (required by the App Store / Play Store for apps with sign-up).
+  const deleteAccount = await askYesNo(flags.deleteAccount, interactive, 'Do you want Delete Account functionality (Profile → Delete account)?', 'Delete account', true);
 
   // Navigation: side drawer around the bottom tabs
   const drawer = await askYesNo(
@@ -416,8 +482,12 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     authEmail,
     authMobile,
     socialAuth,
-    socket: socket || chat, // chat automatically enables socket client
+    socialCredentials,
+    socket,
     chat,
+    groupChat,
+    termsAndConditions,
+    deleteAccount,
     drawer,
     firebase,
     analytics,

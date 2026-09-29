@@ -38,16 +38,17 @@ export function planMicroservices(base: BackendOptions): MicroservicesPlan {
   const none = { email: false, mobileOtp: false, google: false, facebook: false, apple: false };
   const chat = base.modules.chat;
   const notifications = base.modules.notifications;
+  const off = { chat: false, groupChat: false, notifications: false, legal: false, deleteAccount: false };
   return {
     rootDir: base.projectDir,
     chat,
     notifications,
     services: [
       // Accounts, sign-in, profiles.
-      service('identity', { modules: { chat: false, notifications: false } }),
+      service('identity', { modules: { ...off, legal: base.modules.legal, deleteAccount: base.modules.deleteAccount } }),
       // Only verifies access tokens (no sign-in of its own) – plain JWT, no refresh tokens.
-      ...(chat ? [service('chat', { auth: 'jwt', authMethods: none, hashing: 'none', modules: { chat: true, notifications: false }, remotePush: notifications })] : []),
-      ...(notifications ? [service('notifications', { auth: 'jwt', authMethods: none, hashing: 'none', modules: { chat: false, notifications: true } })] : []),
+      ...(chat ? [service('chat', { auth: 'jwt', authMethods: none, hashing: 'none', modules: { ...off, chat: true, groupChat: base.modules.groupChat }, remotePush: notifications })] : []),
+      ...(notifications ? [service('notifications', { auth: 'jwt', authMethods: none, hashing: 'none', modules: { ...off, notifications: true } })] : []),
     ],
   };
 }
@@ -77,6 +78,10 @@ async function writeGateway(plan: MicroservicesPlan, base: BackendOptions): Prom
   await fs.outputFile(path.join(dir, '.env'), `${env}\n`);
   await fs.outputFile(path.join(dir, '.env.example'), `${env}\n`);
   await fs.outputFile(path.join(dir, '.gitignore'), 'node_modules/\ndist/\n.env\n');
+  if (base.docker) {
+    await fs.outputFile(path.join(dir, 'Dockerfile'), GATEWAY_DOCKERFILE);
+    await fs.outputFile(path.join(dir, '.dockerignore'), 'node_modules\ndist\n.env\n*.log\n');
+  }
   await fs.outputJson(
     path.join(dir, 'tsconfig.json'),
     {
@@ -122,10 +127,10 @@ async function writeGateway(plan: MicroservicesPlan, base: BackendOptions): Prom
   );
 }
 
-function dockerCompose(base: BackendOptions): string {
-  const db =
-    base.database === 'postgresql'
-      ? `  db:
+function dbService(base: BackendOptions): string {
+  switch (base.database) {
+    case 'postgresql':
+      return `  db:
     image: postgres:17
     environment:
       POSTGRES_USER: postgres
@@ -135,9 +140,9 @@ function dockerCompose(base: BackendOptions): string {
     volumes:
       - db-data:/var/lib/postgresql/data
       # One database per service.
-      - ./docker/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro`
-      : base.database === 'mysql'
-        ? `  db:
+      - ./docker/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro`;
+    case 'mysql':
+      return `  db:
     image: mysql:8.4
     environment:
       MYSQL_ROOT_PASSWORD: root
@@ -146,25 +151,87 @@ function dockerCompose(base: BackendOptions): string {
     volumes:
       - db-data:/var/lib/mysql
       # One database per service.
-      - ./docker/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro`
-        : `  db:
+      - ./docker/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro`;
+    case 'mongodb':
+      return `  db:
     image: mongo:8
     ports:
       - '27017:27017'
     volumes:
       - db-data:/data/db`;
-  return `# Development infrastructure: the database server (one database per service) + Redis (events).
+  }
+}
+
+/** Infrastructure for development + every service and the gateway as containers. */
+function dockerCompose(plan: MicroservicesPlan, base: BackendOptions): string {
+  const uploads = (role: ServiceRole | undefined) => role !== 'notifications';
+  const services = plan.services.map(s => {
+    const dir = path.relative(plan.rootDir, s.projectDir);
+    // Inside Docker the database and Redis are reached by service name.
+    const databaseUrl = devDatabaseUrl(s).replace('localhost', 'db');
+    return `  ${s.service}:
+    build: ./${dir}
+    env_file: ./${dir}/.env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${databaseUrl}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - db
+      - redis${uploads(s.service) ? `
+    volumes:
+      - ${s.service}-uploads:/app/uploads` : ''}`;
+  });
+  const urls = plan.services.map(s => `      ${s.service!.toUpperCase()}_URL: http://${s.service}:${s.port}`);
+  const volumes = ['db-data', ...plan.services.filter(s => uploads(s.service)).map(s => `${s.service}-uploads`)];
+  return `# Development: start the database server + Redis, then run the services on your machine –
+#   docker compose up -d db redis
+#   npm run setup && npm run dev
+#
+# Everything in containers (each service is built from its Dockerfile):
+#   docker compose up -d --build
 services:
-${db}
+${dbService(base)}
+
   redis:
     image: redis:8
     ports:
       - '6379:6379'
 
+${services.join('\n\n')}
+
+  gateway:
+    build: ./gateway
+    environment:
+${urls.join('\n')}
+    ports:
+      - '${SERVICE_PORTS.gateway}:${SERVICE_PORTS.gateway}'
+    depends_on:
+${plan.services.map(s => `      - ${s.service}`).join('\n')}
+
 volumes:
-  db-data:
+${volumes.map(v => `  ${v}:`).join('\n')}
 `;
 }
+
+const GATEWAY_DOCKERFILE = `# Production image of the API gateway (built by the root docker-compose.yml).
+FROM node:22-slim AS build
+WORKDIR /app
+COPY package*.json ./
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+COPY . .
+RUN npm run build && npm prune --omit=dev
+
+FROM node:22-slim
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=build --chown=node:node /app/package.json ./
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/dist ./dist
+USER node
+EXPOSE ${SERVICE_PORTS.gateway}
+CMD ["node", "dist/src/server.js"]
+`;
 
 function initDatabasesSql(plan: MicroservicesPlan, base: BackendOptions): string | null {
   if (base.database === 'mongodb') return null; // MongoDB creates databases on first write.
@@ -179,6 +246,16 @@ function rootReadme(plan: MicroservicesPlan, base: BackendOptions): string {
     ...(plan.chat ? [`| \`services/chat/\` | ${SERVICE_PORTS.chat} | Conversations, messages, uploads, **Socket.IO** (\`/chat\`) |`] : []),
     ...(plan.notifications ? [`| \`services/notifications/\` | ${SERVICE_PORTS.notifications} | Push devices, inbox, broadcasts (\`/notifications\`) |`] : []),
   ];
+  const databases = plan.services.map(s => '`' + new URL(devDatabaseUrl(s)).pathname.slice(1) + '`').join(', ');
+  const prerequisites = base.docker
+    ? ''
+    : [
+        `You need ${DATABASE_LABELS[base.database]} and Redis running (locally or hosted). ` +
+          (base.database === 'mongodb' ? 'MongoDB creates the databases on first use.' : `Create one database per service: ${databases}.`),
+        'Set `DATABASE_URL` / `REDIS_URL` in each `services/*/.env` if yours differ from the defaults.',
+        '',
+        '',
+      ].join('\n');
   return `# ${base.displayName} – microservices
 
 ${FRAMEWORK_LABELS[base.framework]} services · ${DATABASE_LABELS[base.database]} (one database per service) · Redis events.
@@ -199,15 +276,14 @@ ${plan.chat && plan.notifications ? '- **Chat → notifications:** members who a
 
 ## Run it
 
-\`\`\`sh
-docker compose up -d          # database server + Redis
-npm install                   # root tools (concurrently)
+${prerequisites}\`\`\`sh
+${base.docker ? 'docker compose up -d db redis  # database server + Redis\n' : ''}npm install                   # root tools (concurrently)
 npm run install:all           # every service + the gateway
 npm run setup                 # migrations${base.orm === 'mongoose' ? '' : ' + seed'}
 npm run dev                   # gateway + all services, one terminal
 \`\`\`
 
-Or one at a time: \`cd services/identity && npm run dev\` (each service has its own README).
+Or one at a time: \`cd services/identity && npm run dev\` (each service has its own README).${base.docker ? '\n\n**Everything in Docker:** `docker compose up -d --build` builds each service and the gateway from their Dockerfiles\n(run `npm run setup` once against the containers\' database first).' : ''}
 
 | Script | What |
 | --- | --- |
@@ -241,9 +317,11 @@ async function writeRoot(plan: MicroservicesPlan, base: BackendOptions): Promise
     },
     { spaces: 2 },
   );
-  await fs.outputFile(path.join(plan.rootDir, 'docker-compose.yml'), dockerCompose(base));
-  const sql = initDatabasesSql(plan, base);
-  if (sql) await fs.outputFile(path.join(plan.rootDir, 'docker/init-databases.sql'), sql);
+  if (base.docker) {
+    await fs.outputFile(path.join(plan.rootDir, 'docker-compose.yml'), dockerCompose(plan, base));
+    const sql = initDatabasesSql(plan, base);
+    if (sql) await fs.outputFile(path.join(plan.rootDir, 'docker/init-databases.sql'), sql);
+  }
   await fs.outputFile(path.join(plan.rootDir, 'README.md'), rootReadme(plan, base));
   await fs.outputFile(path.join(plan.rootDir, '.gitignore'), 'node_modules/\n.DS_Store\n*.log\n');
 }
@@ -253,7 +331,7 @@ export function describeMicroservices(plan: MicroservicesPlan): string[] {
   return [
     `gateway/                 :${SERVICE_PORTS.gateway}  (public)`,
     ...plan.services.map(s => `services/${s.service?.padEnd(14)}  :${s.port}  ${s.service === 'identity' ? 'auth + users' : s.service}`),
-    'docker-compose.yml       database server + Redis',
+    ...(plan.services[0]?.docker ? ['docker-compose.yml       database server + Redis + every service'] : []),
   ];
 }
 

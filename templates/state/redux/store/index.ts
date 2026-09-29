@@ -10,4 +10,4 @@ export type AppDispatch = typeof store.dispatch;
 
 export * from './hooks';
 export * from './selectors/authSelectors';
-export { sessionCleared, sessionStarted, type AuthState } from './slices/authSlice';
+export { sessionCleared, sessionStarted, userUpdated, type AuthState } from './slices/authSlice';

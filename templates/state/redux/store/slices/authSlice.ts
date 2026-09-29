@@ -25,6 +25,10 @@ const authSlice = createSlice({
       state.token = action.payload.token;
       state.status = 'idle';
     },
+    /** A profile change – the tokens stay as they are. */
+    userUpdated(state, action: PayloadAction<User>) {
+      state.user = action.payload;
+    },
     sessionCleared() {
       return initialState;
     },
@@ -47,6 +51,6 @@ const authSlice = createSlice({
 {{/if}}
 });
 
-export const { sessionStarted, sessionCleared } = authSlice.actions;
+export const { sessionStarted, userUpdated, sessionCleared } = authSlice.actions;
 
 export const authReducer = authSlice.reducer;

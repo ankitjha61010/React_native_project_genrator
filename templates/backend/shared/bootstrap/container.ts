@@ -3,6 +3,9 @@ import { config } from '{{IMPORT:config.env}}';
 import { logger } from '{{IMPORT:core.logger}}';
 {{/if}}
 import type { Database } from '{{IMPORT:db.connection}}';
+{{#if REDIS}}
+import { redis, redisHealthCheck } from '{{IMPORT:db.redis}}';
+{{/if}}
 import { createRepositories, type Repositories } from '{{IMPORT:db.repositories}}';
 import type { HealthCheck } from '{{IMPORT:port.healthCheck}}';
 {{#if AUTH}}
@@ -64,12 +67,27 @@ import { Sessions } from '{{IMPORT:app.authSessions}}';
 import { ChatService } from '{{IMPORT:app.chatService}}';
 {{/if}}
 import { HealthService } from '{{IMPORT:app.healthService}}';
+{{#if DEVICES}}
+import { DevicesService } from '{{IMPORT:app.devicesService}}';
+{{/if}}
 {{#if NOTIFICATIONS}}
 import { NotificationsService } from '{{IMPORT:app.notificationsService}}';
 {{/if}}
 {{#if USERS_API}}
 import { UsersService } from '{{IMPORT:app.usersService}}';
 {{/if}}
+
+/*
+ * container.ts – where the app is put together. Nothing else creates services.
+ *
+ *   1. createInfrastructure() – the things that talk to the outside world: the database{{#if AUTH}}, JWT{{/if}}{{#if AUTH_EMAIL}}, email{{/if}}{{#if AUTH_OTP}}, SMS{{/if}}{{#if UPLOADS}}, file storage{{/if}}…
+ *   2. createServices()       – the business logic ({{#if AUTH_API}}auth, {{/if}}{{#if USERS_API}}users, {{/if}}{{#if CHAT}}chat, {{/if}}{{#if DEVICES}}devices, {{/if}}{{#if NOTIFICATIONS}}notifications, {{/if}}health), each given what it needs.
+ *
+ * {{#if NEST}}Nest injects these services into the controllers (core.module.ts){{else}}app.ts hands them to the routes{{/if}}. The tests call createServices() with in-memory
+ * infrastructure instead, so they run without a database.
+ *
+ * Adding a service: create it in createServices() and add it to the returned object.
+ */
 
 /** Everything that touches the outside world – tests pass in-memory versions instead. */
 export interface Infrastructure {
@@ -106,7 +124,7 @@ export interface Infrastructure {
 /** The real infrastructure: database repositories + configured providers. */
 export function createInfrastructure(database: Database): Infrastructure {
 {{#if EVENTS}}
-  const eventBus = createEventBus(config.events.redisUrl, logger);
+  const eventBus = createEventBus(config.redis.url, logger);
 {{/if}}
 {{#if SVC_IDENTITY}}
   const repositories = createRepositories(database);
@@ -119,7 +137,7 @@ export function createInfrastructure(database: Database): Infrastructure {
 {{else}}
     repositories: createRepositories(database),
 {{/if}}
-    healthChecks: [database.healthCheck{{#if EVENTS}}, eventBus.healthCheck{{/if}}],
+    healthChecks: [database.healthCheck{{#if EVENTS}}, eventBus.healthCheck{{/if}}{{#if REDIS}}, ...(redis ? [redisHealthCheck] : []){{/if}}],
 {{#if AUTH}}
     tokenService: new JwtTokenService(config.jwt),
 {{/if}}
@@ -174,18 +192,35 @@ export function authSettings(): AuthSettings {
 }
 {{/if}}
 
-/**
- * Composition root: the one place that builds every service. Express and the tests use it
- * directly{{#if NEST}}; Nest exposes each service as a provider (core.module.ts){{/if}}.
- */
+/** Builds every service from the infrastructure. */
 export function createServices(infra: Infrastructure) {
   const repos = infra.repositories;
 {{#if AUTH}}
   // Resolves the user behind an access token (routes, sockets).
   const sessions = new Sessions(repos.users, {{#if AUTH_REFRESH}}repos.refreshTokens, {{/if}}infra.tokenService{{#if AUTH_ROTATION}}, logger{{/if}});
 {{/if}}
+{{#if DEVICES}}
+  const devices = new DevicesService(repos.devices);
+{{/if}}
 {{#if NOTIFICATIONS}}
-  const notifications = new NotificationsService({ notifications: repos.notifications, users: repos.users, pushSender: infra.pushSender, realtime: infra.realtime, logger });
+  const notifications = new NotificationsService({ notifications: repos.notifications, devices, users: repos.users, pushSender: infra.pushSender, realtime: infra.realtime, logger });
+{{/if}}
+
+{{#if CHAT}}
+  const chat = new ChatService({
+    chat: repos.chat,
+    users: repos.users,
+    storage: infra.storage,
+    realtime: infra.realtime,
+{{#if NOTIFICATIONS}}
+    push: (userIds, message) => notifications.push(userIds, message),
+{{/if}}
+{{#if PUSH_EVENTS}}
+    // The notifications service sends it (it owns the devices).
+    push: (userIds, message) => infra.eventBus.publish(EVENT_CHANNELS.push, { userIds, message }),
+{{/if}}
+    logger,
+  });
 {{/if}}
 
   return {
@@ -216,30 +251,25 @@ export function createServices(infra: Infrastructure) {
 {{/if}}
 {{#if USERS_API}}
 {{#if AUTH}}
+{{#if GROUP_CHAT}}
+    // Before an account is deleted its groups get a new admin.
+    users: new UsersService(repos.users, infra.storage, logger, userId => chat.leaveAllGroups(userId)),
+{{else}}
     users: new UsersService(repos.users, infra.storage, logger),
+{{/if}}
 {{else}}
     users: new UsersService(repos.users),
 {{/if}}
 {{/if}}
     health: new HealthService(infra.healthChecks),
+{{#if DEVICES}}
+    devices,
+{{/if}}
 {{#if NOTIFICATIONS}}
     notifications,
 {{/if}}
 {{#if CHAT}}
-    chat: new ChatService({
-      chat: repos.chat,
-      users: repos.users,
-      storage: infra.storage,
-      realtime: infra.realtime,
-{{#if NOTIFICATIONS}}
-      push: (userIds, message) => notifications.push(userIds, message),
-{{/if}}
-{{#if PUSH_EVENTS}}
-      // The notifications service sends it (it owns the devices).
-      push: (userIds, message) => infra.eventBus.publish(EVENT_CHANNELS.push, { userIds, message }),
-{{/if}}
-      logger,
-    }),
+    chat,
 {{/if}}
   };
 }

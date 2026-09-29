@@ -1,15 +1,37 @@
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsPositive, IsString, IsUrl, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
-import { MESSAGE_TYPES, type MessageType } from '{{IMPORT:domain.chat}}';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsNumber, IsOptional, IsPositive, IsString, IsUrl, Max, MaxLength, Min, {{#if GROUP_CHAT}}MinLength, {{/if}}ValidateNested } from 'class-validator';
+import { {{#if GROUP_CHAT}}MEMBER_ROLES, type MemberRole, {{/if}}MESSAGE_TYPES, type MessageType } from '{{IMPORT:domain.chat}}';
 
 export class StartConversationDto {
+  /** The other person. */
   @IsArray()
   @ArrayMinSize(1)
-  @ArrayMaxSize(100)
+  @ArrayMaxSize(1)
+  @IsString({ each: true })
+  participantIds: string[];
+}
+{{#if GROUP_CHAT}}
+
+export class CreateGroupDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  title: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(256)
   @IsString({ each: true })
   participantIds: string[];
 
-  /** Groups only. */
+  /** Upload the image first (POST /chat/upload). */
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  @MaxLength(1024)
+  avatarUrl?: string | null;
+}
+
+export class UpdateGroupDto {
   @IsOptional()
   @IsString()
   @MinLength(1)
@@ -17,9 +39,24 @@ export class StartConversationDto {
   title?: string;
 
   @IsOptional()
-  @IsBoolean()
-  isGroup?: boolean;
+  @IsUrl({ require_tld: false })
+  @MaxLength(1024)
+  avatarUrl?: string | null;
 }
+
+export class AddMembersDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(256)
+  @IsString({ each: true })
+  userIds: string[];
+}
+
+export class MemberRoleDto {
+  @IsIn(MEMBER_ROLES)
+  role: MemberRole;
+}
+{{/if}}
 
 export class MediaCropDto {
   @IsNumber()
@@ -137,13 +174,19 @@ export class ChatParticipantDto {
   avatar?: string;
   isOnline: boolean;
   lastSeen?: string;
+{{#if GROUP_CHAT}}
+  role: MemberRole;
+{{/if}}
 }
 
 export class ConversationDto {
   id: string;
   title: string;
   avatar?: string;
+{{#if GROUP_CHAT}}
   isGroup: boolean;
+  myRole: MemberRole;
+{{/if}}
   unreadCount: number;
   lastMessage?: ChatMessageDto;
   participants: ChatParticipantDto[];

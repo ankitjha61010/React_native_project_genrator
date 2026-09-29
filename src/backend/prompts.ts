@@ -5,6 +5,7 @@ import type { CliFlags } from '../cli/args.js';
 import { log } from '../cli/logger.js';
 import { GeneratorError } from '../utils/errors.js';
 import { resolveUserPath } from '../utils/paths.js';
+import { validateFacebookAppId, validateGoogleClientId, type SocialCredentials } from '../config/socialAuth.js';
 import { BACKEND_ARCHITECTURES, getBackendArchitecture } from './architectures.js';
 import { AUTH_LABELS, DATABASE_LABELS, FRAMEWORK_LABELS, HASHING_LABELS, ORM_LABELS } from './context.js';
 import {
@@ -114,8 +115,11 @@ export function describeBackend(o: BackendOptions): string[] {
     `Authentication: ${AUTH_LABELS[o.auth]}`,
     ...(auth ? [`Sign-in:        ${describeMethods(o.authMethods)}`] : []),
     ...(auth && o.authMethods.email ? [`Hashing:        ${HASHING_LABELS[o.hashing]}`] : []),
-    ...(auth ? [`Modules:        chat ${on(o.modules.chat)} · notifications ${on(o.modules.notifications)}`] : []),
+    ...(auth ? [`Modules:        chat ${on(o.modules.chat)} · group chat ${on(o.modules.groupChat)} · push notifications ${on(o.modules.notifications)} · delete account ${on(o.modules.deleteAccount)}`] : []),
+    `Legal pages:    ${on(o.modules.legal)}`,
     ...(auth ? [`Deployment:     ${o.deployment === 'microservices' ? 'microservices (gateway + services, Redis)' : 'monolith'}`] : []),
+    `Redis:          ${on(o.redis)}${o.redis ? chalk.dim(' (rate limits, Socket.IO adapter, cache, OTP codes)') : ''}`,
+    `Docker:         ${on(o.docker)}`,
     `Encryption:     ${on(o.apiEncryption)}`,
     `Swagger:        ${on(o.swagger)}`,
     `Rate limiting:  ${on(s.rateLimit)} global · ${on(auth && s.authRateLimit)} auth routes`,
@@ -125,7 +129,7 @@ export function describeBackend(o: BackendOptions): string[] {
 }
 
 /** Full-stack: what the app decides for the backend (these questions are not asked). */
-export type BackendPreset = Pick<BackendOptions, 'appName' | 'displayName' | 'projectDir' | 'authMethods' | 'modules' | 'apiEncryption' | 'appPackage' | 'installDependencies' | 'initGit'>;
+export type BackendPreset = Pick<BackendOptions, 'appName' | 'displayName' | 'projectDir' | 'authMethods' | 'modules' | 'apiEncryption' | 'socialCredentials' | 'appPackage' | 'installDependencies' | 'initGit'>;
 
 /**
  * Backend wizard. Flags are used as-is; everything else is asked (or defaulted with --yes).
@@ -250,6 +254,25 @@ export async function collectBackendOptions(flags: CliFlags, previous?: BackendO
     if (fromFlag) log.success(`Sign-in methods: ${chalk.cyan(fromFlag.join(', '))}`);
   }
 
+  // Social sign-in keys (optional – they can be set in .env later).
+  const socialCredentials: SocialCredentials = preset?.socialCredentials ?? {
+    googleWebClientId: flags.googleWebClientId?.trim() || undefined,
+    googleIosClientId: flags.googleIosClientId?.trim() || undefined,
+    facebookAppId: flags.facebookAppId?.trim() || undefined,
+    facebookAppSecret: flags.facebookAppSecret?.trim() || undefined,
+    appleServiceId: flags.appleServiceId?.trim() || undefined,
+  };
+  if (!preset && interactive) {
+    if (authMethods.google && !socialCredentials.googleWebClientId) {
+      socialCredentials.googleWebClientId =
+        (await input({ message: 'Google login – the app\'s Web client ID (leave empty to set GOOGLE_CLIENT_IDS later):', validate: value => validateGoogleClientId(value, true) })).trim() || undefined;
+    }
+    if (authMethods.facebook && !socialCredentials.facebookAppId) {
+      socialCredentials.facebookAppId = (await input({ message: 'Facebook login – App ID (leave empty to set it later):', validate: value => (value.trim() ? validateFacebookAppId(value) : true) })).trim() || undefined;
+      if (socialCredentials.facebookAppId) socialCredentials.facebookAppSecret = (await input({ message: 'Facebook App Secret (leave empty to set it later):' })).trim() || undefined;
+    }
+  }
+
   // Password hashing (email + password accounts only)
   let hashing: PasswordHashing = 'none';
   if (authMethods.email) {
@@ -314,25 +337,41 @@ export async function collectBackendOptions(flags: CliFlags, previous?: BackendO
     );
   }
 
-  // Feature modules
-  let modules: BackendModules = { chat: false, notifications: false };
+  // Feature modules – one Yes / No question each (the same questions as the app wizard).
+  let modules: BackendModules = { chat: false, groupChat: false, notifications: false, legal: flags.terms ?? true, deleteAccount: flags.deleteAccount ?? true };
+  const yesNo = (flag: boolean | undefined, message: string, label: string, fallback: boolean, current?: boolean) =>
+    ask(
+      flag,
+      () =>
+        select({
+          message,
+          default: current ?? fallback,
+          choices: [
+            { name: '1. Yes', value: true },
+            { name: '2. No', value: false },
+          ],
+        }),
+      fallback,
+      label,
+      v => (v ? 'yes' : 'no'),
+    );
   if (preset) {
     modules = { ...preset.modules };
   } else if (auth !== 'none') {
+    // `--modules chat,notifications` still works; otherwise --chat / --notifications / --group-chat… or the questions.
     const fromFlag = flags.modules === 'none' ? [] : parseList(flags.modules, MODULE_ITEMS, '--modules');
-    const picked =
-      fromFlag ??
-      (interactive
-        ? await checkbox<keyof BackendModules>({
-            message: 'Which modules do you want? (space to toggle)',
-            choices: [
-              { name: 'Chat', value: 'chat', checked: previous?.modules.chat ?? false, description: 'Conversations, messages, media upload, Socket.IO (typing, online, read receipts)' },
-              { name: 'Notifications', value: 'notifications', checked: previous?.modules.notifications ?? false, description: 'Push (FCM) devices, notification inbox, admin broadcasts' },
-            ],
-          })
-        : []);
-    for (const module of picked) modules[module] = true;
+    const chat = fromFlag ? fromFlag.includes('chat') : await yesNo(flags.chat, 'Do you want Chat functionality?', 'Chat', false, previous?.modules.chat);
+    const groupChat = chat ? await yesNo(flags.groupChat, 'Do you want Group Chat?', 'Group chat', false, previous?.modules.groupChat) : false;
+    const notifications = fromFlag
+      ? fromFlag.includes('notifications')
+      : await yesNo(flags.notifications, 'Do you want FCM / Push Notification support (device registration, device APIs)?', 'Push notifications', false, previous?.modules.notifications);
+    const legal = await yesNo(flags.terms, 'Do you want Terms & Conditions (GET /legal + editable pages)?', 'Terms & Conditions', true, previous?.modules.legal);
+    const deleteAccount = await yesNo(flags.deleteAccount, 'Do you want Delete Account functionality (DELETE /users/me)?', 'Delete account', true, previous?.modules.deleteAccount);
+    modules = { chat, groupChat, notifications, legal, deleteAccount };
     if (fromFlag) log.success(`Modules: ${chalk.cyan(fromFlag.join(', ') || 'none')}`);
+  } else {
+    // No accounts: only the legal pages make sense.
+    modules = { ...modules, deleteAccount: false, legal: await yesNo(flags.terms, 'Do you want Terms & Conditions (GET /legal + editable pages)?', 'Terms & Conditions', true, previous?.modules.legal) };
   }
 
   // Deployment (microservices need accounts: the identity service is the core)
@@ -358,6 +397,54 @@ export async function collectBackendOptions(flags: CliFlags, previous?: BackendO
           'Deployment',
           v => (v === 'microservices' ? 'microservices (gateway + services)' : 'monolith'),
         );
+
+  // Redis – microservices can't run without it (their events travel over Redis).
+  let redis: boolean;
+  if (deployment === 'microservices') {
+    if (flags.redis === false) throw new GeneratorError('--no-redis can\'t be used with --deployment microservices (the services talk over Redis).');
+    redis = true;
+    log.success(`Redis: ${chalk.cyan('yes (required by microservices)')}`);
+  } else {
+    redis = await ask(
+      flags.redis,
+      () =>
+        select({
+          message: 'Do you want Redis?',
+          default: previous?.redis ?? false,
+          choices: [
+            { name: '1. No', value: false, description: 'Nothing extra to install or run (recommended to start – you can add Redis later)' },
+            {
+              name: '2. Yes',
+              value: true,
+              description: 'Rate limits shared by every server instance, Socket.IO across instances, a cache helper, OTP / verification codes with expiry',
+            },
+          ],
+        }),
+      false,
+      'Redis',
+      v => (v ? 'yes' : 'no'),
+    );
+  }
+
+  const docker = await ask(
+    flags.docker,
+    () =>
+      select({
+        message: 'Do you want Docker?',
+        default: previous?.docker ?? false,
+        choices: [
+          { name: '1. No', value: false, description: `No Docker files – install ${DATABASE_LABELS[database]}${redis ? ' and Redis' : ''} yourself (or use a hosted one)` },
+          {
+            name: '2. Yes',
+            value: true,
+            description: `docker-compose.yml (${DATABASE_LABELS[database]}${redis ? ' + Redis' : ''}) for development + a Dockerfile to build the API image`,
+          },
+        ],
+      }),
+    false,
+    'Docker',
+    v => (v ? 'yes' : 'no'),
+  );
 
   // Security & rate limiting
   let security = parseSecurityFlag(flags.security);
@@ -432,10 +519,13 @@ export async function collectBackendOptions(flags: CliFlags, previous?: BackendO
     hashing,
     modules,
     apiEncryption,
+    socialCredentials,
     deployment,
     appPackage: preset?.appPackage ?? (flags.package?.trim() || `com.example.${appName.toLowerCase().replace(/[^a-z0-9]/g, '')}`),
     swagger,
     security,
+    redis,
+    docker,
     installDependencies,
     initGit,
   };

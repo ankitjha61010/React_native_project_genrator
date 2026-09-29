@@ -17,7 +17,7 @@ import {
  *    usage description (NS…UsageDescription) to Info.plist,
  *  - Android: add the <uses-permission> to AndroidManifest.xml.
  */
-export type AppPermission = 'camera' | 'photoLibrary';
+export type AppPermission = 'camera' | 'photoLibrary'{{#if CHAT}} | 'microphone'{{/if}};
 
 // `undefined` means "no runtime permission needed on this platform".
 const PERMISSION_MAP: Record<AppPermission, Permission | undefined> = {
@@ -25,6 +25,10 @@ const PERMISSION_MAP: Record<AppPermission, Permission | undefined> = {
   // react-native-image-picker uses the system photo pickers (PHPicker on iOS, Photo Picker on
   // Android), which need no runtime permission. Map it if you access the library directly.
   photoLibrary: undefined,
+{{#if CHAT}}
+  // Chat voice messages.
+  microphone: Platform.select({ ios: PERMISSIONS.IOS.MICROPHONE, android: PERMISSIONS.ANDROID.RECORD_AUDIO }),
+{{/if}}
 };
 
 export type { PermissionStatus };

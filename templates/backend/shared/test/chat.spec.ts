@@ -19,7 +19,7 @@ describe('chat', () => {
     const again = await h.chat.startConversation(alice, { participantIds: [bob] });
 
     expect(again.id).toBe(first.id);
-    expect(first).toMatchObject({ title: 'Bob', isGroup: false, unreadCount: 0, participants: [{ id: bob, name: 'Bob', isOnline: false }] });
+    expect(first).toMatchObject({ title: 'Bob', {{#if GROUP_CHAT}}isGroup: false, {{/if}}unreadCount: 0, participants: [{ id: bob, name: 'Bob', isOnline: false }] });
     expect((await h.chat.getConversation(bob, first.id)).title).toBe('Alice');
   });
 
@@ -96,19 +96,81 @@ describe('chat', () => {
     expect((await h.chat.listMessages(bob, id, { limit: 10 })).items.map(m => m.text)).toEqual(['new']);
   });
 
-  it('creates groups and removes them when the last member leaves', async () => {
-    await expect(h.chat.startConversation(alice, { participantIds: [bob], isGroup: true })).rejects.toMatchObject({ code: 'TITLE_REQUIRED' });
-    const group = await h.chat.startConversation(alice, { participantIds: [bob], isGroup: true, title: 'Team' });
-    expect(group).toMatchObject({ title: 'Team', isGroup: true });
-
-    await h.chat.deleteConversation(alice, group.id);
-    await h.chat.deleteConversation(bob, group.id);
-    expect(await h.repositories.chat.findConversation(group.id)).toBeNull();
+  it('opens direct chats with exactly one other person', async () => {
+    await expect(h.chat.startConversation(alice, { participantIds: [alice] })).rejects.toMatchObject({ code: 'NO_PARTICIPANTS' });
+    const eve = (await h.repositories.users.create({ email: 'eve@example.com', name: 'Eve' })).id;
+    await expect(h.chat.startConversation(alice, { participantIds: [bob, eve] })).rejects.toMatchObject({ code: 'TOO_MANY_PARTICIPANTS' });
+    await expect(h.chat.startConversation(alice, { participantIds: ['missing'] })).rejects.toMatchObject({ statusCode: 404 });
   });
+{{#if GROUP_CHAT}}
+
+  describe('groups', () => {
+    let carol: string;
+
+    beforeEach(async () => {
+      carol = (await h.repositories.users.create({ email: 'carol@example.com', name: 'Carol' })).id;
+    });
+
+    it('creates a group with the creator as admin and tells the members', async () => {
+      await expect(h.chat.createGroup(alice, { title: '  ', participantIds: [bob] })).rejects.toMatchObject({ code: 'TITLE_REQUIRED' });
+      const group = await h.chat.createGroup(alice, { title: 'Team', participantIds: [bob, carol] });
+
+      expect(group).toMatchObject({ title: 'Team', isGroup: true, myRole: 'admin' });
+      expect(group.participants.map(p => p.role)).toEqual(['member', 'member']);
+      expect((await h.chat.getConversation(bob, group.id)).myRole).toBe('member');
+      expect(h.realtime.eventsFor(bob, 'chat:conversation_updated')).toEqual([{ conversationId: group.id, change: 'created', byUserId: alice }]);
+    });
+
+    it('lets only admins rename, add, remove and promote', async () => {
+      const group = await h.chat.createGroup(alice, { title: 'Team', participantIds: [bob] });
+      await expect(h.chat.updateGroup(bob, group.id, { title: 'Mine' })).rejects.toMatchObject({ code: 'ADMIN_ONLY' });
+      await expect(h.chat.addMembers(bob, group.id, [carol])).rejects.toMatchObject({ statusCode: 403 });
+
+      expect((await h.chat.updateGroup(alice, group.id, { title: 'Crew', avatarUrl: 'https://cdn.example.com/g.png' })).title).toBe('Crew');
+      expect((await h.chat.addMembers(alice, group.id, [carol, bob])).participants).toHaveLength(2);
+      await h.chat.setMemberRole(alice, group.id, bob, 'admin');
+      expect((await h.chat.getConversation(bob, group.id)).myRole).toBe('admin');
+
+      await expect(h.chat.removeMember(bob, group.id, bob)).rejects.toMatchObject({ code: 'USE_LEAVE' });
+      await h.chat.removeMember(bob, group.id, carol);
+      expect(h.realtime.eventsFor(carol, 'chat:conversation_removed')).toEqual([{ conversationId: group.id }]);
+      await expect(h.chat.getConversation(carol, group.id)).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('hands the admin role to the longest-standing member when the last admin leaves', async () => {
+      const group = await h.chat.createGroup(alice, { title: 'Team', participantIds: [bob, carol] });
+      await h.chat.leaveGroup(alice, group.id);
+
+      expect((await h.chat.getConversation(bob, group.id)).myRole).toBe('admin');
+      expect((await h.chat.getConversation(carol, group.id)).myRole).toBe('member');
+      expect(h.realtime.eventsFor(alice, 'chat:conversation_removed')).toHaveLength(1);
+    });
+
+    it('keeps an admin when the only admin steps down', async () => {
+      const group = await h.chat.createGroup(alice, { title: 'Team', participantIds: [bob] });
+      await h.chat.setMemberRole(alice, group.id, alice, 'member');
+      // Alice is the longest-standing member, so she stays the admin.
+      expect((await h.chat.getConversation(alice, group.id)).myRole).toBe('admin');
+    });
+
+    it('deletes the group when the last member leaves', async () => {
+      const group = await h.chat.createGroup(alice, { title: 'Team', participantIds: [bob] });
+      await h.chat.deleteConversation(alice, group.id);
+      await h.chat.leaveGroup(bob, group.id);
+      expect(await h.repositories.chat.findConversation(group.id)).toBeNull();
+    });
+
+    it('leaves every group before an account is deleted', async () => {
+      const group = await h.chat.createGroup(alice, { title: 'Team', participantIds: [bob] });
+      await h.chat.leaveAllGroups(alice);
+      expect((await h.chat.getConversation(bob, group.id)).myRole).toBe('admin');
+    });
+  });
+{{/if}}
 {{#if NOTIFICATIONS}}
 
   it('pushes to members who are offline', async () => {
-    await h.notifications.registerDevice(bob, 'bob-device-token', 'android');
+    await h.devices.register(bob, { deviceId: 'bob-phone-1', token: 'bob-device-token', platform: 'android' });
     const { id } = await h.chat.startConversation(alice, { participantIds: [bob] });
     await h.chat.sendMessage(alice, id, { type: 'text', text: 'Are you there?' });
 

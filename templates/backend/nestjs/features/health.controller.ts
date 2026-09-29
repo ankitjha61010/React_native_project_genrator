@@ -8,6 +8,7 @@ import { HealthService } from '{{IMPORT:app.healthService}}';
 import { Public } from '{{IMPORT:nest.decorators}}';
 {{/if}}
 import { Endpoint } from '{{IMPORT:nest.endpoint}}';
+import { HEALTH_MESSAGES } from '{{IMPORT:messages.health}}';
 
 {{#if SWAGGER}}
 @ApiTags('Health')
@@ -20,7 +21,7 @@ export class HealthController {
   constructor(private readonly health: HealthService) {}
 
   @Get()
-  @Endpoint({ summary: 'Liveness / readiness (database connectivity) – 503 when degraded', message: 'Health status', errors: [503] })
+  @Endpoint({ summary: 'Liveness / readiness (database connectivity) – 503 when degraded', message: HEALTH_MESSAGES.status, errors: [503] })
   async check(@Res({ passthrough: true }) res: Response) {
     const report = await this.health.check();
     if (report.status !== 'ok') res.status(503);

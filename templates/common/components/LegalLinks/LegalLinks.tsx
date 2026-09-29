@@ -2,19 +2,19 @@ import React, { useCallback, useMemo } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { errorMessage } from '{{IMPORT:api.errors}}';
+import { legalApi, type LegalLinks as Links } from '{{IMPORT:api.legal}}';
 import { AppText } from '{{IMPORT:components.AppText}}';
-import { env } from '{{IMPORT:config.env}}';
+import { forDevice } from '{{IMPORT:config.env}}';
 import { useStyles } from '{{IMPORT:hooks.useTheme}}';
 import { translate } from '{{IMPORT:i18n.index}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
+import { flash } from '{{IMPORT:utils.flashMessage}}';
 
 export type LegalPage = 'terms' | 'privacy';
 
-/** URLs come from `.env` (TERMS_URL / PRIVACY_POLICY_URL). */
-const LEGAL_URLS: Record<LegalPage, () => string> = {
-  terms: () => env.legal.termsUrl,
-  privacy: () => env.legal.privacyPolicyUrl,
-};
+/** Which link of GET /legal each page opens (the backend decides the URLs – see its TERMS_URL). */
+const LEGAL_LINK: Record<LegalPage, keyof Links> = { terms: 'termsUrl', privacy: 'privacyPolicyUrl' };
 
 const LEGAL_TITLES: Record<LegalPage, () => string> = {
   terms: () => translate('common', 'termsAndConditions'),
@@ -25,14 +25,22 @@ const LEGAL_TITLES: Record<LegalPage, () => string> = {
 type WebViewNavigation = NativeStackNavigationProp<{ WebView: { url: string; title?: string } }>;
 
 /**
- * Opens Terms & Conditions / Privacy Policy in the in-app WebView. Works signed in
- * (Main stack) and signed out (Auth stack).
+ * Opens Terms & Conditions / Privacy Policy in the in-app WebView. The URLs come from the
+ * backend, so they can change without an app release. Works signed in and signed out.
  */
 export function useLegalPages() {
   const navigation = useNavigation<WebViewNavigation>();
 
   const open = useCallback(
-    (page: LegalPage) => navigation.navigate('WebView', { url: LEGAL_URLS[page](), title: LEGAL_TITLES[page]() }),
+    async (page: LegalPage) => {
+      try {
+        const links = await legalApi.getLinks();
+        const url = links[LEGAL_LINK[page]];
+        if (url) navigation.navigate('WebView', { url: forDevice(url), title: LEGAL_TITLES[page]() });
+      } catch (error) {
+        flash.error({ message: errorMessage(error) });
+      }
+    },
     [navigation],
   );
 

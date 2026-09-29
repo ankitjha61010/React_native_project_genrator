@@ -1,218 +1,224 @@
 import React, { useState } from 'react';
-import {
-  StyleSheet,
-  View,
-  TextInput,
-  TouchableOpacity,
-  Alert,
-  I18nManager,
-} from 'react-native';
+import { ActivityIndicator, Alert, I18nManager, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { errorCodes, isErrorWithCode, pick as pickDocument, types } from '@react-native-documents/picker';
 {{#if VECTOR_ICONS}}
 import { AppIcon } from '{{IMPORT:components.AppIcon}}';
-{{else}}
-import { AppText } from '{{IMPORT:components.AppText}}';
 {{/if}}
-import { useStyles } from '{{IMPORT:hooks.useTheme}}';
-import type { Theme } from '{{IMPORT:theme.index}}';
+import { AppText } from '{{IMPORT:components.AppText}}';
+import { MediaEditorModal, type MediaItem } from '{{IMPORT:components.MediaEditorModal}}';
 import { MediaPickerModal, type MediaPickerOption } from '{{IMPORT:components.MediaPickerModal}}';
 import { useImagePicker } from '{{IMPORT:hooks.useImagePicker}}';
-import type { ChatMessage } from '{{IMPORT:chat.types}}';
-import { MediaEditorModal, type MediaItem } from '{{IMPORT:components.MediaEditorModal}}';
+import { useStyles, useTheme } from '{{IMPORT:hooks.useTheme}}';
+import { translate } from '{{IMPORT:i18n.index}}';
+import { permissionService } from '{{IMPORT:permissions.service}}';
+import type { Theme } from '{{IMPORT:theme.index}}';
+import { flash } from '{{IMPORT:utils.flashMessage}}';
+import type { MessageDraft } from '../../services/chatService';
+import { voiceService } from '../../services/voiceService';
+import { formatDuration } from '../AudioMessage/AudioMessage';
+
+/** 2_516_582 → "2.4 MB". */
+const humanSize = (bytes: number) => (bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`);
 
 export interface ChatInputBarProps {
-  onSendMessage: (msg: Partial<ChatMessage>) => void;
+  /** Text, or a local file (photo / video / document / voice note) – the room uploads it. */
+  onSend: (draft: MessageDraft) => void;
   onTyping?: () => void;
 }
 
-export function ChatInputBar({ onSendMessage, onTyping }: ChatInputBarProps): React.JSX.Element {
+/** The message composer: text, camera, attachments (photo, video, file) and voice messages. */
+export function ChatInputBar({ onSend, onTyping }: ChatInputBarProps): React.JSX.Element {
   const styles = useStyles(createStyles);
+  const { theme } = useTheme();
+  const { pick } = useImagePicker();
   const [text, setText] = useState('');
   const [showAttachMenu, setShowAttachMenu] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
   const [editingMedia, setEditingMedia] = useState<MediaItem | null>(null);
+  /** Seconds recorded, or null when not recording. */
+  const [recordingSeconds, setRecordingSeconds] = useState<number | null>(null);
+  const [stoppingRecording, setStoppingRecording] = useState(false);
 
-  const { pick } = useImagePicker();
-
-  const handleSend = () => {
-    if (!text.trim()) return;
-    onSendMessage({
-      type: 'text',
-      text: text.trim(),
-    });
+  const sendText = () => {
+    const value = text.trim();
+    if (!value) return;
+    onSend({ type: 'text', text: value });
     setText('');
   };
 
-  const handleCameraCapture = async () => {
-    const res = await pick('camera_photo');
-    if (res?.path) {
-      setEditingMedia({
-        uri: res.path,
-        type: 'image',
-        fileName: res.filename,
-        fileSize: res.size ? `${(res.size / 1024 / 1024).toFixed(1)} MB` : undefined,
-      });
-    }
+  // ── photos / videos (edited in MediaEditorModal first) ───────────────────────
+  const pickMedia = async (option: Exclude<MediaPickerOption, 'document'>) => {
+    const picked = await pick(option);
+    if (!picked?.path) return;
+    const isVideo = option === 'camera_video' || option === 'gallery_video';
+    setEditingMedia({
+      uri: picked.path,
+      type: isVideo ? 'video' : 'image',
+      fileName: picked.filename,
+      fileSize: picked.size ? humanSize(picked.size) : undefined,
+      duration: picked.duration,
+    });
   };
 
-  const handleMediaOption = async (option: MediaPickerOption) => {
-    setShowAttachMenu(false);
-    if (option === 'camera_photo') {
-      const res = await pick('camera_photo');
-      if (res?.path) {
-        setEditingMedia({
-          uri: res.path,
-          type: 'image',
-          fileName: res.filename,
-        });
-      }
-    } else if (option === 'gallery_photo') {
-      const res = await pick('gallery_photo');
-      if (res?.path) {
-        setEditingMedia({
-          uri: res.path,
-          type: 'image',
-          fileName: res.filename,
-        });
-      }
-    } else if (option === 'camera_video') {
-      const res = await pick('camera_video');
-      if (res?.path) {
-        setEditingMedia({
-          uri: res.path,
-          type: 'video',
-          fileName: res.filename,
-          duration: res.duration || 15,
-        });
-      }
-    } else if (option === 'gallery_video') {
-      const res = await pick('gallery_video');
-      if (res?.path) {
-        setEditingMedia({
-          uri: res.path,
-          type: 'video',
-          fileName: res.filename,
-          duration: res.duration || 15,
-        });
-      }
-    } else if (option === 'document') {
-      onSendMessage({
+  const sendEditedMedia = (media: MediaItem) => {
+    setEditingMedia(null);
+    onSend({
+      type: media.type,
+      mediaUrl: media.uri,
+      fileName: media.fileName,
+      fileSize: media.fileSize,
+      ...(media.type === 'video' ? { duration: media.duration } : { crop: media.crop }),
+    });
+  };
+
+  // ── files ─────────────────────────────────────────────────────────────────────
+  const sendDocument = async () => {
+    try {
+      const [file] = await pickDocument({ type: [types.allFiles] });
+      if (!file) return;
+      onSend({
         type: 'document',
-        fileName: 'Project_Specification.pdf',
-        fileSize: '1.8 MB',
-        mediaUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+        mediaUrl: file.uri,
+        fileName: file.name ?? 'file',
+        fileSize: file.size ? humanSize(file.size) : undefined,
+        mimeType: file.type ?? undefined,
       });
+    } catch (error) {
+      // Closing the picker is not an error.
+      if (!(isErrorWithCode(error) && error.code === errorCodes.OPERATION_CANCELED)) flash.error({ intlType: 'common', value: 'genericError' });
     }
   };
 
-  const handleSendEditedMedia = (media: MediaItem) => {
-    if (media.type === 'image') {
-      onSendMessage({
-        type: 'image',
-        text: media.fileName || 'Photo attachment',
-        mediaUrl: media.uri,
-        crop: media.crop,
-      });
-    } else if (media.type === 'video') {
-      onSendMessage({
-        type: 'video',
-        text: media.fileName || 'Video attachment',
-        mediaUrl: media.uri,
-        thumbnailUrl: 'https://images.unsplash.com/photo-1536240478700-b869070f9279?w=600',
-        duration: media.duration,
-      });
+  const handleAttachment = (option: MediaPickerOption) => {
+    setShowAttachMenu(false);
+    if (option === 'document') sendDocument();
+    else pickMedia(option);
+  };
+
+  // ── voice messages ────────────────────────────────────────────────────────────
+  const startRecording = async () => {
+    try {
+      const started = await voiceService.startRecording(setRecordingSeconds);
+      if (started) {
+        setRecordingSeconds(0);
+        return;
+      }
+      Alert.alert(translate('common', 'permissionDenied'), translate('common', 'microphonePermission'), [
+        { text: translate('common', 'cancel'), style: 'cancel' },
+        { text: translate('common', 'openSettings'), onPress: () => permissionService.openSettings() },
+      ]);
+    } catch {
+      setRecordingSeconds(null);
+      flash.error({ intlType: 'common', value: 'genericError' });
     }
   };
 
-  const handleVoiceRecord = () => {
-    if (isRecording) {
-      setIsRecording(false);
-      onSendMessage({
-        type: 'audio',
-        mediaUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
-        duration: 12,
-      });
-    } else {
-      setIsRecording(true);
-      Alert.alert('Recording Voice Note', 'Tap the mic again to send simulated voice audio.');
+  const cancelRecording = async () => {
+    setRecordingSeconds(null);
+    await voiceService.cancelRecording();
+  };
+
+  const sendRecording = async () => {
+    setStoppingRecording(true);
+    try {
+      const recording = await voiceService.stopRecording();
+      if (recording) onSend({ type: 'audio', mediaUrl: recording.uri, fileName: recording.fileName, mimeType: recording.mimeType, duration: recording.duration });
+    } catch {
+      flash.error({ intlType: 'common', value: 'genericError' });
+    } finally {
+      setStoppingRecording(false);
+      setRecordingSeconds(null);
     }
   };
+
+  if (recordingSeconds !== null) {
+    return (
+      <View style={styles.container}>
+        <TouchableOpacity style={styles.actionBtn} onPress={cancelRecording} accessibilityRole="button" accessibilityLabel={translate('common', 'cancel')}>
+{{#if VECTOR_ICONS}}
+          <AppIcon name="delete-outline" size={24} tintColor={theme.colors.error} />
+{{else}}
+          <AppText color="error" intlType="common" value="cancel" />
+{{/if}}
+        </TouchableOpacity>
+        <View style={styles.recording}>
+          <View style={styles.recordingDot} />
+          <AppText fontFamily="medium" text={formatDuration(recordingSeconds)} />
+          <AppText color="textSecondary" intlType="common" value="recording" />
+        </View>
+        <TouchableOpacity style={styles.sendBtn} onPress={sendRecording} disabled={stoppingRecording} accessibilityRole="button" accessibilityLabel="Send voice message">
+          {stoppingRecording ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+{{#if VECTOR_ICONS}}
+            <AppIcon name="send" size={20} tintColor="#FFFFFF" />
+{{else}}
+            <AppText color="onPrimary" text="➤" />
+{{/if}}
+          )}
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      {/* 📷 Direct Camera Capture Button on Left */}
-      <TouchableOpacity
-        style={styles.actionBtn}
-        onPress={handleCameraCapture}
-        accessibilityLabel="Camera">
+      <TouchableOpacity style={styles.actionBtn} onPress={() => setShowAttachMenu(true)} accessibilityRole="button" accessibilityLabel="Attach">
 {{#if VECTOR_ICONS}}
-        <AppIcon name="camera" size={22} tintColor="#666666" />
+        <AppIcon name="plus" size={24} tintColor={theme.colors.textSecondary} />
 {{else}}
-        <AppText style={{ fontSize: 18 }}>📷</AppText>
+        <AppText color="textSecondary" text="+" />
 {{/if}}
       </TouchableOpacity>
 
-      {/* Attachment Menu Button */}
-      <TouchableOpacity
-        style={styles.actionBtn}
-        onPress={() => setShowAttachMenu(true)}
-        accessibilityLabel="Attach media">
-{{#if VECTOR_ICONS}}
-        <AppIcon name="paperclip" size={22} tintColor="#666666" />
-{{else}}
-        <AppText style={{ fontSize: 18 }}>📎</AppText>
-{{/if}}
-      </TouchableOpacity>
-
-      {/* Input Field */}
       <TextInput
         style={styles.input}
-        placeholder="Type a message…"
-        placeholderTextColor="#888888"
+        placeholder={translate('common', 'typeMessage')}
+        placeholderTextColor={theme.colors.placeholder}
         value={text}
-        onChangeText={val => {
-          setText(val);
+        onChangeText={value => {
+          setText(value);
           onTyping?.();
         }}
         multiline
       />
 
-      {/* Action Button: Send or Mic */}
-      {text.trim().length > 0 ? (
-        <TouchableOpacity style={styles.sendBtn} onPress={handleSend}>
+      {text.trim() ? (
+        <TouchableOpacity style={styles.sendBtn} onPress={sendText} accessibilityRole="button" accessibilityLabel="Send">
 {{#if VECTOR_ICONS}}
           <AppIcon name="send" size={20} tintColor="#FFFFFF" />
 {{else}}
-          <AppText style={{ color: '#FFFFFF', fontSize: 16 }}>➤</AppText>
+          <AppText color="onPrimary" text="➤" />
 {{/if}}
         </TouchableOpacity>
       ) : (
-        <TouchableOpacity
-          style={[styles.micBtn, isRecording && styles.micBtnActive]}
-          onPress={handleVoiceRecord}>
+        <>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => pickMedia('camera_photo')} accessibilityRole="button" accessibilityLabel="Camera">
 {{#if VECTOR_ICONS}}
-          <AppIcon name="microphone" size={22} tintColor={isRecording ? '#FFFFFF' : '#666666'} />
+            <AppIcon name="camera-outline" size={24} tintColor={theme.colors.textSecondary} />
 {{else}}
-          <AppText style={{ fontSize: 18 }}>{isRecording ? '🔴' : '🎙️'}</AppText>
+            <AppText text="📷" />
 {{/if}}
-        </TouchableOpacity>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionBtn} onPress={startRecording} accessibilityRole="button" accessibilityLabel="Record a voice message">
+{{#if VECTOR_ICONS}}
+            <AppIcon name="microphone-outline" size={24} tintColor={theme.colors.textSecondary} />
+{{else}}
+            <AppText text="🎤" />
+{{/if}}
+          </TouchableOpacity>
+        </>
       )}
 
-      {/* Reusable Attachment Modal */}
       <MediaPickerModal
         visible={showAttachMenu}
-        title="Share Content"
+        title="Share"
         options={['camera_photo', 'gallery_photo', 'camera_video', 'gallery_video', 'document']}
-        onSelect={handleMediaOption}
+        onSelect={handleAttachment}
         onClose={() => setShowAttachMenu(false)}
       />
 
-      {/* Reusable Media Editor (Trimming video, Cropping & rotating photo) */}
-      <MediaEditorModal
-        visible={Boolean(editingMedia)}
-        media={editingMedia}
-        onClose={() => setEditingMedia(null)}
-        onSend={handleSendEditedMedia}
-      />
+      {/* Crop / rotate photos, trim videos before sending. */}
+      <MediaEditorModal visible={Boolean(editingMedia)} media={editingMedia} onClose={() => setEditingMedia(null)} onSend={sendEditedMedia} />
     </View>
   );
 }
@@ -222,29 +228,28 @@ const createStyles = (theme: Theme) =>
     container: {
       flexDirection: 'row',
       alignItems: 'flex-end',
-      paddingHorizontal: 8,
-      paddingVertical: 6,
+      gap: theme.spacing.spacing4,
+      paddingHorizontal: theme.spacing.spacing8,
+      paddingVertical: theme.spacing.spacing6,
       backgroundColor: theme.colors.surface,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: theme.colors.border,
-      gap: 4,
     },
     actionBtn: {
-      padding: 8,
+      height: 40,
+      paddingHorizontal: theme.spacing.spacing6,
       justifyContent: 'center',
       alignItems: 'center',
-      marginBottom: 2,
     },
     input: {
       flex: 1,
-      // RTL: keeps text and cursor at the start (like AppInput – no textAlign, which makes the
-      // cursor jump while typing).
-      writingDirection: I18nManager.isRTL ? 'rtl' : 'ltr',
+      // Text and cursor start on the reading side (like AppInput – no textAlign).
+      writingDirection: I18nManager.getConstants().isRTL ? 'rtl' : 'ltr',
       minHeight: 40,
-      maxHeight: 100,
+      maxHeight: 110,
       backgroundColor: theme.colors.background,
       borderRadius: 20,
-      paddingHorizontal: 14,
+      paddingHorizontal: theme.spacing.spacing14,
       paddingTop: 10,
       paddingBottom: 10,
       color: theme.colors.text,
@@ -258,14 +263,18 @@ const createStyles = (theme: Theme) =>
       justifyContent: 'center',
       alignItems: 'center',
     },
-    micBtn: {
-      width: 40,
+    recording: {
+      flex: 1,
       height: 40,
-      borderRadius: 20,
-      justifyContent: 'center',
+      flexDirection: 'row',
       alignItems: 'center',
+      gap: theme.spacing.spacing8,
+      paddingHorizontal: theme.spacing.spacing8,
     },
-    micBtnActive: {
-      backgroundColor: '#E53935',
+    recordingDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: theme.colors.error,
     },
   });

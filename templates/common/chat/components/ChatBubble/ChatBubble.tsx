@@ -13,13 +13,19 @@ import { AppIcon } from '{{IMPORT:components.AppIcon}}';
 import { useStyles } from '{{IMPORT:hooks.useTheme}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
 import type { ChatMessage } from '{{IMPORT:chat.types}}';
+import { translate } from '{{IMPORT:i18n.index}}';
+import { AudioMessage } from '../AudioMessage/AudioMessage';
 
 export interface ChatBubbleProps {
   message: ChatMessage;
   onPressMedia?: (message: ChatMessage) => void;
+  /** Groups: the sender's name above other people's messages. */
+  showSender?: boolean;
+  /** A message that failed to send: tap to send it again. */
+  onRetry?: (message: ChatMessage) => void;
 }
 
-export function ChatBubble({ message, onPressMedia }: ChatBubbleProps): React.JSX.Element {
+export function ChatBubble({ message, onPressMedia, showSender = false, onRetry }: ChatBubbleProps): React.JSX.Element {
   const styles = useStyles(createStyles);
   const isMe = message.isMe;
 
@@ -64,7 +70,11 @@ export function ChatBubble({ message, onPressMedia }: ChatBubbleProps): React.JS
 
   return (
     <View style={[styles.container, isMe ? styles.containerMe : styles.containerOther]}>
-      <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleOther]}>
+      <Pressable
+        disabled={message.status !== 'failed'}
+        onPress={() => onRetry?.(message)}
+        style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleOther, message.status === 'failed' && styles.bubbleFailed]}>
+        {showSender && !isMe ? <AppText fontSize="size12" fontFamily="semiBold" color="primary" numberOfLines={1} text={message.senderName} /> : null}
         {/* Media: Image */}
         {message.type === 'image' && message.mediaUrl && (
           <TouchableOpacity
@@ -104,33 +114,8 @@ export function ChatBubble({ message, onPressMedia }: ChatBubbleProps): React.JS
           </TouchableOpacity>
         )}
 
-        {/* Media: Audio / Voice Note Player */}
-        {message.type === 'audio' && (
-          <TouchableOpacity activeOpacity={0.85} onPress={() => onPressMedia?.(message)} style={styles.audioContainer}>
-            <TouchableOpacity onPress={() => onPressMedia?.(message)} style={styles.audioPlayBtn}>
-{{#if VECTOR_ICONS}}
-              <AppIcon name="play" size={24} tintColor={isMe ? '#FFFFFF' : '#25D366'} />
-{{else}}
-              <AppText style={styles.audioPlayIcon}>▶</AppText>
-{{/if}}
-            </TouchableOpacity>
-
-            <View style={styles.waveformContainer}>
-              <View style={[styles.waveformBar, { height: 12, backgroundColor: isMe ? '#FFFFFF99' : '#888888' }]} />
-              <View style={[styles.waveformBar, { height: 20, backgroundColor: isMe ? '#FFFFFF99' : '#888888' }]} />
-              <View style={[styles.waveformBar, { height: 16, backgroundColor: isMe ? '#FFFFFF99' : '#888888' }]} />
-              <View style={[styles.waveformBar, { height: 26, backgroundColor: isMe ? '#FFFFFF' : '#25D366' }]} />
-              <View style={[styles.waveformBar, { height: 18, backgroundColor: isMe ? '#FFFFFF99' : '#888888' }]} />
-              <View style={[styles.waveformBar, { height: 22, backgroundColor: isMe ? '#FFFFFF99' : '#888888' }]} />
-              <View style={[styles.waveformBar, { height: 14, backgroundColor: isMe ? '#FFFFFF99' : '#888888' }]} />
-              <View style={[styles.waveformBar, { height: 8, backgroundColor: isMe ? '#FFFFFF99' : '#888888' }]} />
-            </View>
-
-            <AppText style={[styles.audioDurationText, isMe && styles.textMe]}>
-              0:{message.duration ? (message.duration < 10 ? `0${message.duration}` : message.duration) : '15'}
-            </AppText>
-          </TouchableOpacity>
-        )}
+        {/* Media: Voice message */}
+        {message.type === 'audio' && message.mediaUrl ? <AudioMessage uri={message.mediaUrl} duration={message.duration} inverted={isMe} /> : null}
 
         {/* Media: Document */}
         {message.type === 'document' && (
@@ -144,10 +129,10 @@ export function ChatBubble({ message, onPressMedia }: ChatBubbleProps): React.JS
             </View>
             <View style={styles.docInfo}>
               <AppText numberOfLines={1} style={[styles.docName, isMe && styles.textMe]}>
-                {message.fileName || 'Attachment.pdf'}
+                {message.fileName || translate('common', 'document')}
               </AppText>
               <AppText style={[styles.docMeta, isMe && styles.metaMe]}>
-                {message.fileSize || 'PDF Document'}
+                {message.fileSize || ''}
               </AppText>
             </View>
           </Pressable>
@@ -169,7 +154,7 @@ export function ChatBubble({ message, onPressMedia }: ChatBubbleProps): React.JS
             <View style={styles.ticksContainer}>
 {{#if VECTOR_ICONS}}
               <AppIcon
-                name={message.status === 'read' ? 'check-all' : 'check'}
+                name={message.status === 'read' ? 'check-all' : message.status === 'sending' ? 'clock-outline' : message.status === 'failed' ? 'alert-circle-outline' : 'check'}
                 size={14}
                 tintColor={message.status === 'read' ? '#34B7F1' : '#FFFFFF99'}
               />
@@ -181,7 +166,8 @@ export function ChatBubble({ message, onPressMedia }: ChatBubbleProps): React.JS
             </View>
           )}
         </View>
-      </View>
+        {message.status === 'failed' ? <AppText fontSize="size12" color="error" text={translate('common', 'sendFailed')} /> : null}
+      </Pressable>
     </View>
   );
 }
@@ -211,11 +197,14 @@ const createStyles = (theme: Theme) =>
     },
     bubbleMe: {
       backgroundColor: theme.colors.primary,
-      borderBottomRightRadius: 2,
+      borderBottomEndRadius: 2,
+    },
+    bubbleFailed: {
+      opacity: 0.7,
     },
     bubbleOther: {
       backgroundColor: theme.colors.surface,
-      borderBottomLeftRadius: 2,
+      borderBottomStartRadius: 2,
     },
     text: {
       fontSize: 15,
@@ -252,47 +241,13 @@ const createStyles = (theme: Theme) =>
     durationBadge: {
       position: 'absolute',
       bottom: 6,
-      right: 8,
+      end: 8,
       backgroundColor: '#00000099',
       color: '#FFFFFF',
       fontSize: 11,
       paddingHorizontal: 6,
       paddingVertical: 2,
       borderRadius: 4,
-    },
-    audioContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingVertical: 4,
-      paddingHorizontal: 4,
-      minWidth: 200,
-      gap: 8,
-    },
-    audioPlayBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: '#00000015',
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    audioPlayIcon: {
-      fontSize: 16,
-    },
-    waveformContainer: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 3,
-      height: 28,
-    },
-    waveformBar: {
-      width: 3,
-      borderRadius: 2,
-    },
-    audioDurationText: {
-      fontSize: 12,
-      color: theme.colors.textSecondary,
     },
     docContainer: {
       flexDirection: 'row',
@@ -348,7 +303,7 @@ const createStyles = (theme: Theme) =>
       color: theme.colors.textSecondary,
     },
     ticksContainer: {
-      marginLeft: 2,
+      marginStart: 2,
     },
     ticks: {
       fontSize: 11,

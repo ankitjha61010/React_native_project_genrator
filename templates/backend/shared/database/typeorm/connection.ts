@@ -8,7 +8,7 @@ import type { HealthCheck } from '{{IMPORT:port.healthCheck}}';
 {{#if AUTH_REFRESH}}
 import { RefreshTokenOrmEntity } from '{{IMPORT:typeorm.auth}}';
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
 import { VerificationCodeOrmEntity } from '{{IMPORT:typeorm.auth}}';
 {{/if}}
 {{#if SOCIAL}}
@@ -17,8 +17,11 @@ import { SocialAccountOrmEntity } from '{{IMPORT:typeorm.auth}}';
 {{#if CHAT}}
 import { ConversationMemberOrmEntity, ConversationOrmEntity, MessageOrmEntity } from '{{IMPORT:typeorm.chat}}';
 {{/if}}
+{{#if DEVICES}}
+import { DeviceOrmEntity } from '{{IMPORT:typeorm.device}}';
+{{/if}}
 {{#if NOTIFICATIONS}}
-import { BroadcastOrmEntity, DeviceOrmEntity, NotificationOrmEntity } from '{{IMPORT:typeorm.notifications}}';
+import { BroadcastOrmEntity, NotificationOrmEntity } from '{{IMPORT:typeorm.notifications}}';
 {{/if}}
 import { UserOrmEntity } from '{{IMPORT:typeorm.user}}';
 
@@ -40,7 +43,7 @@ export function createDataSource(url: string): DataSource {
 {{#if AUTH_REFRESH}}
       RefreshTokenOrmEntity,
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
       VerificationCodeOrmEntity,
 {{/if}}
 {{#if SOCIAL}}
@@ -51,8 +54,10 @@ export function createDataSource(url: string): DataSource {
       ConversationMemberOrmEntity,
       MessageOrmEntity,
 {{/if}}
-{{#if NOTIFICATIONS}}
+{{#if DEVICES}}
       DeviceOrmEntity,
+{{/if}}
+{{#if NOTIFICATIONS}}
       NotificationOrmEntity,
       BroadcastOrmEntity,
 {{/if}}

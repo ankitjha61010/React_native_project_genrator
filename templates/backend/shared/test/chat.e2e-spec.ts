@@ -35,7 +35,7 @@ describe('chat API + Socket.IO', () => {
     const res = await request(app.server).post(`${api}/chat/conversations`).set(bearer(alice.token)).send({ participantIds: [bob.id] }).expect(200);
     conversationId = res.body.data.id;
     // Bob is connected, so he shows as online.
-    expect(res.body.data).toMatchObject({ title: 'Bob', isGroup: false, participants: [{ id: bob.id, isOnline: true }] });
+    expect(res.body.data).toMatchObject({ title: 'Bob', {{#if GROUP_CHAT}}isGroup: false, {{/if}}participants: [{ id: bob.id, isOnline: true }] });
   });
 
   it('sends a message and delivers it live (chat:receive_message)', async () => {
@@ -107,4 +107,38 @@ describe('chat API + Socket.IO', () => {
     await request(app.server).delete(`${api}/chat/conversations/${conversationId}/messages/${sent.body.data.id}`).set(bearer(alice.token)).expect(200);
     expect((await deleted).messageId).toBe(sent.body.data.id);
   });
+
+  it('broadcasts presence: offline (with lastSeen) when the last socket disconnects', async () => {
+    const eve = await app.signUp('Eve');
+    const online = next<{ userId: string }>(bobSocket, 'presence:user_online');
+    const eveSocket = await app.socket(eve.token);
+    expect((await online).userId).toBe(eve.id);
+
+    const offline = next<{ userId: string; lastSeen: string }>(bobSocket, 'presence:user_offline');
+    eveSocket.disconnect();
+    expect(await offline).toMatchObject({ userId: eve.id, lastSeen: expect.any(String) });
+  });
+{{#if GROUP_CHAT}}
+
+  it('creates and manages a group; members get live updates', async () => {
+    const carol = await app.signUp('Carol');
+    const updated = next<{ conversationId: string; change: string }>(bobSocket, 'chat:conversation_updated');
+    const created = await request(app.server).post(`${api}/chat/groups`).set(bearer(alice.token)).send({ title: 'Team', participantIds: [bob.id, carol.id] }).expect(201);
+    const groupId = created.body.data.id;
+    expect(created.body.data).toMatchObject({ title: 'Team', isGroup: true, myRole: 'admin' });
+    expect(await updated).toMatchObject({ conversationId: groupId, change: 'created' });
+
+    await request(app.server).patch(`${api}/chat/groups/${groupId}`).set(bearer(bob.token)).send({ title: 'Mine' }).expect(403);
+    const renamed = await request(app.server).patch(`${api}/chat/groups/${groupId}`).set(bearer(alice.token)).send({ title: 'Crew' }).expect(200);
+    expect(renamed.body.data.title).toBe('Crew');
+
+    await request(app.server).patch(`${api}/chat/groups/${groupId}/members/${bob.id}`).set(bearer(alice.token)).send({ role: 'admin' }).expect(200);
+    await request(app.server).delete(`${api}/chat/groups/${groupId}/members/${carol.id}`).set(bearer(bob.token)).expect(200);
+    await request(app.server).post(`${api}/chat/groups/${groupId}/members`).set(bearer(bob.token)).send({ userIds: [carol.id] }).expect(200);
+
+    await request(app.server).post(`${api}/chat/groups/${groupId}/leave`).set(bearer(alice.token)).expect(200);
+    const group = await request(app.server).get(`${api}/chat/conversations/${groupId}`).set(bearer(carol.token)).expect(200);
+    expect(group.body.data.participants).toEqual([expect.objectContaining({ id: bob.id, role: 'admin' })]);
+  });
+{{/if}}
 });

@@ -11,6 +11,9 @@ import type { SocialAccountsRepository } from '{{IMPORT:contract.auth}}';
 {{#if CHAT}}
 import type { ChatRepository } from '{{IMPORT:contract.chat}}';
 {{/if}}
+{{#if DEVICES}}
+import type { DevicesRepository } from '{{IMPORT:contract.devices}}';
+{{/if}}
 {{#if NOTIFICATIONS}}
 import type { NotificationsRepository } from '{{IMPORT:contract.notifications}}';
 {{/if}}
@@ -18,7 +21,7 @@ import type { UsersRepository } from '{{IMPORT:contract.users}}';
 {{#if AUTH_REFRESH}}
 import { TypeOrmRefreshTokensRepository } from '{{IMPORT:repo.auth}}';
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
 import { TypeOrmVerificationCodesRepository } from '{{IMPORT:repo.auth}}';
 {{/if}}
 {{#if SOCIAL}}
@@ -27,10 +30,17 @@ import { TypeOrmSocialAccountsRepository } from '{{IMPORT:repo.auth}}';
 {{#if CHAT}}
 import { TypeOrmChatRepository } from '{{IMPORT:repo.chat}}';
 {{/if}}
+{{#if DEVICES}}
+import { TypeOrmDevicesRepository } from '{{IMPORT:repo.devices}}';
+{{/if}}
 {{#if NOTIFICATIONS}}
 import { TypeOrmNotificationsRepository } from '{{IMPORT:repo.notifications}}';
 {{/if}}
 import { TypeOrmUsersRepository } from '{{IMPORT:repo.users}}';
+{{#if REDIS_CODES}}
+import { requireRedis } from '{{IMPORT:db.redis}}';
+import { RedisVerificationCodesRepository } from '{{IMPORT:repo.redisCodes}}';
+{{/if}}
 
 /** Every repository the services need – one object, so wiring never depends on the ORM. */
 export interface Repositories {
@@ -47,6 +57,9 @@ export interface Repositories {
 {{#if CHAT}}
   chat: ChatRepository;
 {{/if}}
+{{#if DEVICES}}
+  devices: DevicesRepository;
+{{/if}}
 {{#if NOTIFICATIONS}}
   notifications: NotificationsRepository;
 {{/if}}
@@ -59,14 +72,21 @@ export function createRepositories(database: Database): Repositories {
 {{#if AUTH_REFRESH}}
     refreshTokens: new TypeOrmRefreshTokensRepository(dataSource),
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
     verificationCodes: new TypeOrmVerificationCodesRepository(dataSource),
+{{/if}}
+{{#if REDIS_CODES}}
+    // Codes expire by themselves in Redis (REDIS_URL).
+    verificationCodes: new RedisVerificationCodesRepository(requireRedis()),
 {{/if}}
 {{#if SOCIAL}}
     socialAccounts: new TypeOrmSocialAccountsRepository(dataSource),
 {{/if}}
 {{#if CHAT}}
     chat: new TypeOrmChatRepository(dataSource),
+{{/if}}
+{{#if DEVICES}}
+    devices: new TypeOrmDevicesRepository(dataSource),
 {{/if}}
 {{#if NOTIFICATIONS}}
     notifications: new TypeOrmNotificationsRepository(dataSource),

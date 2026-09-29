@@ -1,4 +1,7 @@
 import type { Server as HttpServer } from 'node:http';
+{{#if REDIS}}
+import { createAdapter } from '@socket.io/redis-adapter';
+{{/if}}
 import { Server, type Socket } from 'socket.io';
 {{#if SEC_CORS}}
 import { config } from '{{IMPORT:config.env}}';
@@ -7,6 +10,9 @@ import type { Logger } from '{{IMPORT:core.logger}}';
 import type { User } from '{{IMPORT:domain.user}}';
 import type { UsersRepository } from '{{IMPORT:contract.users}}';
 import type { Realtime } from '{{IMPORT:port.realtime}}';
+{{#if REDIS}}
+import { newRedisConnection, redis } from '{{IMPORT:db.redis}}';
+{{/if}}
 
 /**
  * Socket.IO events – the same names as the app's socketEvents.ts.
@@ -40,8 +46,9 @@ export interface SocketDependencies {
 
 /**
  * The `Realtime` port. Services get it at startup; it starts delivering once the Socket.IO
- * server is attached (attachSocketServer). Presence is tracked per process – use the
- * Socket.IO Redis adapter + a shared store when running several instances.
+ * server is attached (attachSocketServer). {{#if REDIS}}Events reach every server instance (Redis adapter);
+ * presence (`isOnline`) is tracked per process.{{else}}Presence is tracked per process – use the
+ * Socket.IO Redis adapter + a shared store when running several instances.{{/if}}
  */
 export class SocketHub implements Realtime {
   private io: Server | undefined;
@@ -111,6 +118,10 @@ export function attachSocketServer(httpServer: HttpServer, hub: SocketHub, deps:
     pingTimeout: 20_000,
     maxHttpBufferSize: 100_000,
   });
+{{#if REDIS}}
+  // With Redis, an event emitted on one server instance reaches sockets connected to any other.
+  if (redis) io.adapter(createAdapter(newRedisConnection(), newRedisConnection()));
+{{/if}}
 
   io.use(async (socket, next) => {
     const auth = socket.handshake.auth as { token?: unknown } | undefined;

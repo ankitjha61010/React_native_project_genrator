@@ -14,10 +14,12 @@ import { globalRateLimit } from '{{IMPORT:ex.mw.rateLimit}}';
 {{/if}}
 import { requestLogger } from '{{IMPORT:ex.mw.requestLogger}}';
 import { applySecurity } from '{{IMPORT:ex.mw.security}}';
-import { mountRoutes } from '{{IMPORT:ex.route}}';
-import { routeGroups } from '{{IMPORT:ex.routes}}';
+import { apiRoutes } from '{{IMPORT:ex.routes}}';
 
-/** Builds the Express app (no `listen` – used by server.ts and the tests). */
+/**
+ * Builds the Express app: middleware (logging, security{{#if SEC_RATE_LIMIT}}, rate limit{{/if}}), the API routes, then the
+ * 404 and error handlers. No `listen` here – server.ts starts it, the tests use it directly.
+ */
 export function createApp(services: Services): Express {
   const app = express();
 
@@ -30,14 +32,17 @@ export function createApp(services: Services): Express {
   // Uploaded files (avatars, chat media). Never executed, never listed.
   app.use(config.uploads.publicPath, express.static(config.uploads.dir, { index: false, dotfiles: 'deny', maxAge: '7d' }));
 {{/if}}
-
-  // Every route lives under /<API_PREFIX>/<API_VERSION>, e.g. /api/v1/auth/login.
-  const api = express.Router();
-{{#if API_ENCRYPTION}}
-  api.use(apiEncryption);
+{{#if LEGAL}}
+  // Legal pages the app opens: /terms-and-conditions, /privacy-policy… (public/*.html – edit them).
+  app.use(express.static('public', { index: false, extensions: ['html'], dotfiles: 'deny', maxAge: '1h' }));
 {{/if}}
-  mountRoutes(api, routeGroups, services);
-  app.use(config.api.basePath, api);
+
+  // Every route lives under /<API_PREFIX>/<API_VERSION>, e.g. /api/v1/auth/login (see routes.ts).
+{{#if API_ENCRYPTION}}
+  app.use(config.api.basePath, apiEncryption, apiRoutes(services));
+{{else}}
+  app.use(config.api.basePath, apiRoutes(services));
+{{/if}}
 {{#if SWAGGER}}
 
   if (config.swagger.enabled) {

@@ -1,26 +1,15 @@
-import { z } from 'zod';
-import { route, type RouteGroup } from '{{IMPORT:ex.route}}';
+import type { Request, Response } from 'express';
+import type { HealthService } from '{{IMPORT:app.healthService}}';
+import { sendSuccess } from '{{IMPORT:ex.respond}}';
+import { HEALTH_MESSAGES } from '{{IMPORT:messages.health}}';
 
-const healthSchema = z
-  .object({ status: z.enum(['ok', 'degraded']), uptime: z.number(), timestamp: z.iso.datetime(), checks: z.record(z.string(), z.enum(['up', 'down'])) })
-  .meta({ id: 'HealthReport' });
+/** Handles `/health`. */
+export class HealthController {
+  constructor(private readonly health: HealthService) {}
 
-export const healthRoutes: RouteGroup = {
-  prefix: '/health',
-  tag: 'Health',
-  routes: [
-    route({
-      method: 'get',
-      path: '',
-      summary: 'Liveness / readiness (database connectivity) – 503 when degraded',
-      message: 'Health status',
-      response: healthSchema,
-      errors: [503],
-      async handler({ res }, { health }) {
-        const report = await health.check();
-        if (report.status !== 'ok') res.status(503);
-        return report;
-      },
-    }),
-  ],
-};
+  /** GET /health – 200 when every dependency is up, 503 when one is down */
+  check = async (_req: Request, res: Response) => {
+    const report = await this.health.check();
+    sendSuccess(res, HEALTH_MESSAGES.status, report, { status: report.status === 'ok' ? 200 : 503 });
+  };
+}

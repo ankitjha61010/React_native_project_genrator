@@ -1,6 +1,5 @@
 import { Command, InvalidArgumentError, Option } from 'commander';
-import type { SocialLoginOption } from '../core/types.js';
-import { SOCIAL_LOGIN_IDS } from '../config/socialAuth.js';
+import { parseSocialAuth, type SocialProviders } from '../config/socialAuth.js';
 import { ARCHITECTURE_IDS } from '../architectures/index.js';
 import { STATE_MANAGEMENT_IDS, STORAGE_IDS } from '../config/constants.js';
 import { REACT_NATIVE_PROFILES } from '../config/reactNativeVersions.js';
@@ -22,7 +21,16 @@ export interface CliFlags {
   notifications?: boolean;
   authEmail?: boolean;
   authMobile?: boolean;
-  socialAuth?: SocialLoginOption;
+  socialAuth?: SocialProviders;
+  googleWebClientId?: string;
+  googleIosClientId?: string;
+  facebookAppId?: string;
+  facebookClientToken?: string;
+  facebookAppSecret?: string;
+  appleServiceId?: string;
+  groupChat?: boolean;
+  terms?: boolean;
+  deleteAccount?: boolean;
   socket?: boolean;
   chat?: boolean;
   drawer?: boolean;
@@ -43,6 +51,10 @@ export interface CliFlags {
   modules?: string;
   /** Backend deployment: monolith | microservices. */
   deployment?: string;
+  /** Backend Redis (rate limits, Socket.IO adapter, cache, OTP codes). undefined = ask / off. */
+  redis?: boolean;
+  /** Backend Dockerfile + docker-compose.yml. undefined = ask / off. */
+  docker?: boolean;
   storage?: string;
   install: boolean;
   pods: boolean;
@@ -80,17 +92,24 @@ export function parseArgs(argv: string[], version: string): CliFlags {
     .option('--auth-mobile', 'enable mobile OTP authentication (Phone Login, OTP Verification)')
     .option('--no-auth-mobile', 'disable mobile OTP authentication')
     .addOption(
-      new Option('--social-auth <type>', 'social login providers ("both" = google-facebook)')
-        .choices([...SOCIAL_LOGIN_IDS, 'both'])
-        // argParser replaces the choices check, so validate here. `both` is the old name of google-facebook.
-        .argParser(value => {
-          if (value === 'both') return 'google-facebook';
-          if (!(SOCIAL_LOGIN_IDS as string[]).includes(value)) {
-            throw new InvalidArgumentError(`Allowed choices are ${[...SOCIAL_LOGIN_IDS, 'both'].join(', ')}.`);
-          }
-          return value;
-        }),
+      new Option('--social-auth <providers>', 'social login: none | all | a comma list of google,facebook,apple').argParser(value => {
+        const providers = parseSocialAuth(value);
+        if (!providers) throw new InvalidArgumentError('Use none, all or a comma list of google, facebook, apple.');
+        return providers;
+      }),
     )
+    .option('--google-web-client-id <id>', 'configure Google login: web client id (…apps.googleusercontent.com)')
+    .option('--google-ios-client-id <id>', 'configure Google login: iOS client id')
+    .option('--facebook-app-id <id>', 'configure Facebook login: app id')
+    .option('--facebook-client-token <token>', 'configure Facebook login: client token')
+    .option('--facebook-app-secret <secret>', 'configure Facebook login: app secret (backend only)')
+    .option('--apple-service-id <id>', 'Sign in with Apple: Services ID (optional, backend)')
+    .option('--group-chat', 'chat: add group chats (admins, members, group name & image)')
+    .option('--no-group-chat', 'chat: direct chats only')
+    .option('--terms', 'Terms & Conditions / Privacy Policy links from the backend (GET /legal)')
+    .option('--no-terms', 'no Terms & Conditions links')
+    .option('--delete-account', 'Profile → Delete account (DELETE /users/me)')
+    .option('--no-delete-account', 'no delete account')
     .option('--socket', 'implement Socket.io client for real-time events')
     .option('--no-socket', 'no socket client')
     .option('--chat', 'implement real-time chat with media/audio/video/documents')
@@ -126,6 +145,10 @@ export function parseArgs(argv: string[], version: string): CliFlags {
     .option('--auth-methods <items>', 'backend sign-in methods: comma list of email,mobile,google,facebook,apple')
     .option('--modules <items>', 'backend modules: comma list of chat,notifications, or none')
     .addOption(new Option('--deployment <id>', 'backend deployment').choices(['monolith', 'microservices']))
+    .option('--redis', 'backend: use Redis (shared rate limits, Socket.IO adapter, cache, OTP codes)')
+    .option('--no-redis', 'backend: no Redis (microservices always use it)')
+    .option('--docker', 'backend: add a Dockerfile + docker-compose.yml (database, Redis)')
+    .option('--no-docker', 'backend: no Docker files')
     .option('--dry-run', 'show what would be generated without writing anything', false)
     .option('-y, --yes', 'use defaults for everything not passed as a flag (non-interactive)', false)
     .option('-f, --force', 'overwrite the target directory if it exists', false)

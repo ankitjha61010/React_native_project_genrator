@@ -2,6 +2,9 @@ import { Global, Inject, Injectable, Module, {{#if SOCKET_SERVER}}type BeforeApp
 import { config } from '{{IMPORT:config.env}}';
 import { logger } from '{{IMPORT:core.logger}}';
 import { createDatabase, type Database } from '{{IMPORT:db.connection}}';
+{{#if REDIS}}
+import { closeRedis } from '{{IMPORT:db.redis}}';
+{{/if}}
 {{#if SOCKET_SERVER}}
 import { SocketHub } from '{{IMPORT:realtime.server}}';
 {{/if}}
@@ -10,6 +13,9 @@ import { AuthService } from '{{IMPORT:app.authService}}';
 {{/if}}
 {{#if CHAT}}
 import { ChatService } from '{{IMPORT:app.chatService}}';
+{{/if}}
+{{#if DEVICES}}
+import { DevicesService } from '{{IMPORT:app.devicesService}}';
 {{/if}}
 import { createInfrastructure, createServices, {{#if INFRA_LIFECYCLE}}type Infrastructure, {{/if}}type Services } from '{{IMPORT:app.container}}';
 import { HealthService } from '{{IMPORT:app.healthService}}';
@@ -21,7 +27,7 @@ import { UsersService } from '{{IMPORT:app.usersService}}';
 {{/if}}
 import { DATABASE, INFRASTRUCTURE, SERVICES } from '{{IMPORT:nest.tokens}}';
 
-/** Closes {{#if SOCKET_SERVER}}Socket.IO, {{/if}}{{#if EVENTS}}the event bus, {{/if}}the database when the app shuts down (SIGTERM / app.close()). */
+/** Closes {{#if SOCKET_SERVER}}Socket.IO, {{/if}}{{#if EVENTS}}the event bus, {{/if}}the database{{#if REDIS}}, Redis{{/if}} when the app shuts down (SIGTERM / app.close()). */
 @Injectable()
 class Lifecycle implements {{#if SOCKET_SERVER}}BeforeApplicationShutdown, {{/if}}OnApplicationShutdown {
   constructor(
@@ -42,6 +48,9 @@ class Lifecycle implements {{#if SOCKET_SERVER}}BeforeApplicationShutdown, {{/if
     await this.infra.eventBus.close();
 {{/if}}
     await this.database.disconnect();
+{{#if REDIS}}
+    await closeRedis();
+{{/if}}
   }
 }
 
@@ -62,6 +71,9 @@ const SERVICE_PROVIDERS: Provider[] = [
   service(HealthService, 'health'),
 {{#if CHAT}}
   service(ChatService, 'chat'),
+{{/if}}
+{{#if DEVICES}}
+  service(DevicesService, 'devices'),
 {{/if}}
 {{#if NOTIFICATIONS}}
   service(NotificationsService, 'notifications'),

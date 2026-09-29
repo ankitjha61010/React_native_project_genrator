@@ -1,7 +1,7 @@
 {{#if AUTH_REFRESH}}
 import type { RefreshToken } from '{{IMPORT:domain.authTokens}}';
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
 import type { CodePurpose, VerificationCode } from '{{IMPORT:domain.authTokens}}';
 {{/if}}
 {{#if SOCIAL}}
@@ -17,11 +17,14 @@ import type {
 {{#if SOCIAL}}
   SocialAccountsRepository,
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
   VerificationCodesRepository,
 {{/if}}
 } from '{{IMPORT:contract.auth}}';
 import type { PrismaClient } from '{{IMPORT:db.connection}}';
+{{#if SOCIAL}}
+import { AUTH_MESSAGES } from '{{IMPORT:messages.auth}}';
+{{/if}}
 {{#if AUTH_REFRESH}}
 
 export class PrismaRefreshTokensRepository implements RefreshTokensRepository {
@@ -53,7 +56,7 @@ export class PrismaRefreshTokensRepository implements RefreshTokensRepository {
   }
 }
 {{/if}}
-{{#if CODES}}
+{{#if DB_CODES}}
 
 const toCode = (record: Omit<VerificationCode, 'purpose'> & { purpose: string }): VerificationCode => ({ ...record, purpose: record.purpose as CodePurpose });
 
@@ -103,7 +106,7 @@ export class PrismaSocialAccountsRepository implements SocialAccountsRepository 
     try {
       return toAccount(await this.prisma.socialAccount.create({ data }));
     } catch (error) {
-      if (isUniqueViolation(error)) throw new ConflictError('This account is already linked', 'SOCIAL_ACCOUNT_LINKED');
+      if (isUniqueViolation(error)) throw new ConflictError(AUTH_MESSAGES.socialAccountLinked);
       throw error;
     }
   }

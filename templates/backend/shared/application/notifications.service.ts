@@ -1,11 +1,13 @@
 import { NotFoundError } from '{{IMPORT:core.errors}}';
 import type { Logger } from '{{IMPORT:core.logger}}';
 import { Paginated, type PageQuery } from '{{IMPORT:core.pagination}}';
-import { toNotificationView, type Broadcast, type BroadcastAudience, type DevicePlatform, type NotificationData, type NotificationType, type NotificationView } from '{{IMPORT:domain.notification}}';
+import { toNotificationView, type Broadcast, type BroadcastAudience, type NotificationData, type NotificationType, type NotificationView } from '{{IMPORT:domain.notification}}';
 import type { NotificationsRepository } from '{{IMPORT:contract.notifications}}';
+import type { DevicesService } from '{{IMPORT:app.devicesService}}';
 import type { UsersRepository } from '{{IMPORT:contract.users}}';
 import type { PushMessage, PushSender } from '{{IMPORT:port.pushSender}}';
 import type { Realtime } from '{{IMPORT:port.realtime}}';
+import { NOTIFICATIONS_MESSAGES } from '{{IMPORT:messages.notifications}}';
 
 export interface NotifyInput {
   type?: NotificationType;
@@ -21,6 +23,8 @@ export interface BroadcastInput extends NotifyInput {
 
 export interface NotificationsDependencies {
   notifications: NotificationsRepository;
+  /** Where the pushes go (every device of a user). */
+  devices: DevicesService;
   users: UsersRepository;
   pushSender: PushSender;
   realtime: Realtime;
@@ -33,21 +37,9 @@ export const NOTIFICATION_EVENT = 'notification:new';
 /** Rows inserted per query when broadcasting. */
 const BATCH = 1000;
 
-/** Push devices, the notification inbox and admin broadcasts. */
+/** The notification inbox, pushes to the users' devices and admin broadcasts. */
 export class NotificationsService {
   constructor(private readonly deps: NotificationsDependencies) {}
-
-  // ── devices ────────────────────────────────────────────────────────────────
-
-  /** Called by the app after it gets (or refreshes) its FCM token. */
-  async registerDevice(userId: string, token: string, platform: DevicePlatform): Promise<void> {
-    await this.deps.notifications.saveDevice({ userId, token, platform });
-  }
-
-  /** Called on logout, so the device stops receiving this user's pushes. */
-  unregisterDevice(userId: string, token: string): Promise<void> {
-    return this.deps.notifications.removeDevice(userId, token);
-  }
 
   // ── inbox ──────────────────────────────────────────────────────────────────
 
@@ -61,7 +53,7 @@ export class NotificationsService {
   }
 
   async markRead(userId: string, id: string): Promise<void> {
-    if (!(await this.deps.notifications.markRead(userId, id))) throw new NotFoundError('Notification not found', 'NOTIFICATION_NOT_FOUND');
+    if (!(await this.deps.notifications.markRead(userId, id))) throw new NotFoundError(NOTIFICATIONS_MESSAGES.notFound);
   }
 
   markAllRead(userId: string): Promise<void> {
@@ -69,7 +61,7 @@ export class NotificationsService {
   }
 
   async delete(userId: string, id: string): Promise<void> {
-    if (!(await this.deps.notifications.delete(userId, id))) throw new NotFoundError('Notification not found', 'NOTIFICATION_NOT_FOUND');
+    if (!(await this.deps.notifications.delete(userId, id))) throw new NotFoundError(NOTIFICATIONS_MESSAGES.notFound);
   }
 
   clear(userId: string): Promise<void> {
@@ -117,12 +109,9 @@ export class NotificationsService {
 
   /** Pushes to every device of these users; tokens FCM rejects are removed. */
   async push(userIds: string[], message: PushMessage): Promise<void> {
-    const devices = await this.deps.notifications.listDevices(userIds);
-    if (!devices.length) return;
-    const { invalidTokens } = await this.deps.pushSender.send(
-      devices.map(d => d.token),
-      message,
-    );
-    if (invalidTokens.length) await this.deps.notifications.deleteDevicesByToken(invalidTokens);
+    const tokens = await this.deps.devices.tokensOf(userIds);
+    if (!tokens.length) return;
+    const { invalidTokens } = await this.deps.pushSender.send(tokens, message);
+    await this.deps.devices.removeInvalidTokens(invalidTokens);
   }
 }

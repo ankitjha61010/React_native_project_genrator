@@ -1,33 +1,7 @@
-import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import type { NotificationData } from '{{IMPORT:domain.notification}}';
-import { JSON_TYPE, TIMESTAMP, UuidColumn } from './columns.js';
-import { UserOrmEntity } from './user.orm-entity.js';
-
-@Entity({ name: 'devices' })
-export class DeviceOrmEntity {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
-  @Index()
-  @UuidColumn({ name: 'user_id' })
-  userId: string;
-
-  @ManyToOne(() => UserOrmEntity, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'user_id' })
-  user?: UserOrmEntity;
-
-  @Column({ type: 'varchar', length: 512, unique: true })
-  token: string;
-
-  @Column({ type: 'varchar', length: 16 })
-  platform: string;
-
-  @CreateDateColumn({ name: 'created_at', type: TIMESTAMP })
-  createdAt: Date;
-
-  @UpdateDateColumn({ name: 'updated_at', type: TIMESTAMP })
-  updatedAt: Date;
-}
+import { JSON_TYPE, TIMESTAMP, UuidColumn } from '{{IMPORT:typeorm.columns}}';
+import { UserOrmEntity } from '{{IMPORT:typeorm.user}}';
 
 @Entity({ name: 'notifications' })
 @Index(['userId', 'createdAt'])

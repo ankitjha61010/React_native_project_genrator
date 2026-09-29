@@ -1,17 +1,5 @@
 import { Schema, model, type InferSchemaType, type Types } from 'mongoose';
 
-const deviceSchema = new Schema(
-  {
-    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    token: { type: String, required: true, unique: true, maxlength: 512 },
-    platform: { type: String, required: true, maxlength: 16 },
-  },
-  { timestamps: true, collection: 'devices' },
-);
-
-export type DeviceDocument = InferSchemaType<typeof deviceSchema> & { _id: Types.ObjectId; userId: Types.ObjectId; createdAt: Date; updatedAt: Date };
-export const DeviceModel = model('Device', deviceSchema);
-
 const notificationSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },

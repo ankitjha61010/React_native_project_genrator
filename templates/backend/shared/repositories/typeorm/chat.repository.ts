@@ -1,20 +1,31 @@
 import { Brackets, In, IsNull, type DataSource, type Repository } from 'typeorm';
 import type { Conversation, ConversationMember, Message, MessageType } from '{{IMPORT:domain.chat}}';
-import type { ChatRepository, CreateMessageData } from '{{IMPORT:contract.chat}}';
+import type { ChatRepository, CreateConversationData, CreateMessageData } from '{{IMPORT:contract.chat}}';
 import { ConversationMemberOrmEntity, ConversationOrmEntity, MessageOrmEntity } from '{{IMPORT:typeorm.chat}}';
 
 const toConversation = (e: ConversationOrmEntity): Conversation => ({
   id: e.id,
+{{#if GROUP_CHAT}}
   title: e.title,
   isGroup: e.isGroup,
   avatarUrl: e.avatarUrl,
+{{/if}}
   createdById: e.createdById,
   lastMessageAt: e.lastMessageAt,
   createdAt: e.createdAt,
   updatedAt: e.updatedAt,
 });
 
-const toMember = (e: ConversationMemberOrmEntity): ConversationMember => ({ conversationId: e.conversationId, userId: e.userId, lastReadAt: e.lastReadAt, clearedAt: e.clearedAt, joinedAt: e.joinedAt });
+const toMember = (e: ConversationMemberOrmEntity): ConversationMember => ({
+  conversationId: e.conversationId,
+  userId: e.userId,
+{{#if GROUP_CHAT}}
+  role: e.role === 'admin' ? 'admin' : 'member',
+{{/if}}
+  lastReadAt: e.lastReadAt,
+  clearedAt: e.clearedAt,
+  joinedAt: e.joinedAt,
+});
 
 const toMessage = (e: MessageOrmEntity): Message => ({
   id: e.id,
@@ -43,10 +54,15 @@ export class TypeOrmChatRepository implements ChatRepository {
     this.messages = dataSource.getRepository(MessageOrmEntity);
   }
 
-  createConversation(data: { isGroup: boolean; title: string | null; createdById: string; memberIds: string[] }): Promise<Conversation> {
+  createConversation({ memberIds, ...data }: CreateConversationData): Promise<Conversation> {
     return this.dataSource.transaction(async manager => {
-      const conversation = await manager.save(manager.create(ConversationOrmEntity, { isGroup: data.isGroup, title: data.title, createdById: data.createdById, avatarUrl: null, lastMessageAt: null }));
-      await manager.save(data.memberIds.map(userId => manager.create(ConversationMemberOrmEntity, { conversationId: conversation.id, userId, lastReadAt: null, clearedAt: null })));
+      const conversation = await manager.save(manager.create(ConversationOrmEntity, { ...data, lastMessageAt: null }));
+{{#if GROUP_CHAT}}
+      const role = (userId: string) => (data.isGroup && userId === data.createdById ? 'admin' : 'member');
+      await manager.save(memberIds.map(userId => manager.create(ConversationMemberOrmEntity, { conversationId: conversation.id, userId, role: role(userId), lastReadAt: null, clearedAt: null })));
+{{else}}
+      await manager.save(memberIds.map(userId => manager.create(ConversationMemberOrmEntity, { conversationId: conversation.id, userId, lastReadAt: null, clearedAt: null })));
+{{/if}}
       return toConversation(conversation);
     });
   }
@@ -55,13 +71,22 @@ export class TypeOrmChatRepository implements ChatRepository {
     const entity = await this.conversations.findOneBy({ id });
     return entity ? toConversation(entity) : null;
   }
+{{#if GROUP_CHAT}}
+
+  async updateConversation(id: string, data: Partial<Pick<Conversation, 'title' | 'avatarUrl'>>): Promise<Conversation> {
+    await this.conversations.update({ id }, data);
+    return toConversation(await this.conversations.findOneByOrFail({ id }));
+  }
+{{/if}}
 
   async findDirectConversation(userId: string, otherUserId: string): Promise<Conversation | null> {
     const entity = await this.conversations
       .createQueryBuilder('c')
       .innerJoin(ConversationMemberOrmEntity, 'a', 'a.conversation_id = c.id AND a.user_id = :userId', { userId })
       .innerJoin(ConversationMemberOrmEntity, 'b', 'b.conversation_id = c.id AND b.user_id = :otherUserId', { otherUserId })
+{{#if GROUP_CHAT}}
       .where('c.isGroup = :isGroup', { isGroup: false })
+{{/if}}
       .getOne();
     return entity ? toConversation(entity) : null;
   }
@@ -81,7 +106,13 @@ export class TypeOrmChatRepository implements ChatRepository {
   }
 
   async listMembers(conversationIds: string[]): Promise<ConversationMember[]> {
+{{#if GROUP_CHAT}}
+    if (!conversationIds.length) return [];
+    // Oldest member first – the next admin when the last one leaves.
+    return (await this.members.find({ where: { conversationId: In(conversationIds) }, order: { joinedAt: 'ASC' } })).map(toMember);
+{{else}}
     return conversationIds.length ? (await this.members.findBy({ conversationId: In(conversationIds) })).map(toMember) : [];
+{{/if}}
   }
 
   async findMember(conversationId: string, userId: string): Promise<ConversationMember | null> {
@@ -89,9 +120,21 @@ export class TypeOrmChatRepository implements ChatRepository {
     return entity ? toMember(entity) : null;
   }
 
-  async updateMember(conversationId: string, userId: string, data: Partial<Pick<ConversationMember, 'lastReadAt' | 'clearedAt'>>): Promise<void> {
+  async updateMember(conversationId: string, userId: string, data: Partial<Pick<ConversationMember, 'lastReadAt' | 'clearedAt'{{#if GROUP_CHAT}} | 'role'{{/if}}>>): Promise<void> {
     await this.members.update({ conversationId, userId }, data);
   }
+{{#if GROUP_CHAT}}
+
+  async addMembers(conversationId: string, userIds: string[]): Promise<void> {
+    // Existing members are left as they are (ON CONFLICT DO NOTHING / INSERT IGNORE).
+    await this.members
+      .createQueryBuilder()
+      .insert()
+      .values(userIds.map(userId => ({ conversationId, userId, role: 'member', lastReadAt: null, clearedAt: null })))
+      .orIgnore()
+      .execute();
+  }
+{{/if}}
 
   async removeMember(conversationId: string, userId: string): Promise<void> {
     await this.members.delete({ conversationId, userId });

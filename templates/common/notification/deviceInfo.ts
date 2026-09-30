@@ -21,34 +21,46 @@ export async function getDeviceId(): Promise<string> {
 }
 
 /** e.g. "Google Pixel 8" on Android; "iPhone" / "iPad" on iOS (the exact model needs a native module). */
-function deviceName(): string | null {
+function deviceModel(): string | null {
   if (Platform.OS === 'android') return [Platform.constants.Brand, Platform.constants.Model].filter(Boolean).join(' ') || null;
   if (Platform.OS === 'ios') return Platform.constants.interfaceIdiom === 'pad' ? 'iPad' : 'iPhone';
   return null;
 }
 
-/** Everything the backend stores about this device (POST /devices). */
-export async function getDeviceInfo(): Promise<DeviceInfo> {
+/**
+ * The `device` of the sign-in / refresh bodies (authApi.ts). The FCM token sent here is
+ * remembered, so syncFcmToken() only calls the backend when the token really changed.
+ */
+export async function getSignInDevice(): Promise<DeviceInfo> {
+  const fcmToken = await getFcmToken();
+  if (fcmToken) await storageService.set(StorageKeys.FCM_TOKEN, fcmToken);
   return {
     deviceId: await getDeviceId(),
-    token: await getFcmToken(),
-    platform: Platform.OS === 'ios' ? 'ios' : 'android',
-    deviceName: deviceName(),
+    deviceType: Platform.OS === 'ios' ? 'IOS' : 'ANDROID',
+    deviceModel: deviceModel(),
     osVersion: String(Platform.Version),
     appVersion: appConfig.version,
+    fcmToken,
   };
 }
 
 /**
- * Registers / updates this device for the signed-in user: after every sign-in, on app start
- * and when the FCM token changes. Never throws – the app works without it.
+ * Sends the FCM token when it differs from the one the backend has: FCM rotated it, or it only
+ * became available after sign-in (e.g. iOS gets it once notifications are allowed). Never throws.
  */
-export async function registerDevice(token?: string): Promise<void> {
+export async function syncFcmToken(token?: string): Promise<void> {
   try {
-    const device = await getDeviceInfo();
-    await deviceApi.register(token ? { ...device, token } : device);
-    logger.debug('Device registered');
+    const fcmToken = token ?? (await getFcmToken());
+    if (!fcmToken || fcmToken === (await storageService.get<string>(StorageKeys.FCM_TOKEN))) return;
+    await deviceApi.updateFcmToken(await getDeviceId(), fcmToken);
+    await storageService.set(StorageKeys.FCM_TOKEN, fcmToken);
+    logger.debug('FCM token updated');
   } catch (error) {
-    logger.warn('Registering the device failed', error);
+    logger.warn('Updating the FCM token failed', error);
   }
+}
+
+/** On logout: the next sign-in sends the token again. */
+export function forgetFcmToken(): Promise<void> {
+  return storageService.remove(StorageKeys.FCM_TOKEN);
 }

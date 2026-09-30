@@ -15,7 +15,30 @@ export interface ChatParticipant {
 {{/if}}
 }
 
-export type MessageType = 'text' | 'image' | 'video' | 'audio' | 'document';
+/** `system`: written by the backend ("Jane added John") – never sent by the app. */
+export type MessageType = 'text' | 'image' | 'video' | 'audio' | 'document' | 'system';
+/** What the app can send. */
+export type SendableMessageType = Exclude<MessageType, 'system'>;
+
+/** What a `system` message says happened – the app renders its own text per event. */
+export type SystemEvent = 'MEMBER_ADDED';
+
+export interface ChatPerson {
+  id: string;
+  name: string;
+}
+
+/** The quoted message above a reply. */
+export interface ReplyTo {
+  messageId: string;
+  senderId: string;
+  senderName: string;
+  type: MessageType;
+  /** Text, or a document's file name. */
+  text?: string;
+  /** The original was deleted. */
+  deleted?: boolean;
+}
 
 export interface ChatMessageCrop {
   width: number;
@@ -45,6 +68,12 @@ export interface ChatMessage {
   mimeType?: string;
   duration?: number; // seconds (audio / video)
   crop?: ChatMessageCrop;
+  /** `system` messages: `{ event, actor, target }` → "Jane added John". */
+  event?: SystemEvent;
+  actor?: ChatPerson;
+  target?: ChatPerson;
+  /** This message replies to another one. */
+  replyTo?: ReplyTo;
   createdAt: string;
   status: 'sending' | 'sent' | 'read' | 'failed';
   isMe?: boolean;

@@ -6,6 +6,7 @@ import type { Logger } from '{{IMPORT:core.logger}}';
 import type { User } from '{{IMPORT:domain.user}}';
 {{/if}}
 {{#if SVC_NOTIFICATIONS}}
+import type { DeviceInput } from '{{IMPORT:domain.device}}';
 import type { PushMessage } from '{{IMPORT:port.pushSender}}';
 {{/if}}
 import { EVENT_CHANNELS } from '{{IMPORT:port.eventBus}}';
@@ -32,6 +33,7 @@ function reviveUser(raw: Record<string, unknown>): User {
 {{/if}}
 {{#if SVC_NOTIFICATIONS}}
  * - `push`: push requests of other services (e.g. chat messages for offline members)
+ * - `devices`: devices of sign-in / logout requests (from the identity service)
 {{/if}}
  */
 export async function startEventHandlers(infra: Infrastructure, {{#if SVC_NOTIFICATIONS}}services{{else}}{{#if GROUP_CHAT}}services{{else}}_services{{/if}}{{/if}}: Services, logger: Logger): Promise<void> {
@@ -67,6 +69,21 @@ export async function startEventHandlers(infra: Infrastructure, {{#if SVC_NOTIFI
   await eventBus.subscribe(EVENT_CHANNELS.push, async payload => {
     const event = payload as { userIds?: string[]; message?: PushMessage };
     if (Array.isArray(event.userIds) && event.message) await services.notifications.push(event.userIds, event.message);
+  });
+
+  // Devices sent with sign-in / logout requests to the identity service.
+  await eventBus.subscribe(EVENT_CHANNELS.devices, async payload => {
+    const event = payload as { type?: string; userId?: string; device?: DeviceInput; deviceId?: string };
+    if (!event.userId) return;
+    if (event.type === 'device.saved' && event.device) {
+      const { userId, device } = event;
+      // Right after sign-up the user may not be copied here yet (another channel) – try once more.
+      await services.devices.save(userId, device).catch(async () => {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await services.devices.save(userId, device);
+      });
+    }
+    else if (event.type === 'device.removed') await (event.deviceId ? services.devices.remove(event.userId, event.deviceId) : services.devices.removeAll(event.userId));
   });
 {{/if}}
   logger.info('Event handlers ready');

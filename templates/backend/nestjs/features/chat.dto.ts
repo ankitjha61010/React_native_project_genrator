@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsNumber, IsOptional, IsPositive, IsString, IsUrl, Max, MaxLength, Min, {{#if GROUP_CHAT}}MinLength, {{/if}}ValidateNested } from 'class-validator';
-import { {{#if GROUP_CHAT}}MEMBER_ROLES, type MemberRole, {{/if}}MESSAGE_TYPES, type MessageType } from '{{IMPORT:domain.chat}}';
+import { {{#if GROUP_CHAT}}MEMBER_ROLES, type MemberRole, {{/if}}MESSAGE_TYPES, type MessageType, type SendableMessageType, type SystemEvent } from '{{IMPORT:domain.chat}}';
 
 export class StartConversationDto {
   /** The other person. */
@@ -93,7 +93,7 @@ export class MediaCropDto {
 /** Same fields as the app's ChatMessage (media must be uploaded first – send the returned url). */
 export class SendMessageDto {
   @IsIn(MESSAGE_TYPES)
-  type: MessageType;
+  type: SendableMessageType;
 
   @IsOptional()
   @IsString()
@@ -131,6 +131,12 @@ export class SendMessageDto {
   @ValidateNested()
   @Type(() => MediaCropDto)
   crop?: MediaCropDto;
+
+  /** Reply: the id of the quoted message (same conversation). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  replyToId?: string;
 }
 
 export class ListMessagesQueryDto {
@@ -149,6 +155,22 @@ export class ListMessagesQueryDto {
 
 // ── responses (documentation) ────────────────────────────────────────────────
 
+export class ChatPersonDto {
+  id: string;
+  name: string;
+}
+
+/** The quoted message above a reply. */
+export class ReplyToDto {
+  messageId: string;
+  senderId: string;
+  senderName: string;
+  type: MessageType;
+  text?: string;
+  /** The quoted message was deleted. */
+  deleted?: true;
+}
+
 export class ChatMessageDto {
   id: string;
   conversationId: string;
@@ -163,6 +185,11 @@ export class ChatMessageDto {
   fileSize?: string;
   duration?: number;
   crop?: MediaCropDto;
+  /** `system` messages: what happened – rendered by the app ("Jane added John"). */
+  event?: SystemEvent;
+  actor?: ChatPersonDto;
+  target?: ChatPersonDto;
+  replyTo?: ReplyToDto;
   createdAt: string;
   status: 'sent' | 'read';
   isMe?: boolean;
@@ -195,7 +222,7 @@ export class ConversationDto {
 
 export class UploadedMediaDto {
   url: string;
-  type: MessageType;
+  type: SendableMessageType;
   fileName: string;
   fileSize: string;
   mimeType: string;

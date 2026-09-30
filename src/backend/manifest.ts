@@ -51,6 +51,8 @@ const chat: Condition = ctx => auth(ctx) && ctx.options.modules.chat;
 const notifications: Condition = ctx => auth(ctx) && ctx.options.modules.notifications;
 /** The users' devices (FCM tokens) – part of push notifications. */
 const devices: Condition = notifications;
+/** Sign-in payloads carry the app's device: stored here, or published to the notifications service (identity). */
+const deviceInput: Condition = ctx => (devices(ctx) && ctx.options.service === undefined) || (ctx.options.service === 'identity' && Boolean(ctx.options.remoteDevices));
 /** GET /legal + the Terms & Conditions / Privacy Policy pages (monolith / identity service). */
 const legal: Condition = ctx => ctx.options.modules.legal && !replica(ctx);
 /** DELETE /users/me – the user deletes their own account. */
@@ -155,7 +157,7 @@ export const BACKEND_MANIFEST: BackendManifestEntry[] = [
   { id: 'domain.roles', template: 'shared/domain/roles.ts', layer: 'domain', feature: 'users', file: 'roles.ts', when: auth },
   { id: 'domain.authTokens', template: 'shared/domain/auth-token.entity.ts', layer: 'domain', feature: 'auth', file: 'auth-token.entity.ts', when: ctx => refresh(ctx) || codes(ctx) || social(ctx) },
   { id: 'domain.chat', template: 'shared/domain/chat.entity.ts', layer: 'domain', feature: 'chat', file: 'chat.entity.ts', when: chat },
-  { id: 'domain.device', template: 'shared/domain/device.entity.ts', layer: 'domain', feature: 'devices', file: 'device.entity.ts', when: devices },
+  { id: 'domain.device', template: 'shared/domain/device.entity.ts', layer: 'domain', feature: 'devices', file: 'device.entity.ts', when: ctx => devices(ctx) || deviceInput(ctx) },
   { id: 'domain.notification', template: 'shared/domain/notification.entity.ts', layer: 'domain', feature: 'notifications', file: 'notification.entity.ts', when: notifications },
   { id: 'contract.users', template: 'shared/domain/users.repository.ts', layer: 'repositoryContract', feature: 'users', file: 'users.repository.ts', mergeInto: ['repo.users'] },
   { id: 'contract.auth', template: 'shared/domain/auth.repository.ts', layer: 'repositoryContract', feature: 'auth', file: 'auth.repository.ts', when: ctx => refresh(ctx) || codes(ctx) || social(ctx), mergeInto: ['repo.auth', 'repo.redisCodes'] },

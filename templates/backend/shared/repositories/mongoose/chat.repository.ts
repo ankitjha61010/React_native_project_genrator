@@ -1,5 +1,5 @@
 import { Types } from 'mongoose';
-import type { Conversation, ConversationMember, MediaCrop, Message, MessageType } from '{{IMPORT:domain.chat}}';
+import type { Conversation, ConversationMember, MediaCrop, Message, MessageType, SystemEvent } from '{{IMPORT:domain.chat}}';
 import type { ChatRepository, CreateConversationData, CreateMessageData } from '{{IMPORT:contract.chat}}';
 import { isValidId } from '{{IMPORT:db.connection}}';
 import { ConversationMemberModel, ConversationModel, MessageModel, type ConversationDocument, type MemberDocument, type MessageDocument } from '{{IMPORT:mongoose.chat}}';
@@ -25,6 +25,7 @@ const toMember = (d: MemberDocument): ConversationMember => ({
 {{/if}}
   lastReadAt: d.lastReadAt ?? null,
   clearedAt: d.clearedAt ?? null,
+  hidden: d.hidden ?? false,
   joinedAt: d.joinedAt,
 });
 
@@ -40,6 +41,9 @@ const toMessage = (d: MessageDocument): Message => ({
   fileSize: d.fileSize ?? null,
   duration: d.duration ?? null,
   crop: (d.crop as MediaCrop | null) ?? null,
+  event: (d.event as SystemEvent | null) ?? null,
+  targetUserId: d.targetUserId?.toString() ?? null,
+  replyToId: d.replyToId?.toString() ?? null,
   createdAt: d.createdAt,
   deletedAt: d.deletedAt ?? null,
 });
@@ -108,8 +112,12 @@ export class MongooseChatRepository implements ChatRepository {
     return doc ? toMember(doc) : null;
   }
 
-  async updateMember(conversationId: string, userId: string, data: Partial<Pick<ConversationMember, 'lastReadAt' | 'clearedAt'{{#if GROUP_CHAT}} | 'role'{{/if}}>>): Promise<void> {
+  async updateMember(conversationId: string, userId: string, data: Partial<Pick<ConversationMember, 'lastReadAt' | 'clearedAt' | 'hidden'{{#if GROUP_CHAT}} | 'role'{{/if}}>>): Promise<void> {
     await ConversationMemberModel.updateOne({ conversationId, userId }, { $set: data });
+  }
+
+  async updateMemberships(userId: string, data: Partial<Pick<ConversationMember, 'clearedAt' | 'hidden'>>): Promise<void> {
+    if (isValidId(userId)) await ConversationMemberModel.updateMany({ userId }, { $set: data });
   }
 {{#if GROUP_CHAT}}
 
@@ -137,6 +145,11 @@ export class MongooseChatRepository implements ChatRepository {
     if (!isValidId(id)) return null;
     const doc = await MessageModel.findById(id).lean<MessageDocument>();
     return doc ? toMessage(doc) : null;
+  }
+
+  async findMessages(messageIds: string[]): Promise<Message[]> {
+    const valid = ids(messageIds);
+    return valid.length ? (await MessageModel.find({ _id: { $in: valid } }).lean<MessageDocument[]>()).map(toMessage) : [];
   }
 
   async listMessages(conversationId: string, options: { after?: Date | null; before?: Pick<Message, 'createdAt' | 'id'>; limit: number }): Promise<Message[]> {
@@ -168,7 +181,7 @@ export class MongooseChatRepository implements ChatRepository {
 
   countUnread(conversationId: string, userId: string, since: Date | null, after: Date | null): Promise<number> {
     const from = since && after ? (since > after ? since : after) : (since ?? after);
-    return MessageModel.countDocuments({ conversationId, deletedAt: null, senderId: { $ne: userId }, ...(from ? { createdAt: { $gt: from } } : {}) });
+    return MessageModel.countDocuments({ conversationId, deletedAt: null, senderId: { $ne: userId }, type: { $ne: 'system' }, ...(from ? { createdAt: { $gt: from } } : {}) });
   }
 
   async softDeleteMessage(id: string): Promise<void> {

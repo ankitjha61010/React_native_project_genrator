@@ -106,6 +106,30 @@ export async function configureAndroidMicrophone(projectDir: string): Promise<vo
   );
 }
 
+/** Location permissions for the Google Location SDK (requested at runtime) – only when it was selected. */
+export async function configureAndroidLocation(projectDir: string): Promise<void> {
+  const manifest = path.join(projectDir, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+  await edit(manifest, 'AndroidManifest.xml', source =>
+    applyPatches(
+      source,
+      [
+        {
+          id: 'location',
+          anchor: /<uses-permission android:name="android\.permission\.INTERNET" \/>/,
+          position: 'after',
+          comment: 'xml',
+          content: [
+            '<!-- Google Location SDK: precise + approximate location (requested at runtime) -->',
+            '<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />',
+            '<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />',
+          ].join('\n'),
+        },
+      ],
+      'AndroidManifest.xml',
+    ),
+  );
+}
+
 /**
  * Android only mirrors the UI when the app declares `supportsRtl`. Set it ONLY for apps
  * generated with RTL support: an LTR-only app must stay left-to-right even on an Arabic

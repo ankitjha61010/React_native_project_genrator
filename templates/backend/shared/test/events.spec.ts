@@ -1,4 +1,9 @@
 {{#if SVC_IDENTITY}}
+{{#if DEVICE_EVENTS}}
+import { logger } from '{{IMPORT:core.logger}}';
+import { DeviceType } from '{{IMPORT:domain.device}}';
+import { PublishingDeviceRegistry } from '{{IMPORT:events.usersPublisher}}';
+{{/if}}
 import { EVENT_CHANNELS } from '{{IMPORT:port.eventBus}}';
 import { createHarness, type Harness } from '../support/test-infrastructure.js';
 
@@ -18,23 +23,40 @@ describe('identity service events', () => {
     expect(events.map(e => e.type)).toEqual(['user.upserted', 'user.upserted', 'user.deleted']);
     expect(events[1]?.user).toMatchObject({ name: 'Jane D.', passwordHash: null });
   });
+{{#if DEVICE_EVENTS}}
+
+  it('publishes the device of sign-ins and logouts (the notifications service stores it)', async () => {
+    const devices = new PublishingDeviceRegistry(h.eventBus, logger);
+    const device = { deviceId: 'jane-phone-1', deviceType: DeviceType.IOS, fcmToken: 'fcm-token-1' };
+    await devices.save('u1', device);
+    await devices.remove('u1', 'jane-phone-1');
+    await devices.removeAll('u1');
+    expect(h.eventBus.published.filter(e => e.channel === EVENT_CHANNELS.devices).map(e => e.payload)).toEqual([
+      { type: 'device.saved', userId: 'u1', device },
+      { type: 'device.removed', userId: 'u1', deviceId: 'jane-phone-1' },
+      { type: 'device.removed', userId: 'u1' },
+    ]);
+  });
+{{/if}}
 });
 {{/if}}
 {{#if REPLICA}}
 import { logger } from '{{IMPORT:core.logger}}';
 {{#if SVC_NOTIFICATIONS}}
+import { DeviceType } from '{{IMPORT:domain.device}}';
 import { EventRealtime } from '{{IMPORT:events.realtime}}';
 {{/if}}
 import { EVENT_CHANNELS } from '{{IMPORT:port.eventBus}}';
 import { startEventHandlers } from '{{IMPORT:events.handlers}}';
 import { createHarness, type Harness } from '../support/test-infrastructure.js';
+import { UserRole } from '{{IMPORT:domain.roles}}';
 
 const identityUser = (id: string, name: string) => ({
   id,
   email: `${name.toLowerCase()}@example.com`,
   name,
   passwordHash: null,
-  role: 'user',
+  role: UserRole.USER,
   emailVerifiedAt: null,
   countryCode: null,
   phone: null,
@@ -94,9 +116,17 @@ describe('{{SERVICE_NAME}} service events', () => {
 
   it('pushes on behalf of other services', async () => {
     const user = await h.repositories.users.create({ email: 'jane@example.com', name: 'Jane' });
-    await h.devices.register(user.id, { deviceId: 'jane-phone-1', token: 'device-token-1', platform: 'android' });
+    await h.devices.save(user.id, { deviceId: 'jane-phone-1', fcmToken: 'device-token-1', deviceType: DeviceType.ANDROID });
     await h.eventBus.publish(EVENT_CHANNELS.push, { userIds: [user.id], message: { title: 'Alice', body: 'Hi', data: { type: 'chat' } } });
     expect(h.pushSender.sent).toEqual([{ tokens: ['device-token-1'], message: { title: 'Alice', body: 'Hi', data: { type: 'chat' } } }]);
+  });
+
+  it('stores and removes the devices the identity service publishes', async () => {
+    const user = await h.repositories.users.create({ email: 'jane@example.com', name: 'Jane' });
+    await h.eventBus.publish(EVENT_CHANNELS.devices, { type: 'device.saved', userId: user.id, device: { deviceId: 'jane-phone-1', deviceType: DeviceType.ANDROID, fcmToken: 'fcm-1' } });
+    expect(await h.devices.list(user.id)).toEqual([expect.objectContaining({ deviceId: 'jane-phone-1', pushEnabled: true })]);
+    await h.eventBus.publish(EVENT_CHANNELS.devices, { type: 'device.removed', userId: user.id, deviceId: 'jane-phone-1' });
+    expect(await h.devices.list(user.id)).toHaveLength(0);
   });
 
   it('sends live events to the chat service (which holds the sockets)', async () => {

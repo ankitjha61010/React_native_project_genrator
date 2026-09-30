@@ -4,7 +4,7 @@ import { storageService } from '{{IMPORT:storage.service}}';
 import { logger } from '{{IMPORT:utils.logger}}';
 import { apiConfig } from './apiConfig';
 {{#if API_ENCRYPTION}}
-import { fromEncryptedBody, isEncryptionEnabled, toEncryptedBody } from './apiEncryption';
+import { ENCRYPTION_KEY_ID_HEADER, encryptionKeyId, fromEncryptedBody, isEncryptionEnabled, toEncryptedBody } from './apiEncryption';
 import { ApiError, toApiError } from './apiErrors';
 {{else}}
 import { toApiError } from './apiErrors';
@@ -67,6 +67,10 @@ apiClient.interceptors.request.use(async config => {
     logger.debug('  body (before encryption)', config.data);
     config.data = toEncryptedBody(config.data);
     request._encrypted = true;
+  }
+  if (usesEncryption(config)) {
+    // Lets the server tell "different keys" apart from "broken body" (see apiEncryption.ts).
+    config.headers[ENCRYPTION_KEY_ID_HEADER] = encryptionKeyId();
   }
 {{/if}}
   logger.debug(`→ ${config.method?.toUpperCase()} ${config.baseURL ?? ''}${config.url ?? ''}`);

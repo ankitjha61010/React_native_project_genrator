@@ -2,7 +2,7 @@ import { isFirebaseConfigured } from '{{IMPORT:firebase.service}}';
 import { logger } from '{{IMPORT:utils.logger}}';
 import { subscribeToNotificationTaps, type NotificationTap } from './notificationHandlers';
 import { requestNotificationPermission } from './notificationPermissions';
-import { registerDevice } from './deviceInfo';
+import { syncFcmToken } from './deviceInfo';
 import { getFcmToken, onFcmTokenRefresh } from './notificationToken';
 
 export interface NotificationServiceOptions {
@@ -14,17 +14,17 @@ export interface NotificationServiceOptions {
  * Runs whenever the signed-in part of the app opens – right after register / login / social
  * login and on every app start:
  *   1. asks for the notification permission,
- *   2. registers this device with the backend (install id, FCM token, platform, model, versions),
- *   3. re-registers it when FCM rotates the token, and routes notification taps.
+ *   2. sends the FCM token only if the backend doesn't have it yet (the device itself was saved by
+ *      the sign-in request – its body carries `device`, see authApi.ts),
+ *   3. sends it again when FCM rotates it, and routes notification taps.
  * Foreground messages are displayed by the handlers registered in index.js.
  *
  * Returns a cleanup function that removes every listener.
  */
 async function initialize(options: NotificationServiceOptions = {}): Promise<() => void> {
   if (!isFirebaseConfigured()) {
+    // The device was still saved by the sign-in (without a token), so the user's device list is complete.
     logger.warn('Push notifications disabled: Firebase is not configured (see firebase/README.md).');
-    // The device is still registered (without a token), so the user's device list is complete.
-    await registerDevice();
     return () => {};
   }
 
@@ -34,14 +34,14 @@ async function initialize(options: NotificationServiceOptions = {}): Promise<() 
   }
   cleanups.push(
     onFcmTokenRefresh(token => {
-      registerDevice(token);
+      syncFcmToken(token);
     }),
   );
 
   const granted = await requestNotificationPermission();
   if (!granted) logger.info('Notification permission not granted');
-  // With the FCM token when the permission was granted (the token is read inside).
-  await registerDevice();
+  // iOS may only have a token now that notifications are allowed – sent once if it's new.
+  await syncFcmToken();
 
   return () => cleanups.forEach(cleanup => cleanup());
 }

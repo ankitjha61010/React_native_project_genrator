@@ -1,4 +1,7 @@
 import { createHarness, type Harness } from '../support/test-infrastructure.js';
+{{#if AUTH}}
+import { UserRole } from '{{IMPORT:domain.roles}}';
+{{/if}}
 
 describe('users', () => {
   let h: Harness;
@@ -75,14 +78,14 @@ describe('users', () => {
     const admin = await seed('admin@example.com');
     const user = await seed('user@example.com');
 
-    const updated = await h.users.update(user.id, { role: 'admin' }, admin.id);
-    expect(updated.role).toBe('admin');
+    const updated = await h.users.update(user.id, { role: UserRole.ADMIN }, admin.id);
+    expect(updated.role).toBe(UserRole.ADMIN);
     expect(updated.tokenVersion).toBe(user.tokenVersion + 1);
   });
 
   it('does not let admins demote, disable or delete themselves', async () => {
     const admin = await seed('admin@example.com');
-    await expect(h.users.update(admin.id, { role: 'user' }, admin.id)).rejects.toMatchObject({ statusCode: 403 });
+    await expect(h.users.update(admin.id, { role: UserRole.USER }, admin.id)).rejects.toMatchObject({ statusCode: 403 });
     await expect(h.users.update(admin.id, { isActive: false }, admin.id)).rejects.toMatchObject({ statusCode: 403 });
     await expect(h.users.delete(admin.id, admin.id)).rejects.toMatchObject({ statusCode: 403 });
   });

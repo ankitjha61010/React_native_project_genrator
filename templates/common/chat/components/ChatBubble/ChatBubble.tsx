@@ -14,7 +14,9 @@ import { useStyles } from '{{IMPORT:hooks.useTheme}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
 import type { ChatMessage } from '{{IMPORT:chat.types}}';
 import { translate } from '{{IMPORT:i18n.index}}';
+import { replyPreview, systemMessageText } from '../../utils/chatFormat';
 import { AudioMessage } from '../AudioMessage/AudioMessage';
+import { ChatNotice } from '../ChatNotice/ChatNotice';
 
 export interface ChatBubbleProps {
   message: ChatMessage;
@@ -23,9 +25,17 @@ export interface ChatBubbleProps {
   showSender?: boolean;
   /** A message that failed to send: tap to send it again. */
   onRetry?: (message: ChatMessage) => void;
+  /** Long press: the message actions (reply, delete…). */
+  onLongPress?: (message: ChatMessage) => void;
+  /** Tap on the quote of a reply: jump to the original. */
+  onPressReply?: (messageId: string) => void;
+  /** Briefly tinted – the original after tapping a reply's quote. */
+  highlighted?: boolean;
+  /** Your user id – system messages say "You added …". */
+  myId?: string;
 }
 
-export function ChatBubble({ message, onPressMedia, showSender = false, onRetry }: ChatBubbleProps): React.JSX.Element {
+export function ChatBubble({ message, onPressMedia, showSender = false, onRetry, onLongPress, onPressReply, highlighted = false, myId }: ChatBubbleProps): React.JSX.Element {
   const styles = useStyles(createStyles);
   const isMe = message.isMe;
 
@@ -33,6 +43,11 @@ export function ChatBubble({ message, onPressMedia, showSender = false, onRetry 
     hour: '2-digit',
     minute: '2-digit',
   });
+
+  // "Jane added John" – a notice in the middle, not a bubble.
+  if (message.type === 'system') {
+    return <ChatNotice text={systemMessageText(message, myId)} time={timeFormatted} />;
+  }
 
   const getImageDimensions = () => {
     if (!message.crop) {
@@ -69,12 +84,25 @@ export function ChatBubble({ message, onPressMedia, showSender = false, onRetry 
   const imageDims = getImageDimensions();
 
   return (
-    <View style={[styles.container, isMe ? styles.containerMe : styles.containerOther]}>
+    <View style={[styles.container, isMe ? styles.containerMe : styles.containerOther, highlighted && styles.highlighted]}>
       <Pressable
-        disabled={message.status !== 'failed'}
-        onPress={() => onRetry?.(message)}
+        onPress={message.status === 'failed' ? () => onRetry?.(message) : undefined}
+        onLongPress={onLongPress && message.status !== 'sending' ? () => onLongPress(message) : undefined}
+        delayLongPress={300}
         style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleOther, message.status === 'failed' && styles.bubbleFailed]}>
         {showSender && !isMe ? <AppText fontSize="size12" fontFamily="semiBold" color="primary" numberOfLines={1} text={message.senderName} /> : null}
+        {/* Reply: the quoted message – tap to jump to it. */}
+        {message.replyTo ? (
+          <Pressable
+            onPress={() => message.replyTo && onPressReply?.(message.replyTo.messageId)}
+            disabled={!onPressReply || message.replyTo.deleted}
+            accessibilityRole="button"
+            accessibilityLabel={translate('common', 'replyingTo', { value1: message.replyTo.senderName })}
+            style={[styles.quote, isMe ? styles.quoteMe : styles.quoteOther]}>
+            <AppText fontSize="size12" fontFamily="semiBold" style={isMe ? styles.textMe : styles.quoteName} numberOfLines={1} text={message.replyTo.senderName} />
+            <AppText fontSize="size12" style={isMe ? styles.metaMe : styles.docMeta} numberOfLines={2} text={replyPreview(message.replyTo)} />
+          </Pressable>
+        ) : null}
         {/* Media: Image */}
         {message.type === 'image' && message.mediaUrl && (
           <TouchableOpacity
@@ -184,6 +212,28 @@ const createStyles = (theme: Theme) =>
     },
     containerOther: {
       justifyContent: 'flex-start',
+    },
+    highlighted: {
+      backgroundColor: theme.colors.primarySoft,
+    },
+    quote: {
+      borderStartWidth: 3,
+      borderRadius: 8,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      marginBottom: 4,
+      minWidth: 120,
+    },
+    quoteMe: {
+      backgroundColor: '#FFFFFF26',
+      borderStartColor: '#FFFFFF',
+    },
+    quoteOther: {
+      backgroundColor: theme.colors.background,
+      borderStartColor: theme.colors.primary,
+    },
+    quoteName: {
+      color: theme.colors.primary,
     },
     bubble: {
       maxWidth: '82%',

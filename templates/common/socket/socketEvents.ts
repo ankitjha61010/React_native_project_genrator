@@ -21,6 +21,8 @@ export const SOCKET_EVENTS = {
   RECEIVE_MESSAGE: 'chat:receive_message',
   MESSAGE_READ: 'chat:message_read',
   MESSAGE_DELETE: 'chat:message_deleted',
+  /** You cleared a chat (`conversationId`) or all chats (`conversationId: null`), maybe on another device. */
+  CONVERSATION_CLEARED: 'chat:conversation_cleared',
 {{#if GROUP_CHAT}}
   /** A group changed (name, image, members, admins) – reload it. */
   CONVERSATION_UPDATED: 'chat:conversation_updated',

@@ -26,7 +26,7 @@ export async function generateFirebase(
   );
 
   await configureAndroidFirebase(projectDir, profile);
-  await configurePodfile(projectDir, options.appName, options.chat ? ['Microphone'] : []);
+  await configurePodfile(projectDir, options.appName, [...(options.chat ? ['Microphone'] : []), ...(options.googleLocation ? ['LocationWhenInUse'] : [])]);
   await configureAppDelegate(projectDir, options.appName);
 
   const result: FirebaseResult = { android: 'example', ios: 'example' };

@@ -2,7 +2,7 @@ import { {{#if AUTH}}In, {{/if}}type DataSource, type Repository } from 'typeorm
 import { ConflictError, NotFoundError } from '{{IMPORT:core.errors}}';
 import { pageOffset, type PageQuery } from '{{IMPORT:core.pagination}}';
 {{#if AUTH}}
-import { isRole{{#if NOTIFICATIONS}}, type Role{{/if}} } from '{{IMPORT:domain.roles}}';
+import { DEFAULT_ROLE, isRole{{#if NOTIFICATIONS}}, type UserRole{{/if}} } from '{{IMPORT:domain.roles}}';
 {{/if}}
 import type { User } from '{{IMPORT:domain.user}}';
 import type { CreateUserData, UpdateUserData, UsersRepository } from '{{IMPORT:contract.users}}';
@@ -28,7 +28,7 @@ function toUser(e: UserOrmEntity): User {
     name: e.name,
 {{#if AUTH}}
     passwordHash: e.passwordHash,
-    role: isRole(e.role) ? e.role : 'user',
+    role: isRole(e.role) ? e.role : DEFAULT_ROLE,
     emailVerifiedAt: e.emailVerifiedAt,
     countryCode: e.countryCode,
     phone: e.phone,
@@ -92,7 +92,7 @@ export class TypeOrmUsersRepository implements UsersRepository {
 {{/if}}
 {{#if NOTIFICATIONS}}
 
-  async activeUserIds(role?: Role): Promise<string[]> {
+  async activeUserIds(role?: UserRole): Promise<string[]> {
     const rows = await this.repo.find({ select: { id: true }, where: { isActive: true, ...(role ? { role } : {}) } });
     return rows.map(r => r.id);
   }

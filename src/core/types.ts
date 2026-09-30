@@ -70,6 +70,11 @@ export interface ProjectOptions {
   termsAndConditions: boolean;
   /** Profile → Delete account (DELETE /users/me). */
   deleteAccount: boolean;
+  /**
+   * Google Location SDK: current position (Fused Location Provider) + Google Places search for
+   * the profile's location. Off: no package, permission, API key or native change is added.
+   */
+  googleLocation: boolean;
   /** Side drawer menu wrapping the bottom tabs. */
   drawer: boolean;
   initGit: boolean;
@@ -116,6 +121,7 @@ export type GroupId =
   | 'notification'
   | 'permissions'
   | 'media'
+  | 'location'
   | 'firebase'
   | 'socket'
   | 'chat'

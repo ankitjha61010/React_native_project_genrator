@@ -205,6 +205,7 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     groupChat: false,
     termsAndConditions: true,
     deleteAccount: true,
+    googleLocation: false,
     drawer: false,
     initGit: flags.git,
     installDependencies: flags.install,
@@ -422,6 +423,9 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
   // Profile → Delete account (required by the App Store / Play Store for apps with sign-up).
   const deleteAccount = await askYesNo(flags.deleteAccount, interactive, 'Do you want Delete Account functionality (Profile → Delete account)?', 'Delete account', true);
 
+  // Location: only "Yes" adds the Google Location SDK, its permissions, API key and native setup.
+  const googleLocation = await askYesNo(flags.googleLocation, interactive, 'Do you want to implement Google Location SDK?', 'Google Location SDK', false);
+
   // Navigation: side drawer around the bottom tabs
   const drawer = await askYesNo(
     flags.drawer,
@@ -488,6 +492,7 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     groupChat,
     termsAndConditions,
     deleteAccount,
+    googleLocation,
     drawer,
     firebase,
     analytics,

@@ -1,5 +1,6 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn, Index } from 'typeorm';
 import { TIMESTAMP, UuidColumn } from '{{IMPORT:typeorm.columns}}';
+import { DeviceType } from '{{IMPORT:domain.device}}';
 import { UserOrmEntity } from '{{IMPORT:typeorm.user}}';
 
 /** One app install of a user (a user can have several devices). */
@@ -21,14 +22,14 @@ export class DeviceOrmEntity {
   deviceId: string;
 
   /** FCM registration token (null until the app has one). */
-  @Column({ type: 'varchar', length: 512, unique: true, nullable: true })
-  token: string | null;
+  @Column({ name: 'fcm_token', type: 'varchar', length: 512, unique: true, nullable: true })
+  fcmToken: string | null;
 
-  @Column({ type: 'varchar', length: 16 })
-  platform: string;
+  @Column({ name: 'device_type', type: 'enum', enum: DeviceType, enumName: 'device_type' })
+  deviceType: DeviceType;
 
-  @Column({ name: 'device_name', type: 'varchar', length: 120, nullable: true })
-  deviceName: string | null;
+  @Column({ name: 'device_model', type: 'varchar', length: 120, nullable: true })
+  deviceModel: string | null;
 
   @Column({ name: 'os_version', type: 'varchar', length: 32, nullable: true })
   osVersion: string | null;

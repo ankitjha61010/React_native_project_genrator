@@ -6,7 +6,7 @@ import { NotFoundError } from '{{IMPORT:core.errors}}';
 {{/if}}
 import { {{#if AUTH}}pageOffset, {{/if}}Paginated, type PageQuery } from '{{IMPORT:core.pagination}}';
 {{#if AUTH}}
-import type { Role } from '{{IMPORT:domain.roles}}';
+import type { UserRole } from '{{IMPORT:domain.roles}}';
 import { normalizePhone, toUserSummary, type User, type UserSummary } from '{{IMPORT:domain.user}}';
 import type { FileStorage, UploadedFile } from '{{IMPORT:port.fileStorage}}';
 {{else}}
@@ -19,7 +19,7 @@ import { USERS_MESSAGES } from '{{IMPORT:messages.users}}';
 /** Fields an administrator may change. */
 export interface UpdateUserInput {
   name?: string;
-  role?: Role;
+  role?: UserRole;
   isActive?: boolean;
 }
 

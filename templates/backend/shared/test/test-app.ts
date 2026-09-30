@@ -6,6 +6,9 @@ import { Test } from '@nestjs/testing';
 {{#if SOCKET_SERVER}}
 import { io as connect, type Socket } from 'socket.io-client';
 {{/if}}
+{{#if AUTH}}
+import { UserRole } from '{{IMPORT:domain.roles}}';
+{{/if}}
 {{#if EXPRESS}}
 import { createServices } from '{{IMPORT:app.container}}';
 {{#if SOCKET_SERVER}}
@@ -96,28 +99,31 @@ export async function createTestApp() {
 {{#if AUTH}}
 
   let accounts = 0;
-  /** Creates an account through the API ({{AUTH_METHODS_TEXT}}) → its id + access token. */
-  const signUp = async (name: string, role: 'user' | 'admin' = 'user') => {
+  /** Creates an account through the API ({{AUTH_METHODS_TEXT}}) → its id + access token.{{#if DEVICE_INPUT}} `device`: sent with the sign-in.{{/if}} */
+  const signUp = async (name: string, role: UserRole = UserRole.USER{{#if DEVICE_INPUT}}, device?: Record<string, unknown>{{/if}}) => {
+{{#if DEVICE_INPUT}}
+    const withDevice = device ? { device } : {};
+{{/if}}
     const n = ++accounts;
 {{#if AUTH_API}}
 {{#if AUTH_EMAIL}}
-    const res = await request(server).post('/api/v1/auth/register').send({ name, email: `user${n}@example.com`, password: 'Sup3rSecret' }).expect(201);
+    const res = await request(server).post('/api/v1/auth/register').send({ name, email: `user${n}@example.com`, password: 'Sup3rSecret'{{#if DEVICE_INPUT}}, ...withDevice{{/if}} }).expect(201);
 {{else}}
 {{#if AUTH_OTP}}
     const phone = { countryCode: '+1', phone: `55501${String(n).padStart(5, '0')}` };
     await request(server).post('/api/v1/auth/otp/send').send(phone).expect(200);
-    const res = await request(server).post('/api/v1/auth/otp/verify').send({ ...phone, name, otp: test.sms.lastCode(`+1${phone.phone}`) }).expect(200);
+    const res = await request(server).post('/api/v1/auth/otp/verify').send({ ...phone, name, otp: test.sms.lastCode(`+1${phone.phone}`){{#if DEVICE_INPUT}}, ...withDevice{{/if}} }).expect(200);
 {{else}}
-    const res = await request(server).post('/api/v1/auth/social').send({ provider: {{SOCIAL_PROVIDER}}, token: `valid:user-${n}:user${n}@example.com`, tokenType: 'idToken', name }).expect(200);
+    const res = await request(server).post('/api/v1/auth/social').send({ provider: {{SOCIAL_PROVIDER}}, token: `valid:user-${n}:user${n}@example.com`, tokenType: 'idToken', name{{#if DEVICE_INPUT}}, ...withDevice{{/if}} }).expect(200);
 {{/if}}
 {{/if}}
     const id: string = res.body.data.user.id;
-    if (role === 'admin') {
+    if (role === UserRole.ADMIN) {
       // Role changes bump the token version – issue a token for the new role directly.
-      const admin = await test.repositories.users.update(id, { role: 'admin', tokenVersion: 1 });
+      const admin = await test.repositories.users.update(id, { role: UserRole.ADMIN, tokenVersion: 1 });
       return { id, token: test.infra.tokenService.signAccessToken({ sub: id, role: admin.role, tv: admin.tokenVersion }).token };
     }
-    return { id, token: res.body.data.tokens.accessToken as string };
+    return { id, token: res.body.data.tokens.accessToken as string{{#if AUTH_REFRESH}}, refreshToken: res.body.data.tokens.refreshToken as string{{/if}} };
 {{else}}
     // Accounts live in the identity service: create the local copy + a token signed with the shared secret.
     const user = await test.repositories.users.create({ email: `user${n}@example.com`, name, role });

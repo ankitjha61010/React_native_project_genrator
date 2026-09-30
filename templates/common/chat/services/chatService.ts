@@ -1,12 +1,12 @@
 import { api } from '{{IMPORT:api.client}}';
 import { forDevice } from '{{IMPORT:config.env}}';
-import type { ChatMessage, Conversation, MessageType } from '{{IMPORT:chat.types}}';
+import type { ChatMessage, Conversation, SendableMessageType } from '{{IMPORT:chat.types}}';
 import { CHAT_ENDPOINTS } from '../chatEndpoints';
 
 /** POST /chat/upload answer – send `url` as the message's `mediaUrl`. */
 interface UploadedMedia {
   url: string;
-  type: MessageType;
+  type: SendableMessageType;
   fileName: string;
   fileSize: string;
   mimeType: string;
@@ -37,7 +37,7 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   txt: 'text/plain',
 };
 
-const FALLBACK_MIME: Record<MessageType, string> = {
+const FALLBACK_MIME: Record<SendableMessageType, string> = {
   text: 'text/plain',
   image: 'image/jpeg',
   video: 'video/mp4',
@@ -48,14 +48,14 @@ const FALLBACK_MIME: Record<MessageType, string> = {
 /** A file on the device (not yet on the server). */
 export const isLocalFile = (uri: string) => !/^https?:\/\//.test(uri);
 
-function mimeOf(name: string, type: MessageType, known?: string): string {
+function mimeOf(name: string, type: SendableMessageType, known?: string): string {
   if (known) return known;
   const extension = /\.([a-z0-9]+)(?:\?|$)/i.exec(name)?.[1]?.toLowerCase();
   return (extension && MIME_BY_EXTENSION[extension]) || FALLBACK_MIME[type];
 }
 
 /** Uploads a local file (multipart) – the answer is the stored file's URL. */
-function upload(uri: string, type: MessageType, fileName?: string, mimeType?: string): Promise<UploadedMedia> {
+function upload(uri: string, type: SendableMessageType, fileName?: string, mimeType?: string): Promise<UploadedMedia> {
   const name = fileName ?? uri.split('/').pop() ?? 'file';
   const endpoint = type === 'audio' ? CHAT_ENDPOINTS.UPLOAD_VOICE_NOTE : CHAT_ENDPOINTS.UPLOAD_MEDIA;
   return api.upload<UploadedMedia>(endpoint, 'file', { uri, name, type: mimeOf(name, type, mimeType) });
@@ -78,7 +78,10 @@ export function normalizeConversation(conversation: Conversation): Conversation 
 }
 
 /** What the input bar sends: text, or a local / uploaded file with its details. */
-export type MessageDraft = Pick<ChatMessage, 'type'> & Partial<Pick<ChatMessage, 'text' | 'mediaUrl' | 'thumbnailUrl' | 'fileName' | 'fileSize' | 'mimeType' | 'duration' | 'crop'>>;
+export type MessageDraft = { type: SendableMessageType } & Partial<Pick<ChatMessage, 'text' | 'mediaUrl' | 'thumbnailUrl' | 'fileName' | 'fileSize' | 'mimeType' | 'duration' | 'crop'>> & {
+  /** Reply: the quoted message. */
+  replyToId?: string;
+};
 
 /** Chat requests (the backend's /chat routes). Live updates arrive over Socket.IO. */
 export const chatService = {
@@ -91,6 +94,12 @@ export const chatService = {
 
   /** Hides a direct chat until a new message arrives{{#if GROUP_CHAT}}; leaves a group{{/if}}. */
   deleteConversation: (conversationId: string) => api.delete<null>(CHAT_ENDPOINTS.CONVERSATION(conversationId)),
+
+  /** "Clear chat": its messages disappear for you only; the chat stays in the list. */
+  clearConversation: (conversationId: string) => api.post<null>(CHAT_ENDPOINTS.CLEAR_CONVERSATION(conversationId)),
+
+  /** "Clear all chats": every conversation, for you only. */
+  clearAllConversations: () => api.post<null>(CHAT_ENDPOINTS.CLEAR_ALL_CONVERSATIONS),
 
   /** Oldest → newest. Pass the oldest loaded message id as `before` to load earlier ones. */
   async fetchMessages(conversationId: string, before?: string): Promise<{ items: ChatMessage[]; hasMore: boolean }> {

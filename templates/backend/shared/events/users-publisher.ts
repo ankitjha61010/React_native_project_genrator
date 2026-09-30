@@ -1,4 +1,7 @@
 import type { Logger } from '{{IMPORT:core.logger}}';
+{{#if DEVICE_EVENTS}}
+import type { DeviceInput, DeviceRegistry } from '{{IMPORT:domain.device}}';
+{{/if}}
 import type { User } from '{{IMPORT:domain.user}}';
 import type { UsersRepository } from '{{IMPORT:contract.users}}';
 import { EVENT_CHANNELS, type EventBus } from '{{IMPORT:port.eventBus}}';
@@ -44,3 +47,33 @@ export class PublishingUsersRepository implements UsersRepository {
     await this.eventBus.publish(EVENT_CHANNELS.users, event).catch(error => this.logger.error({ err: error }, 'Publishing a user event failed'));
   }
 }
+{{#if DEVICE_EVENTS}}
+
+/**
+ * Identity service: the devices live in the notifications service. The device of a sign-in
+ * payload (and logout) is published; the notifications service stores it.
+ */
+export class PublishingDeviceRegistry implements DeviceRegistry {
+  constructor(
+    private readonly eventBus: EventBus,
+    private readonly logger: Logger,
+  ) {}
+
+  save(userId: string, device: DeviceInput): Promise<void> {
+    return this.send({ type: 'device.saved', userId, device });
+  }
+
+  remove(userId: string, deviceId: string): Promise<void> {
+    return this.send({ type: 'device.removed', userId, deviceId });
+  }
+
+  removeAll(userId: string): Promise<void> {
+    return this.send({ type: 'device.removed', userId });
+  }
+
+  private async send(event: unknown): Promise<void> {
+    // Signing in must not fail because the event bus is down.
+    await this.eventBus.publish(EVENT_CHANNELS.devices, event).catch(error => this.logger.error({ err: error }, 'Publishing a device event failed'));
+  }
+}
+{{/if}}

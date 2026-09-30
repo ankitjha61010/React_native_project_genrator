@@ -1,4 +1,7 @@
 /** The signed-in user (the backend's `User`, see docs/API.md of the backend). */
+/** The backend's `UserRole` enum (users.role). */
+export type UserRole = 'USER' | 'ADMIN';
+
 export interface User {
   id: string;
   /** Empty for accounts created with a mobile number. */
@@ -10,7 +13,7 @@ export interface User {
   phone?: string;
   location?: string;
   bio?: string;
-  role?: 'user' | 'admin';
+  role?: UserRole;
   emailVerified?: boolean;
   phoneVerified?: boolean;
   /** False for accounts without a password (mobile / social sign-in) – no Change Password for them. */

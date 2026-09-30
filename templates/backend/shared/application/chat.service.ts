@@ -1,6 +1,10 @@
 import { BadRequestError, ForbiddenError, NotFoundError } from '{{IMPORT:core.errors}}';
 import type { Logger } from '{{IMPORT:core.logger}}';
-import type { ChatMessageView, Conversation, ConversationMember, ConversationView, MediaCrop, Message, MessageType{{#if GROUP_CHAT}}, MemberRole{{/if}} } from '{{IMPORT:domain.chat}}';
+{{#if GROUP_CHAT}}
+import { SystemEvent, type ChatMessageView, type Conversation, type ConversationMember, type ConversationView, type MediaCrop, type MemberRole, type Message, type ReplyToView, type SendableMessageType } from '{{IMPORT:domain.chat}}';
+{{else}}
+import type { ChatMessageView, Conversation, ConversationMember, ConversationView, MediaCrop, Message, ReplyToView, SendableMessageType } from '{{IMPORT:domain.chat}}';
+{{/if}}
 import type { User } from '{{IMPORT:domain.user}}';
 import type { ChatRepository } from '{{IMPORT:contract.chat}}';
 import type { UsersRepository } from '{{IMPORT:contract.users}}';
@@ -32,7 +36,7 @@ export interface UpdateGroupInput {
 {{/if}}
 
 export interface SendMessageInput {
-  type: MessageType;
+  type: SendableMessageType;
   text?: string;
   /** URL returned by the upload endpoint. */
   mediaUrl?: string;
@@ -41,11 +45,13 @@ export interface SendMessageInput {
   fileSize?: string;
   duration?: number;
   crop?: MediaCrop;
+  /** Reply: the quoted message (same conversation). */
+  replyToId?: string;
 }
 
 export interface UploadedMedia {
   url: string;
-  type: MessageType;
+  type: SendableMessageType;
   fileName: string;
   fileSize: string;
   mimeType: string;
@@ -68,6 +74,8 @@ export const CHAT_EVENTS = {
   receiveMessage: 'chat:receive_message',
   messageRead: 'chat:message_read',
   messageDeleted: 'chat:message_deleted',
+  /** You cleared a conversation (or all of them) on another device – the app empties it. */
+  conversationCleared: 'chat:conversation_cleared',
 {{#if GROUP_CHAT}}
   /** A group changed (name, image, members, admins) – the app reloads it. */
   conversationUpdated: 'chat:conversation_updated',
@@ -108,15 +116,15 @@ export class ChatService {
 
     const existing = await this.deps.chat.findDirectConversation(userId, otherIds[0]);
     if (existing) {
-      // Un-hide a chat the user had deleted.
-      await this.deps.chat.updateMember(existing.id, userId, { clearedAt: null });
+      // Back in the list if the user had deleted it (its old messages stay cleared).
+      await this.deps.chat.updateMember(existing.id, userId, { hidden: false });
       return this.getConversation(userId, existing.id);
     }
     const conversation = await this.deps.chat.createConversation({ createdById: userId, memberIds: [userId, ...otherIds]{{#if GROUP_CHAT}}, isGroup: false, title: null, avatarUrl: null{{/if}} });
     return this.getConversation(userId, conversation.id);
   }
 
-  /** "Delete chat": hides a direct chat until a new message arrives{{#if GROUP_CHAT}}; leaves a group{{/if}}. */
+  /** "Delete chat": clears a direct chat and hides it until a new message arrives{{#if GROUP_CHAT}}; leaves a group{{/if}}. Only for you. */
   async deleteConversation(userId: string, conversationId: string): Promise<void> {
 {{#if GROUP_CHAT}}
     const { conversation } = await this.requireMember(userId, conversationId);
@@ -124,7 +132,25 @@ export class ChatService {
 {{else}}
     await this.requireMember(userId, conversationId);
 {{/if}}
-    await this.deps.chat.updateMember(conversationId, userId, { clearedAt: new Date() });
+    await this.deps.chat.updateMember(conversationId, userId, { clearedAt: new Date(), hidden: true });
+  }
+
+  /**
+   * "Clear chat": hides every message so far – for you only, the other members keep theirs. The
+   * conversation stays in your list.
+   */
+  async clearConversation(userId: string, conversationId: string): Promise<void> {
+    await this.requireMember(userId, conversationId);
+    const clearedAt = new Date();
+    await this.deps.chat.updateMember(conversationId, userId, { clearedAt, hidden: false });
+    this.deps.realtime.toUser(userId, CHAT_EVENTS.conversationCleared, { conversationId, clearedAt: clearedAt.toISOString() });
+  }
+
+  /** "Clear all chats": "Clear chat" for every conversation you are in – for you only. */
+  async clearAllConversations(userId: string): Promise<void> {
+    const clearedAt = new Date();
+    await this.deps.chat.updateMemberships(userId, { clearedAt, hidden: false });
+    this.deps.realtime.toUser(userId, CHAT_EVENTS.conversationCleared, { conversationId: null, clearedAt: clearedAt.toISOString() });
   }
 {{#if GROUP_CHAT}}
 
@@ -164,6 +190,8 @@ export class ChatService {
     if (newIds.length) {
       await this.assertActiveUsers(newIds);
       await this.deps.chat.addMembers(conversationId, newIds);
+      // "Jane added John" in the conversation – one system message per new member.
+      for (const memberId of newIds) await this.sendSystemMessage(conversationId, userId, SystemEvent.MEMBER_ADDED, memberId);
       await this.notifyGroup(conversationId, 'members_added', userId);
     }
     return this.getConversation(userId, conversationId);
@@ -219,15 +247,21 @@ export class ChatService {
     const page = await this.deps.chat.listMessages(conversationId, { after: member.clearedAt, before: cursor ?? undefined, limit: options.limit + 1 });
     const messages = page.slice(0, options.limit).toReversed();
     const members = await this.deps.chat.listMembers([conversationId]);
-    const senders = await this.usersById(messages.map(m => m.senderId));
-    return { items: messages.map(m => this.messageView(m, senders, members, userId)), hasMore: page.length > options.limit };
+    const replies = await this.repliedTo(messages);
+    const people = await this.usersById([...messages, ...replies.values()].flatMap(m => [m.senderId, ...(m.targetUserId ? [m.targetUserId] : [])]));
+    return { items: messages.map(m => this.messageView(m, people, members, userId, replies)), hasMore: page.length > options.limit };
   }
 
   async sendMessage(userId: string, conversationId: string, input: SendMessageInput): Promise<ChatMessageView> {
-    await this.requireMember(userId, conversationId);
+    const { member } = await this.requireMember(userId, conversationId);
     const text = input.text?.trim() || null;
     if (input.type === 'text' && !text) throw new BadRequestError(CHAT_MESSAGES.emptyMessage);
     if (input.type !== 'text' && !input.mediaUrl) throw new BadRequestError(CHAT_MESSAGES.mediaRequired);
+    const replyTo = input.replyToId ? await this.deps.chat.findMessage(input.replyToId) : null;
+    // Only a message you can see in this conversation (not deleted, not cleared, not a system message).
+    if (input.replyToId && (!replyTo || replyTo.conversationId !== conversationId || replyTo.deletedAt || replyTo.type === 'system' || (member.clearedAt && replyTo.createdAt <= member.clearedAt))) {
+      throw new NotFoundError(CHAT_MESSAGES.replyNotFound);
+    }
 
     const message = await this.deps.chat.createMessage({
       conversationId,
@@ -240,15 +274,16 @@ export class ChatService {
       fileSize: input.fileSize ?? null,
       duration: input.duration ?? null,
       crop: input.crop ?? null,
+      replyToId: replyTo?.id ?? null,
     });
     // Sending counts as reading everything before.
     await this.deps.chat.updateMember(conversationId, userId, { lastReadAt: message.createdAt });
 
     const members = await this.deps.chat.listMembers([conversationId]);
-    const senders = await this.usersById([userId]);
-    const view = this.messageView(message, senders, members, userId);
-    const { isMe: _isMe, ...event } = view;
-    for (const member of members) this.deps.realtime.toUser(member.userId, CHAT_EVENTS.receiveMessage, event);
+    const replies = new Map(replyTo ? [[replyTo.id, replyTo]] : []);
+    const senders = await this.usersById([userId, ...(replyTo ? [replyTo.senderId] : [])]);
+    const view = this.messageView(message, senders, members, userId, replies);
+    this.broadcast(view, members);
 {{#if CHAT_PUSH}}
     await this.pushToOffline(message, members, senders.get(userId));
 {{/if}}
@@ -271,6 +306,7 @@ export class ChatService {
     await this.requireMember(userId, conversationId);
     const message = await this.deps.chat.findMessage(messageId);
     if (!message || message.conversationId !== conversationId || message.deletedAt) throw new NotFoundError(CHAT_MESSAGES.messageNotFound);
+    if (message.type === 'system') throw new ForbiddenError(CHAT_MESSAGES.systemMessage);
     if (message.senderId !== userId) throw new ForbiddenError(CHAT_MESSAGES.notYourMessage);
 
     await this.deps.chat.softDeleteMessage(messageId);
@@ -333,6 +369,29 @@ export class ChatService {
   }
 {{/if}}
 
+  /** Sends a message to every member (without `isMe` – it depends on who receives it). */
+  private broadcast(view: ChatMessageView, members: ConversationMember[]): void {
+    const { isMe: _isMe, ...event } = view;
+    for (const member of members) this.deps.realtime.toUser(member.userId, CHAT_EVENTS.receiveMessage, event);
+  }
+{{#if GROUP_CHAT}}
+
+  /** A message written by the backend ("Jane added John"): stored like any message, shown in the conversation, never pushed. */
+  private async sendSystemMessage(conversationId: string, actorId: string, event: SystemEvent, targetUserId: string): Promise<void> {
+    const message = await this.deps.chat.createMessage({ conversationId, senderId: actorId, type: 'system', event, targetUserId });
+    const members = await this.deps.chat.listMembers([conversationId]);
+    this.broadcast(this.messageView(message, await this.usersById([actorId, targetUserId]), members, actorId), members);
+  }
+{{/if}}
+
+  /** The originals of the replies among these messages (the ones not in the list are loaded). */
+  private async repliedTo(messages: Message[]): Promise<Map<string, Message>> {
+    const known = new Map(messages.map(m => [m.id, m]));
+    const missing = [...new Set(messages.flatMap(m => (m.replyToId && !known.has(m.replyToId) ? [m.replyToId] : [])))];
+    for (const original of await this.deps.chat.findMessages(missing)) known.set(original.id, original);
+    return known;
+  }
+
   private async usersById(ids: string[]): Promise<Map<string, User>> {
     const users = await this.deps.users.findManyByIds([...new Set(ids)]);
     return new Map(users.map(user => [user.id, user]));
@@ -343,7 +402,7 @@ export class ChatService {
     if (!conversations.length) return [];
     const ids = conversations.map(c => c.id);
     const [members, lastMessages] = await Promise.all([this.deps.chat.listMembers(ids), this.deps.chat.lastMessages(ids)]);
-    const users = await this.usersById([...members.map(m => m.userId), ...lastMessages.map(m => m.senderId)]);
+    const users = await this.usersById([...members.map(m => m.userId), ...lastMessages.flatMap(m => [m.senderId, ...(m.targetUserId ? [m.targetUserId] : [])])]);
     const views: ConversationView[] = [];
 
     for (const conversation of conversations) {
@@ -351,7 +410,8 @@ export class ChatService {
       const me = convMembers.find(m => m.userId === userId);
       if (!me) continue;
       const last = lastMessages.find(m => m.conversationId === conversation.id && (!me.clearedAt || m.createdAt > me.clearedAt));
-      if (!includeHidden && me.clearedAt && !last) continue;
+      // "Delete chat" hides it until a new message arrives; "Clear chat" keeps it listed.
+      if (!includeHidden && me.hidden && !last) continue;
 
       const others = convMembers.filter(m => m.userId !== userId).flatMap(m => {
         const user = users.get(m.userId);
@@ -392,8 +452,10 @@ export class ChatService {
     return views.toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
-  private messageView(message: Message, users: Map<string, User>, members: ConversationMember[], viewerId: string): ChatMessageView {
+  private messageView(message: Message, users: Map<string, User>, members: ConversationMember[], viewerId: string, replies: Map<string, Message> = new Map()): ChatMessageView {
     const sender = users.get(message.senderId);
+    const person = (id: string) => ({ id, name: users.get(id)?.name ?? CHAT_MESSAGES.deletedUser });
+    const original = message.replyToId ? replies.get(message.replyToId) : undefined;
     // Read = every other member has read up to this message.
     const others = members.filter(m => m.userId !== message.senderId);
     const read = others.length > 0 && others.every(m => m.lastReadAt && m.lastReadAt >= message.createdAt);
@@ -407,10 +469,20 @@ export class ChatService {
       type: message.type,
       // The app's types use optional fields – leave out what isn't set.
       ...Object.fromEntries(Object.entries(optional).filter(([, value]) => value !== null)),
+      ...(message.event ? { event: message.event, actor: person(message.senderId), ...(message.targetUserId ? { target: person(message.targetUserId) } : {}) } : {}),
+      ...(original ? { replyTo: this.replyView(original, users) } : {}),
       createdAt: message.createdAt.toISOString(),
       status: read ? 'read' : 'sent',
       isMe: message.senderId === viewerId,
     };
+  }
+
+  /** The quote above a reply – without the content once the original was deleted. */
+  private replyView(original: Message, users: Map<string, User>): ReplyToView {
+    const base = { messageId: original.id, senderId: original.senderId, senderName: users.get(original.senderId)?.name ?? CHAT_MESSAGES.deletedUser, type: original.type };
+    if (original.deletedAt) return { ...base, deleted: true };
+    const text = original.text ?? original.fileName;
+    return { ...base, ...(text ? { text } : {}) };
   }
 {{#if CHAT_PUSH}}
 

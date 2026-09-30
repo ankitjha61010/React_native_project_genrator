@@ -17,7 +17,7 @@ export function useLanguage() {
     async (code: LanguageCode) => {
       await i18n.changeLanguage(code);
 {{#if RTL}}
-      // Saved before anything else: switching between LTR and RTL restarts the app.
+      // Saved, then the layout direction follows at once (no restart).
       await storageService.set(StorageKeys.LANGUAGE, code);
       applyLayoutDirection(code);
 {{/if}}

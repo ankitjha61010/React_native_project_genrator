@@ -1,7 +1,7 @@
 import { ConflictError, NotFoundError } from '{{IMPORT:core.errors}}';
 import { pageOffset, type PageQuery } from '{{IMPORT:core.pagination}}';
 {{#if AUTH}}
-import { isRole{{#if NOTIFICATIONS}}, type Role{{/if}} } from '{{IMPORT:domain.roles}}';
+import { DEFAULT_ROLE, isRole{{#if NOTIFICATIONS}}, type UserRole{{/if}} } from '{{IMPORT:domain.roles}}';
 {{/if}}
 import type { User } from '{{IMPORT:domain.user}}';
 import type { CreateUserData, UpdateUserData, UsersRepository } from '{{IMPORT:contract.users}}';
@@ -31,7 +31,7 @@ function toUser(doc: UserDocument): User {
     email: doc.email ?? null,
     name: doc.name,
     passwordHash: doc.passwordHash ?? null,
-    role: isRole(doc.role) ? doc.role : 'user',
+    role: isRole(doc.role) ? doc.role : DEFAULT_ROLE,
     emailVerifiedAt: doc.emailVerifiedAt ?? null,
     countryCode: doc.countryCode ?? null,
     phone: doc.phone ?? null,
@@ -98,7 +98,7 @@ export class MongooseUsersRepository implements UsersRepository {
 {{/if}}
 {{#if NOTIFICATIONS}}
 
-  async activeUserIds(role?: Role): Promise<string[]> {
+  async activeUserIds(role?: UserRole): Promise<string[]> {
     const docs = await UserModel.find({ isActive: true, ...(role ? { role } : {}) }, { _id: 1 }).lean<Array<{ _id: UserDocument['_id'] }>>();
     return docs.map(d => d._id.toString());
   }

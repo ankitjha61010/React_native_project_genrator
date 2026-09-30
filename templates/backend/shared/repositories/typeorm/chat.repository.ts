@@ -1,5 +1,5 @@
 import { Brackets, In, IsNull, type DataSource, type Repository } from 'typeorm';
-import type { Conversation, ConversationMember, Message, MessageType } from '{{IMPORT:domain.chat}}';
+import type { Conversation, ConversationMember, Message, MessageType, SystemEvent } from '{{IMPORT:domain.chat}}';
 import type { ChatRepository, CreateConversationData, CreateMessageData } from '{{IMPORT:contract.chat}}';
 import { ConversationMemberOrmEntity, ConversationOrmEntity, MessageOrmEntity } from '{{IMPORT:typeorm.chat}}';
 
@@ -24,6 +24,7 @@ const toMember = (e: ConversationMemberOrmEntity): ConversationMember => ({
 {{/if}}
   lastReadAt: e.lastReadAt,
   clearedAt: e.clearedAt,
+  hidden: e.hidden,
   joinedAt: e.joinedAt,
 });
 
@@ -39,6 +40,9 @@ const toMessage = (e: MessageOrmEntity): Message => ({
   fileSize: e.fileSize,
   duration: e.duration,
   crop: e.crop,
+  event: e.event as SystemEvent | null,
+  targetUserId: e.targetUserId,
+  replyToId: e.replyToId,
   createdAt: e.createdAt,
   deletedAt: e.deletedAt,
 });
@@ -59,9 +63,9 @@ export class TypeOrmChatRepository implements ChatRepository {
       const conversation = await manager.save(manager.create(ConversationOrmEntity, { ...data, lastMessageAt: null }));
 {{#if GROUP_CHAT}}
       const role = (userId: string) => (data.isGroup && userId === data.createdById ? 'admin' : 'member');
-      await manager.save(memberIds.map(userId => manager.create(ConversationMemberOrmEntity, { conversationId: conversation.id, userId, role: role(userId), lastReadAt: null, clearedAt: null })));
+      await manager.save(memberIds.map(userId => manager.create(ConversationMemberOrmEntity, { conversationId: conversation.id, userId, role: role(userId), lastReadAt: null, clearedAt: null, hidden: false })));
 {{else}}
-      await manager.save(memberIds.map(userId => manager.create(ConversationMemberOrmEntity, { conversationId: conversation.id, userId, lastReadAt: null, clearedAt: null })));
+      await manager.save(memberIds.map(userId => manager.create(ConversationMemberOrmEntity, { conversationId: conversation.id, userId, lastReadAt: null, clearedAt: null, hidden: false })));
 {{/if}}
       return toConversation(conversation);
     });
@@ -120,8 +124,12 @@ export class TypeOrmChatRepository implements ChatRepository {
     return entity ? toMember(entity) : null;
   }
 
-  async updateMember(conversationId: string, userId: string, data: Partial<Pick<ConversationMember, 'lastReadAt' | 'clearedAt'{{#if GROUP_CHAT}} | 'role'{{/if}}>>): Promise<void> {
+  async updateMember(conversationId: string, userId: string, data: Partial<Pick<ConversationMember, 'lastReadAt' | 'clearedAt' | 'hidden'{{#if GROUP_CHAT}} | 'role'{{/if}}>>): Promise<void> {
     await this.members.update({ conversationId, userId }, data);
+  }
+
+  async updateMemberships(userId: string, data: Partial<Pick<ConversationMember, 'clearedAt' | 'hidden'>>): Promise<void> {
+    await this.members.update({ userId }, data);
   }
 {{#if GROUP_CHAT}}
 
@@ -130,7 +138,7 @@ export class TypeOrmChatRepository implements ChatRepository {
     await this.members
       .createQueryBuilder()
       .insert()
-      .values(userIds.map(userId => ({ conversationId, userId, role: 'member', lastReadAt: null, clearedAt: null })))
+      .values(userIds.map(userId => ({ conversationId, userId, role: 'member', lastReadAt: null, clearedAt: null, hidden: false })))
       .orIgnore()
       .execute();
   }
@@ -151,6 +159,9 @@ export class TypeOrmChatRepository implements ChatRepository {
           fileSize: null,
           duration: null,
           crop: null,
+          event: null,
+          targetUserId: null,
+          replyToId: null,
           deletedAt: null,
           ...data,
         }),
@@ -163,6 +174,10 @@ export class TypeOrmChatRepository implements ChatRepository {
   async findMessage(id: string): Promise<Message | null> {
     const entity = await this.messages.findOneBy({ id });
     return entity ? toMessage(entity) : null;
+  }
+
+  async findMessages(ids: string[]): Promise<Message[]> {
+    return ids.length ? (await this.messages.findBy({ id: In(ids) })).map(toMessage) : [];
   }
 
   async listMessages(conversationId: string, options: { after?: Date | null; before?: Pick<Message, 'createdAt' | 'id'>; limit: number }): Promise<Message[]> {
@@ -201,7 +216,7 @@ export class TypeOrmChatRepository implements ChatRepository {
 
   async countUnread(conversationId: string, userId: string, since: Date | null, after: Date | null): Promise<number> {
     const from = since && after ? (since > after ? since : after) : (since ?? after);
-    const qb = this.messages.createQueryBuilder('m').where('m.conversationId = :conversationId AND m.deletedAt IS NULL AND m.senderId != :userId', { conversationId, userId });
+    const qb = this.messages.createQueryBuilder('m').where("m.conversationId = :conversationId AND m.deletedAt IS NULL AND m.senderId != :userId AND m.type != 'system'", { conversationId, userId });
     if (from) qb.andWhere('m.createdAt > :from', { from });
     return qb.getCount();
   }

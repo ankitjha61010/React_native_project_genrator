@@ -21,6 +21,9 @@ import { AppIcon } from '{{IMPORT:components.AppIcon}}';
 import { AppInput } from '{{IMPORT:components.AppInput}}';
 import { AppButton } from '{{IMPORT:components.AppButton}}';
 import { FadeInView } from '{{IMPORT:components.FadeInView}}';
+{{#if GOOGLE_LOCATION}}
+import { LocationPicker } from '{{IMPORT:components.LocationPicker}}';
+{{/if}}
 import { MediaPickerModal, type MediaPickerOption } from '{{IMPORT:components.MediaPickerModal}}';
 import { MediaEditorModal, type MediaItem } from '{{IMPORT:components.MediaEditorModal}}';
 import { useImagePicker } from '{{IMPORT:hooks.useImagePicker}}';
@@ -209,6 +212,10 @@ export function EditProfileScreen(): React.JSX.Element {
               <AppText fontFamily="semiBold" fontSize="size13" color="textSecondary" style={styles.fieldLabel}>
                 LOCATION
               </AppText>
+{{#if GOOGLE_LOCATION}}
+              {/* Google Places suggestions + "Use current location" (Google Location SDK). */}
+              <LocationPicker value={location} onChange={setLocation} placeholder="Location" />
+{{else}}
               <AppInput
                 value={location}
                 onChangeText={setLocation}
@@ -217,6 +224,7 @@ export function EditProfileScreen(): React.JSX.Element {
                 leftIcon="map-marker-outline"
 {{/if}}
               />
+{{/if}}
             </View>
 
             <View style={styles.inputGroup}>

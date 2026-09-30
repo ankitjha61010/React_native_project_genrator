@@ -16,6 +16,9 @@ import { Platform } from 'react-native';
 {{#if SOCIAL_GOOGLE}}
 import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from '@env';
 {{/if}}
+{{#if GOOGLE_LOCATION}}
+import { GOOGLE_MAPS_API_KEY } from '@env';
+{{/if}}
 
 export type AppEnvironment = 'development' | 'staging' | 'production';
 
@@ -62,6 +65,10 @@ export const env = {
     webClientId: GOOGLE_WEB_CLIENT_ID ?? '',
     iosClientId: GOOGLE_IOS_CLIENT_ID ?? '',
   },
+{{/if}}
+{{#if GOOGLE_LOCATION}}
+  /** Places search + reverse geocoding (Google Location SDK). */
+  googleMapsApiKey: GOOGLE_MAPS_API_KEY ?? '',
 {{/if}}
 } as const;
 

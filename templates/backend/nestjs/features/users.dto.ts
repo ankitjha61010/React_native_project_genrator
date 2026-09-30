@@ -1,7 +1,7 @@
 import { Transform } from 'class-transformer';
-import { {{#if AUTH}}IsBoolean, IsIn, {{else}}IsEmail, {{/if}}IsNotEmpty, IsOptional, IsString{{#if AUTH}}, Matches{{/if}}, MaxLength } from 'class-validator';
+import { {{#if AUTH}}IsBoolean, IsEnum, {{else}}IsEmail, {{/if}}IsNotEmpty, IsOptional, IsString{{#if AUTH}}, Matches{{/if}}, MaxLength } from 'class-validator';
 {{#if AUTH}}
-import { ROLES, type Role } from '{{IMPORT:domain.roles}}';
+import { UserRole } from '{{IMPORT:domain.roles}}';
 {{/if}}
 import { trim } from '{{IMPORT:nest.commonDto}}';
 {{#if NO_AUTH}}
@@ -31,8 +31,8 @@ export class UpdateUserDto {
 {{#if AUTH}}
 
   @IsOptional()
-  @IsIn(ROLES)
-  role?: Role;
+  @IsEnum(UserRole)
+  role?: UserRole;
 
   @IsOptional()
   @IsBoolean()
@@ -86,7 +86,7 @@ export class UserResponseDto {
   phone: string | null;
   location: string | null;
   bio: string | null;
-  role: Role;
+  role: UserRole;
   emailVerified: boolean;
   phoneVerified: boolean;
   hasPassword: boolean;

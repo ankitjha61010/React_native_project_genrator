@@ -62,6 +62,7 @@ export async function describeDryRun(options: ProjectOptions): Promise<string> {
     `Firebase Analytics: ${options.analytics ? 'yes (screen tracking + analyticsService)' : 'no'}`,
     `Vector icons: ${options.vectorIcons ? 'yes (MaterialDesignIcons, iOS UIAppFonts configured)' : 'no'}`,
     `Drawer: ${options.drawer ? 'yes (side drawer around the bottom tabs)' : 'no (bottom tabs only)'}`,
+    `Google Location SDK: ${options.googleLocation ? 'yes (current location + Google Places search, location permission)' : 'no'}`,
     `Social login: ${describeSocial(options.socialAuth)}`,
     '',
     chalk.bold('Project:'),

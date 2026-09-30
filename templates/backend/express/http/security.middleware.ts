@@ -39,7 +39,7 @@ export function applySecurity(app: Express): void {
     cors({
       origin: (origin, callback) => callback(null, !origin || allowed.has(origin)),
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'{{#if API_ENCRYPTION}}, 'X-Encryption-Key-Id'{{/if}}],
       exposedHeaders: ['X-Request-Id', 'RateLimit', 'RateLimit-Policy', 'Retry-After'],
       maxAge: 600,
     }),

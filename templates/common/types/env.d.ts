@@ -12,4 +12,7 @@ declare module '@env' {
   export const GOOGLE_WEB_CLIENT_ID: string | undefined;
   export const GOOGLE_IOS_CLIENT_ID: string | undefined;
 {{/if}}
+{{#if GOOGLE_LOCATION}}
+  export const GOOGLE_MAPS_API_KEY: string | undefined;
+{{/if}}
 }

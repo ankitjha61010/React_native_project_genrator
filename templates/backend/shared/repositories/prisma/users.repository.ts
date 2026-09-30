@@ -1,7 +1,7 @@
 import { ConflictError, NotFoundError } from '{{IMPORT:core.errors}}';
 import { pageOffset, type PageQuery } from '{{IMPORT:core.pagination}}';
 {{#if AUTH}}
-import { isRole{{#if NOTIFICATIONS}}, type Role{{/if}} } from '{{IMPORT:domain.roles}}';
+import { DEFAULT_ROLE, isRole{{#if NOTIFICATIONS}}, type UserRole{{/if}} } from '{{IMPORT:domain.roles}}';
 {{/if}}
 import type { User } from '{{IMPORT:domain.user}}';
 import type { CreateUserData, UpdateUserData, UsersRepository } from '{{IMPORT:contract.users}}';
@@ -11,7 +11,7 @@ import { USERS_MESSAGES } from '{{IMPORT:messages.users}}';
 type UserRecord = NonNullable<Awaited<ReturnType<PrismaClient['user']['findUnique']>>>;
 
 {{#if AUTH}}
-const toUser = (record: UserRecord): User => ({ ...record, role: isRole(record.role) ? record.role : 'user' });
+const toUser = (record: UserRecord): User => ({ ...record, role: isRole(record.role) ? record.role : DEFAULT_ROLE });
 const TAKEN = () => new ConflictError(USERS_MESSAGES.accountExists);
 {{else}}
 const toUser = (record: UserRecord): User => record;
@@ -58,7 +58,7 @@ export class PrismaUsersRepository implements UsersRepository {
 {{/if}}
 {{#if NOTIFICATIONS}}
 
-  async activeUserIds(role?: Role): Promise<string[]> {
+  async activeUserIds(role?: UserRole): Promise<string[]> {
     const records = await this.prisma.user.findMany({ where: { isActive: true, ...(role ? { role } : {}) }, select: { id: true } });
     return records.map(r => r.id);
   }

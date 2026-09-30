@@ -11,6 +11,9 @@ import { AppText } from '{{IMPORT:components.AppText}}';
 {{#if VECTOR_ICONS}}
 import { AppIcon, type AppIconName } from '{{IMPORT:components.AppIcon}}';
 {{/if}}
+{{#if RTL}}
+import { useDirection } from '{{IMPORT:hooks.useDirection}}';
+{{/if}}
 import { useStyles } from '{{IMPORT:hooks.useTheme}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
 
@@ -82,11 +85,15 @@ export function MediaPickerModal({
   onClose,
 }: MediaPickerModalProps): React.JSX.Element {
   const styles = useStyles(createStyles);
+{{#if RTL}}
+  // A Modal is a separate native root – it needs the app's direction explicitly.
+  const { directionStyle } = useDirection();
+{{/if}}
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.backdrop}>
+        <View style={ {{#if RTL}}[styles.backdrop, directionStyle]{{else}}styles.backdrop{{/if}} }>
           <TouchableWithoutFeedback>
             <SafeAreaView style={styles.sheet}>
               <View style={styles.handle} />

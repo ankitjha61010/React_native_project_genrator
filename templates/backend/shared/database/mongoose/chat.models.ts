@@ -25,6 +25,8 @@ const memberSchema = new Schema(
 {{/if}}
     lastReadAt: { type: Date, default: null },
     clearedAt: { type: Date, default: null },
+    // "Delete chat": out of the list until a new message arrives.
+    hidden: { type: Boolean, required: true, default: false },
     joinedAt: { type: Date, required: true, default: Date.now },
   },
   { collection: 'conversation_members' },
@@ -46,11 +48,16 @@ const messageSchema = new Schema(
     fileSize: { type: String, default: null, maxlength: 32 },
     duration: { type: Number, default: null },
     crop: { type: Schema.Types.Mixed, default: null },
+    // `system` messages: what happened (SystemEvent) and to whom.
+    event: { type: String, default: null, maxlength: 32 },
+    targetUserId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    // The message this one replies to.
+    replyToId: { type: Schema.Types.ObjectId, ref: 'Message', default: null },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: { createdAt: true, updatedAt: false }, collection: 'messages' },
 );
 messageSchema.index({ conversationId: 1, createdAt: -1, _id: -1 });
 
-export type MessageDocument = InferSchemaType<typeof messageSchema> & { _id: Types.ObjectId; conversationId: Types.ObjectId; senderId: Types.ObjectId; createdAt: Date };
+export type MessageDocument = InferSchemaType<typeof messageSchema> & { _id: Types.ObjectId; conversationId: Types.ObjectId; senderId: Types.ObjectId; targetUserId: Types.ObjectId | null; replyToId: Types.ObjectId | null; createdAt: Date };
 export const MessageModel = model('Message', messageSchema);

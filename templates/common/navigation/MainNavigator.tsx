@@ -13,6 +13,7 @@ import { NotificationsScreen } from '{{IMPORT:screens.Notifications}}';
 import { translate } from '{{IMPORT:i18n.index}}';
 {{#if CHAT}}
 import { ChatRoomScreen } from '{{IMPORT:chat.ChatRoomScreen}}';
+import { ChatDetailsScreen } from '{{IMPORT:chat.ChatDetailsScreen}}';
 import { NewChatScreen } from '{{IMPORT:chat.NewChatScreen}}';
 {{#if GROUP_CHAT}}
 import { CreateGroupScreen } from '{{IMPORT:chat.CreateGroupScreen}}';
@@ -57,6 +58,7 @@ export function MainNavigator(): React.JSX.Element {
         component={ChatRoomScreen}
         options={{ headerShown: false }}
       />
+      <Stack.Screen name="ChatDetails" component={ChatDetailsScreen} options={{ title: translate('common', 'chatDetails') }} />
       <Stack.Screen name="NewChat" component={NewChatScreen} options={{ title: translate('common', 'newChat') }} />
 {{#if GROUP_CHAT}}
       <Stack.Screen name="CreateGroup" component={CreateGroupScreen} options={{ title: translate('common', 'newGroup') }} />

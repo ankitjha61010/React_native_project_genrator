@@ -201,6 +201,24 @@ export async function configureIosMicrophone(projectDir: string, appName: string
   await fs.writeFile(infoPlist, plist.build(data, { indent: '\t', pretty: true }) + '\n', 'utf8');
 }
 
+/**
+ * Info.plist: the location usage description exists only with the Google Location SDK. Without
+ * it, the RN template's empty placeholder is removed (no unused permission text).
+ */
+export async function configureIosLocation(projectDir: string, appName: string, displayName: string, enabled: boolean): Promise<void> {
+  const { infoPlist } = iosPaths(projectDir, appName);
+  if (!(await fs.pathExists(infoPlist))) {
+    throw new GeneratorError(`Expected Info.plist at ${infoPlist}.`);
+  }
+  const data = plist.parse(await fs.readFile(infoPlist, 'utf8')) as Record<string, plist.PlistValue>;
+  if (enabled && !data.NSLocationWhenInUseUsageDescription) {
+    data.NSLocationWhenInUseUsageDescription = `${displayName} uses your location to fill in where you are.`;
+  } else if (!enabled) {
+    delete data.NSLocationWhenInUseUsageDescription;
+  }
+  await fs.writeFile(infoPlist, plist.build(data, { indent: '\t', pretty: true }) + '\n', 'utf8');
+}
+
 /** Info.plist: display name, usage descriptions and remote-notification background mode. */
 export async function configureInfoPlist(projectDir: string, appName: string, displayName: string): Promise<void> {
   const { infoPlist } = iosPaths(projectDir, appName);

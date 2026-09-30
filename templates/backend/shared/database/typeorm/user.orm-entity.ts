@@ -1,5 +1,8 @@
 import { Column, CreateDateColumn, Entity, {{#if AUTH}}Index, {{/if}}PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { TIMESTAMP } from '{{IMPORT:typeorm.columns}}';
+{{#if AUTH}}
+import { UserRole } from '{{IMPORT:domain.roles}}';
+{{/if}}
 
 @Entity({ name: 'users' })
 {{#if AUTH}}
@@ -24,8 +27,8 @@ export class UserOrmEntity {
   @Column({ name: 'password_hash', type: 'varchar', length: 255, nullable: true })
   passwordHash: string | null;
 
-  @Column({ type: 'varchar', length: 20, default: 'user' })
-  role: string;
+  @Column({ type: 'enum', enum: UserRole, enumName: 'user_role', default: UserRole.USER })
+  role: UserRole;
 
   @Column({ name: 'email_verified_at', type: TIMESTAMP, nullable: true })
   emailVerifiedAt: Date | null;

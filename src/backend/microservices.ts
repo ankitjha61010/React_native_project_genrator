@@ -45,7 +45,7 @@ export function planMicroservices(base: BackendOptions): MicroservicesPlan {
     notifications,
     services: [
       // Accounts, sign-in, profiles.
-      service('identity', { modules: { ...off, legal: base.modules.legal, deleteAccount: base.modules.deleteAccount } }),
+      service('identity', { modules: { ...off, legal: base.modules.legal, deleteAccount: base.modules.deleteAccount }, remoteDevices: notifications }),
       // Only verifies access tokens (no sign-in of its own) – plain JWT, no refresh tokens.
       ...(chat ? [service('chat', { auth: 'jwt', authMethods: none, hashing: 'none', modules: { ...off, chat: true, groupChat: base.modules.groupChat }, remotePush: notifications })] : []),
       ...(notifications ? [service('notifications', { auth: 'jwt', authMethods: none, hashing: 'none', modules: { ...off, notifications: true } })] : []),

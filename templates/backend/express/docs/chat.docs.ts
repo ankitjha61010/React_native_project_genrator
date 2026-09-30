@@ -29,6 +29,8 @@ export const chatDocs: ApiDocGroup = {
     { method: 'get', path: '/chat/conversations/:conversationId/messages', summary: 'Messages, oldest → newest (`before` loads older pages; meta.hasMore)', auth: true, params: conversationParams, query: listMessagesQuery, response: z.array(chatMessageSchema), errors: [401, 404, 422] },
     { method: 'post', path: '/chat/conversations/:conversationId/messages', summary: 'Send a message (members get `chat:receive_message`)', status: 201, auth: true, params: conversationParams, body: sendMessageSchema, response: chatMessageSchema, errors: [400, 401, 404, 422] },
     { method: 'post', path: '/chat/conversations/:conversationId/read', summary: 'Mark the conversation as read (others get `chat:message_read`)', auth: true, params: conversationParams, errors: [401, 404] },
+    { method: 'post', path: '/chat/conversations/:conversationId/clear', summary: 'Clear chat – hides its messages for you only (the others keep theirs); it stays in your list', auth: true, params: conversationParams, errors: [401, 404] },
+    { method: 'post', path: '/chat/conversations/clear', summary: 'Clear all chats – every conversation, for you only', auth: true, errors: [401] },
     { method: 'delete', path: '/chat/conversations/:conversationId/messages/:messageId', summary: 'Delete one of your messages for everyone', auth: true, params: messageParams, errors: [401, 403, 404] },
 {{#if GROUP_CHAT}}
     { method: 'post', path: '/chat/groups', summary: 'Create a group (you become its admin; members get `chat:conversation_updated`)', status: 201, auth: true, body: createGroupSchema, response: conversationSchema, errors: [400, 401, 404, 422] },

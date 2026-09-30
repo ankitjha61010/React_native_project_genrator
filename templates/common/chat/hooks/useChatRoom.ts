@@ -90,7 +90,18 @@ export function useChatRoom(conversationId: string) {
         if (event.conversationId === conversationId) setMessages(previous => previous.map(m => (m.isMe && m.status === 'sent' ? { ...m, status: 'read' } : m)));
       }),
       socketService.on<{ conversationId: string; messageId: string }>(SOCKET_EVENTS.MESSAGE_DELETE, event => {
-        if (event.conversationId === conversationId) setMessages(previous => previous.filter(m => m.id !== event.messageId));
+        if (event.conversationId !== conversationId) return;
+        // Gone for everyone – replies keep a "deleted" quote.
+        setMessages(previous =>
+          previous.filter(m => m.id !== event.messageId).map(m => (m.replyTo?.messageId === event.messageId ? { ...m, replyTo: { ...m.replyTo, text: undefined, deleted: true } } : m)),
+        );
+      }),
+      // You cleared this chat (or all chats) – maybe on another device.
+      socketService.on<{ conversationId: string | null }>(SOCKET_EVENTS.CONVERSATION_CLEARED, event => {
+        if (event.conversationId === null || event.conversationId === conversationId) {
+          setMessages(previous => previous.filter(m => m.status === 'sending'));
+          setHasMore(false);
+        }
       }),
       socketService.on<{ roomId: string; userId: string; name: string }>(SOCKET_EVENTS.USER_TYPING, event => {
         if (event.roomId !== conversationId || event.userId === myId) return;
@@ -150,7 +161,10 @@ export function useChatRoom(conversationId: string) {
   const send = useCallback(
     async (draft: MessageDraft, existingId?: string) => {
       const localId = existingId ?? `local-${Date.now()}`;
-      upsert({ ...draft, id: localId, conversationId, senderId: myId ?? '', senderName: user?.name ?? '', createdAt: new Date().toISOString(), status: 'sending' });
+      // A reply shows its quote at once (the server's copy has the same one).
+      const original = draft.replyToId ? messages.find(m => m.id === draft.replyToId) : undefined;
+      const replyTo = original ? { messageId: original.id, senderId: original.senderId, senderName: original.senderName, type: original.type, text: original.text ?? original.fileName } : undefined;
+      upsert({ ...draft, ...(replyTo ? { replyTo } : {}), id: localId, conversationId, senderId: myId ?? '', senderName: user?.name ?? '', createdAt: new Date().toISOString(), status: 'sending' });
       try {
         upsert(await chatService.sendMessage(conversationId, draft), localId);
       } catch (error) {
@@ -158,13 +172,15 @@ export function useChatRoom(conversationId: string) {
         flash.error({ message: errorMessage(error) });
       }
     },
-    [conversationId, myId, upsert, user?.name],
+    [conversationId, messages, myId, upsert, user?.name],
   );
 
   const retry = useCallback(
     (message: ChatMessage) => {
-      const { type, text, mediaUrl, thumbnailUrl, fileName, fileSize, mimeType, duration, crop } = message;
-      send({ type, text, mediaUrl, thumbnailUrl, fileName, fileSize, mimeType, duration, crop }, message.id);
+      // Only messages you sent can fail – never a system message.
+      if (message.type === 'system') return;
+      const { text, mediaUrl, thumbnailUrl, fileName, fileSize, mimeType, duration, crop, replyTo } = message;
+      send({ type: message.type, text, mediaUrl, thumbnailUrl, fileName, fileSize, mimeType, duration, crop, replyToId: replyTo?.messageId }, message.id);
     },
     [send],
   );
@@ -202,6 +218,7 @@ export function useChatRoom(conversationId: string) {
   const other = useMemo(() => ({{#if GROUP_CHAT}}conversation?.isGroup ? undefined : {{/if}}conversation?.participants[0]), [conversation]);
 
   return {
+    myId,
     conversation,
     other,
     messages,

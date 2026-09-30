@@ -14,6 +14,9 @@ import { AppText } from '{{IMPORT:components.AppText}}';
 {{#if VECTOR_ICONS}}
 import { AppIcon } from '{{IMPORT:components.AppIcon}}';
 {{/if}}
+{{#if RTL}}
+import { useDirection } from '{{IMPORT:hooks.useDirection}}';
+{{/if}}
 import { useStyles } from '{{IMPORT:hooks.useTheme}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
 import type { ChatMessage } from '{{IMPORT:chat.types}}';
@@ -26,6 +29,10 @@ export interface ChatMediaPreviewProps {
 
 export function ChatMediaPreview({ visible, message, onClose }: ChatMediaPreviewProps): React.JSX.Element | null {
   const styles = useStyles(createStyles);
+{{#if RTL}}
+  // A Modal is a separate native root – it needs the app's direction explicitly.
+  const { directionStyle } = useDirection();
+{{/if}}
   const [loading, setLoading] = useState(false);
   // iOS can fire onLoadStart AFTER onLoad/onLoadEnd for local or cached images, which
   // left the spinner running forever. Once the image has finished, ignore late starts.
@@ -251,7 +258,7 @@ export function ChatMediaPreview({ visible, message, onClose }: ChatMediaPreview
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <SafeAreaView style={styles.backdrop}>
+      <SafeAreaView style={ {{#if RTL}}[styles.backdrop, directionStyle]{{else}}styles.backdrop{{/if}} }>
         {/* Header Bar */}
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.headerButton}>

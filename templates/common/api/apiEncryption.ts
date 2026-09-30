@@ -31,6 +31,24 @@ function params() {
   return cipherParams;
 }
 
+/**
+ * Sent as `X-Encryption-Key-Id` with every encrypted request: the first 12 hex characters of
+ * SHA-256(key + iv), never the key. When the server can't decrypt a body it compares this with
+ * its own and answers ENCRYPTION_KEY_MISMATCH – usually a bundle built with an old `.env`
+ * (react-native-dotenv inlines it at build time: restart Metro with `--reset-cache` and rebuild).
+ */
+export const ENCRYPTION_KEY_ID_HEADER = 'X-Encryption-Key-Id';
+
+let keyId: string | undefined;
+
+export function encryptionKeyId(): string {
+  if (keyId === undefined) {
+    const { key, iv } = appConfig.api.encryption;
+    keyId = CryptoJS.SHA256(key + iv).toString(CryptoJS.enc.Hex).slice(0, 12);
+  }
+  return keyId;
+}
+
 export function isEncryptionEnabled(): boolean {
   return appConfig.api.encryption.enabled;
 }

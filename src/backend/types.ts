@@ -98,6 +98,8 @@ export interface BackendOptions {
   service?: ServiceRole;
   /** Microservices: the notifications service exists (chat pushes through it). */
   remotePush?: boolean;
+  /** Identity service: the notifications service owns the devices – forward sign-in devices as events. */
+  remoteDevices?: boolean;
   /** Microservices: HTTP port of this service. */
   port?: number;
   /** Microservices: JWT secret shared by all services (generated once). */

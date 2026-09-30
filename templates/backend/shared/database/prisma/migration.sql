@@ -1,4 +1,14 @@
 {{#if POSTGRES}}
+{{#if AUTH}}
+-- CreateEnum
+CREATE TYPE "UserRole" AS ENUM ('USER', 'ADMIN');
+
+{{/if}}
+{{#if DEVICES}}
+-- CreateEnum
+CREATE TYPE "DeviceType" AS ENUM ('IOS', 'ANDROID', 'WEB');
+
+{{/if}}
 -- CreateTable
 CREATE TABLE "users" (
     "id" UUID NOT NULL,
@@ -10,7 +20,7 @@ CREATE TABLE "users" (
     "name" VARCHAR(120) NOT NULL,
 {{#if AUTH}}
     "password_hash" VARCHAR(255),
-    "role" VARCHAR(20) NOT NULL DEFAULT 'user',
+    "role" "UserRole" NOT NULL DEFAULT 'USER',
     "email_verified_at" TIMESTAMP(3),
     "country_code" VARCHAR(8),
     "phone" VARCHAR(20),
@@ -107,6 +117,7 @@ CREATE TABLE "conversation_members" (
 {{/if}}
     "last_read_at" TIMESTAMP(3),
     "cleared_at" TIMESTAMP(3),
+    "hidden" BOOLEAN NOT NULL DEFAULT false,
     "joined_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "conversation_members_pkey" PRIMARY KEY ("conversation_id","user_id")
@@ -125,6 +136,9 @@ CREATE TABLE "messages" (
     "file_size" VARCHAR(32),
     "duration" INTEGER,
     "crop" JSONB,
+    "event" VARCHAR(32),
+    "target_user_id" UUID,
+    "reply_to_id" UUID,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "deleted_at" TIMESTAMP(3),
 
@@ -138,9 +152,9 @@ CREATE TABLE "devices" (
     "id" UUID NOT NULL,
     "user_id" UUID NOT NULL,
     "device_id" VARCHAR(128) NOT NULL,
-    "token" VARCHAR(512),
-    "platform" VARCHAR(16) NOT NULL,
-    "device_name" VARCHAR(120),
+    "fcm_token" VARCHAR(512),
+    "device_type" "DeviceType" NOT NULL,
+    "device_model" VARCHAR(120),
     "os_version" VARCHAR(32),
     "app_version" VARCHAR(32),
     "last_active_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -231,7 +245,7 @@ CREATE INDEX "messages_sender_id_idx" ON "messages"("sender_id");
 CREATE UNIQUE INDEX "devices_device_id_key" ON "devices"("device_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "devices_token_key" ON "devices"("token");
+CREATE UNIQUE INDEX "devices_fcm_token_key" ON "devices"("fcm_token");
 
 -- CreateIndex
 CREATE INDEX "devices_user_id_idx" ON "devices"("user_id");
@@ -287,7 +301,7 @@ CREATE TABLE `users` (
     `name` VARCHAR(120) NOT NULL,
 {{#if AUTH}}
     `password_hash` VARCHAR(255) NULL,
-    `role` VARCHAR(20) NOT NULL DEFAULT 'user',
+    `role` ENUM('USER', 'ADMIN') NOT NULL DEFAULT 'USER',
     `email_verified_at` DATETIME(3) NULL,
     `country_code` VARCHAR(8) NULL,
     `phone` VARCHAR(20) NULL,
@@ -394,6 +408,7 @@ CREATE TABLE `conversation_members` (
 {{/if}}
     `last_read_at` DATETIME(3) NULL,
     `cleared_at` DATETIME(3) NULL,
+    `hidden` BOOLEAN NOT NULL DEFAULT false,
     `joined_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     INDEX `conversation_members_user_id_idx`(`user_id`),
@@ -413,6 +428,9 @@ CREATE TABLE `messages` (
     `file_size` VARCHAR(32) NULL,
     `duration` INTEGER NULL,
     `crop` JSON NULL,
+    `event` VARCHAR(32) NULL,
+    `target_user_id` CHAR(36) NULL,
+    `reply_to_id` CHAR(36) NULL,
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `deleted_at` DATETIME(3) NULL,
 
@@ -428,9 +446,9 @@ CREATE TABLE `devices` (
     `id` CHAR(36) NOT NULL,
     `user_id` CHAR(36) NOT NULL,
     `device_id` VARCHAR(128) NOT NULL,
-    `token` VARCHAR(512) NULL,
-    `platform` VARCHAR(16) NOT NULL,
-    `device_name` VARCHAR(120) NULL,
+    `fcm_token` VARCHAR(512) NULL,
+    `device_type` ENUM('IOS', 'ANDROID', 'WEB') NOT NULL,
+    `device_model` VARCHAR(120) NULL,
     `os_version` VARCHAR(32) NULL,
     `app_version` VARCHAR(32) NULL,
     `last_active_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -438,7 +456,7 @@ CREATE TABLE `devices` (
     `updated_at` DATETIME(3) NOT NULL,
 
     UNIQUE INDEX `devices_device_id_key`(`device_id`),
-    UNIQUE INDEX `devices_token_key`(`token`),
+    UNIQUE INDEX `devices_fcm_token_key`(`fcm_token`),
     INDEX `devices_user_id_idx`(`user_id`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

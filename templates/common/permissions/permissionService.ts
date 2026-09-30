@@ -17,7 +17,7 @@ import {
  *    usage description (NS…UsageDescription) to Info.plist,
  *  - Android: add the <uses-permission> to AndroidManifest.xml.
  */
-export type AppPermission = 'camera' | 'photoLibrary'{{#if CHAT}} | 'microphone'{{/if}};
+export type AppPermission = 'camera' | 'photoLibrary'{{#if CHAT}} | 'microphone'{{/if}}{{#if GOOGLE_LOCATION}} | 'location'{{/if}};
 
 // `undefined` means "no runtime permission needed on this platform".
 const PERMISSION_MAP: Record<AppPermission, Permission | undefined> = {
@@ -28,6 +28,10 @@ const PERMISSION_MAP: Record<AppPermission, Permission | undefined> = {
 {{#if CHAT}}
   // Chat voice messages.
   microphone: Platform.select({ ios: PERMISSIONS.IOS.MICROPHONE, android: PERMISSIONS.ANDROID.RECORD_AUDIO }),
+{{/if}}
+{{#if GOOGLE_LOCATION}}
+  // Google Location SDK – "while using the app" is all the profile location needs.
+  location: Platform.select({ ios: PERMISSIONS.IOS.LOCATION_WHEN_IN_USE, android: PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION }),
 {{/if}}
 };
 

@@ -129,6 +129,10 @@ export function prepareBackendContext(options: BackendOptions): BackendRenderCon
     NOTIFICATIONS: notifications,
     /** User devices (FCM tokens) – part of push notifications. */
     DEVICES: notifications,
+    /** Sign-in payloads carry the app's `device` (stored here, or forwarded to the notifications service). */
+    DEVICE_INPUT: (notifications && role === undefined) || (role === 'identity' && Boolean(options.remoteDevices)),
+    /** Identity service: sign-in devices are published to the notifications service. */
+    DEVICE_EVENTS: role === 'identity' && Boolean(options.remoteDevices),
     /** GET /legal + Terms & Conditions / Privacy Policy pages (monolith / identity service). */
     LEGAL: options.modules.legal && !replica,
     /** The user may delete their own account (DELETE /users/me). */

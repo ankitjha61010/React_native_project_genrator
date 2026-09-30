@@ -1,4 +1,6 @@
 import { createHarness, type Harness } from '../support/test-infrastructure.js';
+import { UserRole } from '{{IMPORT:domain.roles}}';
+import { DeviceType } from '{{IMPORT:domain.device}}';
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 3));
 
@@ -12,7 +14,7 @@ describe('notifications', () => {
   });
 
   it('notifies: inbox entry, live event and push', async () => {
-    await h.devices.register(userId, { deviceId: 'install-1', token: 'token-1', platform: 'ios' });
+    await h.devices.save(userId, { deviceId: 'install-1', fcmToken: 'token-1', deviceType: DeviceType.IOS });
     const view = await h.notifications.notify(userId, { type: 'order', title: 'Shipped', body: 'Your order is on its way', data: { url: 'https://example.com/o/1' } });
 
     expect(view).toMatchObject({ type: 'order', read: false, data: { url: 'https://example.com/o/1' } });
@@ -49,9 +51,9 @@ describe('notifications', () => {
   });
 
   it('broadcasts to an audience and records it', async () => {
-    const admin = await h.repositories.users.create({ email: 'admin@example.com', name: 'Admin', role: 'admin' });
-    await h.devices.register(userId, { deviceId: 'install-user', token: 'token-user', platform: 'android' });
-    await h.devices.register(admin.id, { deviceId: 'install-admin', token: 'token-admin', platform: 'android' });
+    const admin = await h.repositories.users.create({ email: 'admin@example.com', name: 'Admin', role: UserRole.ADMIN });
+    await h.devices.save(userId, { deviceId: 'install-user', fcmToken: 'token-user', deviceType: DeviceType.ANDROID });
+    await h.devices.save(admin.id, { deviceId: 'install-admin', fcmToken: 'token-admin', deviceType: DeviceType.ANDROID });
 
     const all = await h.notifications.broadcast(admin.id, { title: 'Maintenance', body: 'Tonight 2am', type: 'general' });
     expect(all.recipientCount).toBe(2);
@@ -64,16 +66,16 @@ describe('notifications', () => {
   });
 
   it('forgets devices FCM rejects', async () => {
-    await h.devices.register(userId, { deviceId: 'install-1', token: 'stale-token', platform: 'android' });
+    await h.devices.save(userId, { deviceId: 'install-1', fcmToken: 'stale-token', deviceType: DeviceType.ANDROID });
     h.pushSender.invalid = ['stale-token'];
     await h.notifications.notify(userId, { title: 'Hi', body: '…' });
     expect(h.repositories.devices.devices).toHaveLength(0);
   });
 
   it('pushes to every device of the user', async () => {
-    await h.devices.register(userId, { deviceId: 'phone', token: 'token-phone', platform: 'android' });
-    await h.devices.register(userId, { deviceId: 'tablet', token: 'token-tablet', platform: 'ios' });
-    await h.devices.register(userId, { deviceId: 'no-push', platform: 'ios' });
+    await h.devices.save(userId, { deviceId: 'phone', fcmToken: 'token-phone', deviceType: DeviceType.ANDROID });
+    await h.devices.save(userId, { deviceId: 'tablet', fcmToken: 'token-tablet', deviceType: DeviceType.IOS });
+    await h.devices.save(userId, { deviceId: 'no-push', deviceType: DeviceType.IOS });
     await h.notifications.notify(userId, { title: 'Hi', body: '…' });
     expect(h.pushSender.sent[0]?.tokens.toSorted()).toEqual(['token-phone', 'token-tablet']);
   });

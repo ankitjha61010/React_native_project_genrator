@@ -19,6 +19,7 @@ export const layered: ArchitectureDefinition = {
     notification: 'src/infrastructure/notification',
     permissions: 'src/infrastructure/permissions',
     media: 'src/infrastructure/media',
+    location: 'src/infrastructure/location',
     firebase: 'src/infrastructure/firebase',
     i18n: 'src/infrastructure/i18n',
     config: 'src/infrastructure/config',

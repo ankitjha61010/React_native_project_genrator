@@ -4,6 +4,9 @@ import { ApiTags } from '@nestjs/swagger';
 {{/if}}
 import { AuthService } from '{{IMPORT:app.authService}}';
 import type { ClientContext } from '{{IMPORT:app.authTypes}}';
+{{#if DEVICE_INPUT}}
+import type { DeviceInput } from '{{IMPORT:domain.device}}';
+{{/if}}
 {{#if VIEWS}}
 import { authView } from '{{IMPORT:views.auth}}';
 import { userView } from '{{IMPORT:views.user}}';
@@ -34,6 +37,7 @@ import {
 {{#if SOCIAL}}
   SocialLoginDto,
 {{/if}}
+  LogoutDto,
 {{#if AUTH_REFRESH}}
   RefreshTokenDto,
 {{/if}}
@@ -49,7 +53,11 @@ const session = toSessionView;
 const publicUser = toPublicUser;
 {{/if}}
 
-/** `/auth` – {{AUTH_METHODS_TEXT}}, sessions. */
+{{#if DEVICE_INPUT}}
+/** The client + the app install of the request body (saved with the sign-in). */
+const withDevice = (client: ClientContext, dto: { device?: DeviceInput }): ClientContext => ({ ...client, device: dto.device });
+
+{{/if}}/** `/auth` – {{AUTH_METHODS_TEXT}}, sessions. */
 {{#if SWAGGER}}
 @ApiTags('Auth')
 {{/if}}
@@ -63,7 +71,7 @@ export class AuthController {
   @Post('register')
   @Endpoint({ summary: 'Create an account with email + password (a verification code is emailed)', message: AUTH_MESSAGES.registered, status: 201, response: SessionDto, errors: [409, 422, 429] })
   async register(@Body() dto: RegisterDto, @Client() client: ClientContext) {
-    return session(await this.auth.register(dto, client));
+    return session(await this.auth.register(dto, {{#if DEVICE_INPUT}}withDevice(client, dto){{else}}client{{/if}}));
   }
 
   @Public()
@@ -71,7 +79,7 @@ export class AuthController {
   @Post('login')
   @Endpoint({ summary: 'Log in with email + password', message: AUTH_MESSAGES.loggedIn, status: 200, response: SessionDto, errors: [401, 403{{#if SEC_LOCKOUT}}, 423{{/if}}, 422, 429] })
   async login(@Body() dto: LoginDto, @Client() client: ClientContext) {
-    return session(await this.auth.login(dto, client));
+    return session(await this.auth.login(dto, {{#if DEVICE_INPUT}}withDevice(client, dto){{else}}client{{/if}}));
   }
 {{/if}}
 {{#if AUTH_OTP}}
@@ -89,7 +97,7 @@ export class AuthController {
   @Post('otp/verify')
   @Endpoint({ summary: 'Sign in with the SMS code (creates the account on the first login)', message: AUTH_MESSAGES.loggedIn, status: 200, response: SessionDto, errors: [400, 403, 422, 429] })
   async verifyOtp(@Body() dto: VerifyOtpDto, @Client() client: ClientContext) {
-    return session(await this.auth.verifyOtp(dto, client));
+    return session(await this.auth.verifyOtp(dto, {{#if DEVICE_INPUT}}withDevice(client, dto){{else}}client{{/if}}));
   }
 {{/if}}
 {{#if SOCIAL}}
@@ -99,7 +107,7 @@ export class AuthController {
   @Post('social')
   @Endpoint({ summary: 'Sign in with {{SOCIAL_PROVIDERS_TEXT}} (the token from the provider SDK is verified with the provider)', message: AUTH_MESSAGES.loggedIn, status: 200, response: SessionDto, errors: [401, 403, 422, 429] })
   async social(@Body() dto: SocialLoginDto, @Client() client: ClientContext) {
-    return session(await this.auth.socialLogin(dto, client));
+    return session(await this.auth.socialLogin(dto, {{#if DEVICE_INPUT}}withDevice(client, dto){{else}}client{{/if}}));
   }
 {{/if}}
 {{#if AUTH_REFRESH}}
@@ -113,14 +121,14 @@ export class AuthController {
   @Endpoint({ summary: 'New access token for a refresh token', message: AUTH_MESSAGES.tokenRefreshed, status: 200, response: SessionDto, errors: [401, 422, 429] })
 {{/if}}
   async refresh(@Body() dto: RefreshTokenDto, @Client() client: ClientContext) {
-    return session(await this.auth.refresh(dto.refreshToken, client));
+    return session(await this.auth.refresh(dto.refreshToken, {{#if DEVICE_INPUT}}withDevice(client, dto){{else}}client{{/if}}));
   }
 
   @Public()
   @Post('logout')
-  @Endpoint({ summary: 'End the session of a refresh token', message: AUTH_MESSAGES.loggedOut, status: 200, errors: [422] })
-  async logout(@Body() dto: RefreshTokenDto) {
-    await this.auth.logout(dto.refreshToken);
+  @Endpoint({ summary: 'End the session of a refresh token (and remove this device: `deviceId`)', message: AUTH_MESSAGES.loggedOut, status: 200, errors: [422] })
+  async logout(@Body() dto: LogoutDto) {
+    await this.auth.logout(dto.refreshToken, dto.deviceId);
   }
 
   @Post('logout-all')
@@ -131,9 +139,9 @@ export class AuthController {
 {{else}}
 
   @Post('logout')
-  @Endpoint({ summary: 'Log out (invalidates every token of the user)', message: AUTH_MESSAGES.loggedOut, status: 200, errors: [401], bearer: true })
-  async logout(@CurrentUser() user: User) {
-    await this.auth.logout(user.id);
+  @Endpoint({ summary: 'Log out (invalidates every token of the user; `deviceId` stops its pushes)', message: AUTH_MESSAGES.loggedOut, status: 200, errors: [401, 422], bearer: true })
+  async logout(@CurrentUser() user: User, @Body() dto: LogoutDto) {
+    await this.auth.logout(user.id, dto.deviceId);
   }
 {{/if}}
 

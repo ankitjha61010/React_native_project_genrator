@@ -8,6 +8,9 @@ import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, Unauthor
 import { ForbiddenError, NotFoundError } from '{{IMPORT:core.errors}}';
 {{/if}}
 import type { Logger } from '{{IMPORT:core.logger}}';
+{{#if DEVICE_INPUT}}
+import type { DeviceRegistry } from '{{IMPORT:domain.device}}';
+{{/if}}
 {{#if CODES}}
 import { {{#if AUTH_EMAIL}}normalizeEmail, {{/if}}normalizePhone, type User } from '{{IMPORT:domain.user}}';
 {{else}}
@@ -75,6 +78,10 @@ export interface AuthDependencies {
   socialVerifier: SocialVerifier;
 {{/if}}
   settings: AuthSettings;
+{{#if DEVICE_INPUT}}
+  /** Saves the `device` of sign-in requests, removes it on logout (DevicesService, or events to the notifications service). */
+  devices: DeviceRegistry;
+{{/if}}
   logger: Logger;
 }
 {{#if AUTH_EMAIL}}
@@ -259,24 +266,43 @@ export class AuthService {
   }
 {{#if AUTH_REFRESH}}
 
-  refresh(refreshToken: string, client: ClientContext = {}): Promise<AuthResult> {
-    return this.deps.sessions.refresh(refreshToken, client);
+  async refresh(refreshToken: string, client: ClientContext = {}): Promise<AuthResult> {
+    const result = await this.deps.sessions.refresh(refreshToken, client);
+{{#if DEVICE_INPUT}}
+    // Keeps the install's FCM token / app version current (the app sends its device with every refresh).
+    await this.saveDevice(result.user.id, client);
+{{/if}}
+    return result;
   }
 
-  /** Ends this device's session. Works without a valid access token, so an app can always log out. */
-  logout(refreshToken: string): Promise<void> {
-    return this.deps.sessions.logout(refreshToken);
+  /**
+   * Ends this device's session{{#if DEVICE_INPUT}} and removes the device (`deviceId` – no more pushes){{/if}}. Works without a
+   * valid access token, so an app can always log out.
+   */
+  async logout(refreshToken: string, {{#if DEVICE_INPUT}}deviceId{{else}}_deviceId{{/if}}?: string): Promise<void> {
+{{#if DEVICE_INPUT}}
+    const userId = await this.deps.sessions.logout(refreshToken);
+    if (userId && deviceId) await this.removeDevice(userId, deviceId);
+{{else}}
+    await this.deps.sessions.logout(refreshToken);
+{{/if}}
   }
 
   /** Signs the user out on every device. */
-  logoutAll(userId: string): Promise<void> {
-    return this.deps.sessions.revokeAll(userId);
+  async logoutAll(userId: string): Promise<void> {
+    await this.deps.sessions.revokeAll(userId);
+{{#if DEVICE_INPUT}}
+    await this.deps.devices.removeAll(userId);
+{{/if}}
   }
 {{else}}
 
   /** Plain JWT has no per-device session: logging out invalidates every token of the user. */
-  logout(userId: string): Promise<void> {
-    return this.deps.sessions.revokeAll(userId);
+  async logout(userId: string, {{#if DEVICE_INPUT}}deviceId{{else}}_deviceId{{/if}}?: string): Promise<void> {
+    await this.deps.sessions.revokeAll(userId);
+{{#if DEVICE_INPUT}}
+    if (deviceId) await this.removeDevice(userId, deviceId);
+{{/if}}
   }
 {{/if}}
 
@@ -291,8 +317,25 @@ export class AuthService {
   private async signIn(user: User, client: ClientContext): Promise<AuthResult> {
     if (!user.isActive) throw new ForbiddenError(AUTH_MESSAGES.accountDisabled);
     const updated = await this.deps.users.update(user.id, { lastLoginAt: new Date() });
-    return { user: updated, tokens: await this.deps.sessions.issue(updated, client) };
+    const tokens = await this.deps.sessions.issue(updated, client);
+{{#if DEVICE_INPUT}}
+    // Every sign-in saves the install (FCM token, model, versions) – the app makes no separate device request.
+    await this.saveDevice(updated.id, client);
+{{/if}}
+    return { user: updated, tokens };
   }
+{{#if DEVICE_INPUT}}
+
+  /** Never fails the sign-in: without its device the app still works (just without pushes). */
+  private async saveDevice(userId: string, client: ClientContext): Promise<void> {
+    if (!client.device) return;
+    await this.deps.devices.save(userId, client.device).catch(error => this.deps.logger.error({ err: error, userId }, 'Saving the device failed'));
+  }
+
+  private async removeDevice(userId: string, deviceId: string): Promise<void> {
+    await this.deps.devices.remove(userId, deviceId).catch(error => this.deps.logger.error({ err: error, userId }, 'Removing the device failed'));
+  }
+{{/if}}
 {{#if AUTH_EMAIL}}
 
   private async assertPhoneAvailable(countryCode: string, phone: string) {

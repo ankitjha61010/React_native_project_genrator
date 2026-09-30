@@ -7,8 +7,10 @@ export const StorageKeys = {
   PENDING_NOTIFICATION_TAP: '@{{APP_SLUG}}/pending-notification-tap',
   NOTIFICATION_INBOX: '@{{APP_SLUG}}/notification-inbox',
 {{#if NOTIFICATIONS}}
-  /** Identifies this app install (POST /devices). */
+  /** Identifies this app install (sent as `device.deviceId` with every sign-in). */
   DEVICE_ID: '@{{APP_SLUG}}/device-id',
+  /** The FCM token the backend has for this install – a rotated one is sent once (PATCH /devices/:deviceId). */
+  FCM_TOKEN: '@{{APP_SLUG}}/fcm-token',
 {{/if}}
 {{#if THEME_CONTEXT}}
   THEME_MODE: '@{{APP_SLUG}}/theme-mode',

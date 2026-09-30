@@ -1,5 +1,7 @@
 import request from 'supertest';
 import { createTestApp, type TestApp } from '../support/test-app.js';
+import { DeviceType } from '{{IMPORT:domain.device}}';
+import { UserRole } from '{{IMPORT:domain.roles}}';
 
 const api = '/api/v1';
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
@@ -11,16 +13,18 @@ describe('notifications API', () => {
 
   beforeAll(async () => {
     app = await createTestApp();
+{{#if DEVICE_INPUT}}
+    // The device (and its FCM token) comes with the sign-in.
+    user = await app.signUp('Jane', UserRole.USER, { deviceId: 'jane-phone-1', deviceType: DeviceType.ANDROID, fcmToken: 'fcm-token-of-jane' });
+{{else}}
     user = await app.signUp('Jane');
-    admin = await app.signUp('Admin', 'admin');
+    await app.repositories.devices.save(user.id, { deviceId: 'jane-phone-1', deviceType: DeviceType.ANDROID, fcmToken: 'fcm-token-of-jane' });
+{{/if}}
+    admin = await app.signUp('Admin', UserRole.ADMIN);
   });
 
   afterAll(async () => {
     await app.close();
-  });
-
-  it('pushes to the devices registered with POST /devices', async () => {
-    await request(app.server).post(`${api}/devices`).set(bearer(user.token)).send({ deviceId: 'jane-phone-1', token: 'fcm-token-of-jane', platform: 'android' }).expect(200);
   });
 
   it('only admins may broadcast', async () => {

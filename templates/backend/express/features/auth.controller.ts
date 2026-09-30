@@ -10,6 +10,9 @@ import { toPublicUser } from '{{IMPORT:domain.user}}';
 {{#if VIEWS}}
 import type { ClientContext } from '{{IMPORT:app.authTypes}}';
 {{/if}}
+{{#if DEVICE_INPUT}}
+import type { DeviceInput } from '{{IMPORT:domain.device}}';
+{{/if}}
 import { currentUser } from '{{IMPORT:ex.mw.auth}}';
 import { sendSuccess } from '{{IMPORT:ex.respond}}';
 import { parseBody } from '{{IMPORT:ex.validation}}';
@@ -29,6 +32,7 @@ import {
 {{#if SOCIAL}}
   socialLoginSchema,
 {{/if}}
+  logoutSchema,
 {{#if AUTH_REFRESH}}
   refreshTokenSchema,
 {{/if}}
@@ -44,8 +48,13 @@ const session = toSessionView;
 const publicUser = toPublicUser;
 {{/if}}
 
+{{#if DEVICE_INPUT}}
+/** IP + user agent (stored with the session, used in security logs) + the app's `device` from the body. */
+const client = (req: Request, body?: { device?: DeviceInput }): ClientContext => ({ ip: req.ip, userAgent: req.get('user-agent'), device: body?.device });
+{{else}}
 /** IP + user agent – stored with the session and used in security logs. */
 const client = (req: Request): ClientContext => ({ ip: req.ip, userAgent: req.get('user-agent') });
+{{/if}}
 
 /** Handles `/auth` requests: {{AUTH_METHODS_TEXT}}, sessions. */
 export class AuthController {
@@ -54,13 +63,15 @@ export class AuthController {
 
   /** POST /auth/register – a verification code is emailed */
   register = async (req: Request, res: Response) => {
-    const result = await this.auth.register(parseBody(registerSchema, req), client(req));
+    const body = parseBody(registerSchema, req);
+    const result = await this.auth.register(body, client(req{{#if DEVICE_INPUT}}, body{{/if}}));
     sendSuccess(res, AUTH_MESSAGES.registered, session(result), { status: 201 });
   };
 
   /** POST /auth/login */
   login = async (req: Request, res: Response) => {
-    const result = await this.auth.login(parseBody(loginSchema, req), client(req));
+    const body = parseBody(loginSchema, req);
+    const result = await this.auth.login(body, client(req{{#if DEVICE_INPUT}}, body{{/if}}));
     sendSuccess(res, AUTH_MESSAGES.loggedIn, session(result));
   };
 {{/if}}
@@ -73,7 +84,8 @@ export class AuthController {
 
   /** POST /auth/otp/verify – signs in (the account is created on the first login) */
   verifyOtp = async (req: Request, res: Response) => {
-    const result = await this.auth.verifyOtp(parseBody(verifyOtpSchema, req), client(req));
+    const body = parseBody(verifyOtpSchema, req);
+    const result = await this.auth.verifyOtp(body, client(req{{#if DEVICE_INPUT}}, body{{/if}}));
     sendSuccess(res, AUTH_MESSAGES.loggedIn, session(result));
   };
 {{/if}}
@@ -81,7 +93,8 @@ export class AuthController {
 
   /** POST /auth/social – {{SOCIAL_PROVIDERS_TEXT}} (the token is verified with the provider) */
   socialLogin = async (req: Request, res: Response) => {
-    const result = await this.auth.socialLogin(parseBody(socialLoginSchema, req), client(req));
+    const body = parseBody(socialLoginSchema, req);
+    const result = await this.auth.socialLogin(body, client(req{{#if DEVICE_INPUT}}, body{{/if}}));
     sendSuccess(res, AUTH_MESSAGES.loggedIn, session(result));
   };
 {{/if}}
@@ -89,13 +102,14 @@ export class AuthController {
 
   /** POST /auth/refresh{{#if AUTH_ROTATION}} – the used refresh token is revoked; reusing it revokes the whole session{{/if}} */
   refresh = async (req: Request, res: Response) => {
-    const { refreshToken } = parseBody(refreshTokenSchema, req);
-    sendSuccess(res, AUTH_MESSAGES.tokenRefreshed, session(await this.auth.refresh(refreshToken, client(req))));
+    const body = parseBody(refreshTokenSchema, req);
+    sendSuccess(res, AUTH_MESSAGES.tokenRefreshed, session(await this.auth.refresh(body.refreshToken, client(req{{#if DEVICE_INPUT}}, body{{/if}}))));
   };
 
-  /** POST /auth/logout – ends the session of a refresh token */
+  /** POST /auth/logout – ends the session of a refresh token (and removes `deviceId`) */
   logout = async (req: Request, res: Response) => {
-    await this.auth.logout(parseBody(refreshTokenSchema, req).refreshToken);
+    const { refreshToken, deviceId } = parseBody(logoutSchema, req);
+    await this.auth.logout(refreshToken, deviceId);
     sendSuccess(res, AUTH_MESSAGES.loggedOut);
   };
 
@@ -106,9 +120,9 @@ export class AuthController {
   };
 {{else}}
 
-  /** POST /auth/logout – invalidates every token of the user */
+  /** POST /auth/logout – invalidates every token of the user (and removes `deviceId`) */
   logout = async (req: Request, res: Response) => {
-    await this.auth.logout(currentUser(req).id);
+    await this.auth.logout(currentUser(req).id, parseBody(logoutSchema, req).deviceId);
     sendSuccess(res, AUTH_MESSAGES.loggedOut);
   };
 {{/if}}

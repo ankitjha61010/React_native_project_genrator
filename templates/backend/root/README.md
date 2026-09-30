@@ -251,7 +251,7 @@ Every response has the same shape:
 | Chat | conversations, messages (text / media), read receipts, uploads{{#if GROUP_CHAT}}, groups (admins / members){{/if}} · live over Socket.IO |
 {{/if}}
 {{#if DEVICES}}
-| Devices | the user's devices (one per app install): FCM token, platform, model, OS / app version, last active |
+| Devices | the user's devices (one `devices` row per app install): FCM token, device type, model, OS / app version, last active – saved by the sign-in requests themselves |
 {{/if}}
 {{#if NOTIFICATIONS}}
 | Notifications | inbox (unread count, read, delete), pushes to every device, admin broadcasts |
@@ -289,7 +289,7 @@ Every response has the same shape:
 - Sign-up accepts an optional mobile number (`countryCode` + `phone`, from the app's country picker). A number can belong
   to one account only (`409 PHONE_TAKEN`); a changed number becomes unverified.
 {{/if}}
-- **Roles & permissions:** roles (`user`, `admin`) grant permissions (`users:read`{{#if NOTIFICATIONS}}, `notifications:broadcast`{{/if}}, …) in `roles.ts`.
+- **Roles & permissions:** the `UserRole` enum (`USER`, `ADMIN` – a database enum on `users.role`) grants permissions (`users:read`{{#if NOTIFICATIONS}}, `notifications:broadcast`{{/if}}, …) in `roles.ts`.
   Routes require a permission, not a role.
 
 ### Providers (all optional in development)
@@ -339,8 +339,9 @@ admin; when the last member leaves, the group is deleted. Members get `chat:conv
 
 ## Notifications
 
-The app registers its device (`POST /devices`: install id, FCM token, platform, model, versions) after every sign-in,
-on app start and when the token changes, and removes it on logout (`DELETE /devices/:deviceId`). Use
+The app sends its device (`device`: install id, type, model, versions, FCM token) with every sign-in and token
+refresh – the backend saves it while signing in – and `deviceId` with logout, which removes it. Only a rotated FCM
+token is sent on its own (`PATCH /devices/:deviceId`). Use
 `NotificationsService.notify(userId, { type, title, body, data })` from any feature – it stores an inbox entry, emits
 `notification:new` and pushes to the user's devices. Admins send broadcasts with `POST /notifications/broadcast`.
 Tokens FCM rejects are deleted automatically.

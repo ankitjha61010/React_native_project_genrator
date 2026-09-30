@@ -1,16 +1,26 @@
 import { I18nManager } from 'react-native';
-import RNRestart from 'react-native-restart';
 import { isRTLLanguage } from './languages';
 
 /**
  * The ONE place that decides the layout direction.
  *
- *   selected language (saved) ──► direction ('ltr' | 'rtl') ──► I18nManager (native) ──► whole UI
+ *   selected language ──► direction ('ltr' | 'rtl') ──► listeners (re-render) ──► whole UI
  *
- * React Native reads the native direction once, at startup, and mirrors everything from it –
- * flex rows, `start` / `end` styles, text alignment, stack headers, the drawer, the tab bar and
- * swipe-back gestures. The app never flips things by hand: styles use start / end (not left /
- * right), icons that point "back" / "forward" come from `directionIcons()` (or useDirection()).
+ * Why not just I18nManager? React Native reads the native direction once, at startup, and
+ * `I18nManager.getConstants()` keeps returning that value until the app is restarted – which is
+ * why a switch back to English used to keep RTL back arrows until the app was reopened.
+ * So the direction lives here, in JS, and changes the moment the language changes:
+ * - AppProviders sets `direction` on the root view – Yoga mirrors every flex row, `start` /
+ *   `end` margin, padding and position below it (and text alignment follows the layout).
+ * - NavigationContainer gets it – native stack headers (back arrow, swipe-back), the drawer
+ *   side and the tab bar follow.
+ * - useDirection() re-renders its components: back / forward icons, `writingDirection`.
+ * The native flags are still written (for the next cold start, the keyboard, system dialogs),
+ * but nothing waits for them and the app never restarts.
+ *
+ * Rules for screens: styles use start / end (never left / right); icons that point "back" /
+ * "forward" come from useDirection(); a Modal renders its own root, so its content uses
+ * `useDirection().directionStyle`.
  */
 
 export type LayoutDirection = 'ltr' | 'rtl';
@@ -19,14 +29,25 @@ export function directionFor(language: string | undefined): LayoutDirection {
   return isRTLLanguage(language) ? 'rtl' : 'ltr';
 }
 
+let direction: LayoutDirection = I18nManager.getConstants().isRTL ? 'rtl' : 'ltr';
+const listeners = new Set<() => void>();
+
 /** The direction the app is laid out in right now. */
 export function currentDirection(): LayoutDirection {
-  return I18nManager.getConstants().isRTL ? 'rtl' : 'ltr';
+  return direction;
+}
+
+/** Called on every direction change; returns the unsubscribe function (useSyncExternalStore). */
+export function subscribeToDirection(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 /** Chevrons / arrows that point "back" and "forward" in reading order. */
-export function directionIcons() {
-  const rtl = currentDirection() === 'rtl';
+export function directionIcons(value: LayoutDirection = direction) {
+  const rtl = value === 'rtl';
   return {
     backIcon: rtl ? 'chevron-right' : 'chevron-left',
     forwardIcon: rtl ? 'chevron-left' : 'chevron-right',
@@ -34,7 +55,7 @@ export function directionIcons() {
   } as const;
 }
 
-/** Writes the native direction flags (they are persisted by React Native). */
+/** Writes the native direction flags (persisted by React Native, read on the next start). */
 function setNativeDirection(rtl: boolean): void {
   // allowRTL(false) keeps an LTR language left-to-right even on an Arabic / Hebrew device.
   I18nManager.allowRTL(rtl);
@@ -44,18 +65,15 @@ function setNativeDirection(rtl: boolean): void {
 }
 
 /**
- * Makes the native direction match the language. Called once on startup (AppProviders, after
- * the saved language is loaded) and after every language change (useLanguage).
- *
- * - Same direction: the flags are written again anyway, so a half-finished switch (e.g. the app
- *   was killed during the restart) can never leave LTR / RTL mixed after the next start.
- * - Other direction: the flags are written and the app restarts once. The short delay lets
- *   Android persist the flags before the process is replaced.
+ * Makes the app's direction match the language – immediately, without a restart. Called once
+ * on startup (AppProviders, after the saved language is loaded) and after every language
+ * change (useLanguage). The native flags are written every time, so the next cold start opens
+ * in the right direction even if the app was killed right after a switch.
  */
 export function applyLayoutDirection(language: string | undefined): void {
-  const rtl = isRTLLanguage(language);
-  setNativeDirection(rtl);
-  if (I18nManager.getConstants().isRTL !== rtl) {
-    setTimeout(() => RNRestart.restart(), 300);
-  }
+  const next = directionFor(language);
+  setNativeDirection(next === 'rtl');
+  if (next === direction) return;
+  direction = next;
+  listeners.forEach(listener => listener());
 }

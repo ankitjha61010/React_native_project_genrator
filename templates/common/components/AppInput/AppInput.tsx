@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
-import { I18nManager, Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
+import { {{#if RTL}}{{else}}I18nManager, {{/if}}Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 {{#if VECTOR_ICONS}}
 import { AppIcon, type AppIconName } from '{{IMPORT:components.AppIcon}}';
 {{/if}}
 import { AppText } from '{{IMPORT:components.AppText}}';
+{{#if RTL}}
+import { useDirection } from '{{IMPORT:hooks.useDirection}}';
+{{/if}}
 import { useStyles, useTheme } from '{{IMPORT:hooks.useTheme}}';
 import { intlRef, translate, type IntlFile, type IntlKey } from '{{IMPORT:i18n.index}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
@@ -48,6 +51,9 @@ export function AppInput<F extends IntlFile>({
 }: AppInputProps<F>): React.JSX.Element {
   const { theme } = useTheme();
   const styles = useStyles(createStyles);
+{{#if RTL}}
+  const { direction } = useDirection();
+{{/if}}
   const [focused, setFocused] = useState(false);
   const [hidden, setHidden] = useState(Boolean(secureTextEntry));
   const hasLabel = Boolean(labelValue || label);
@@ -68,7 +74,7 @@ export function AppInput<F extends IntlFile>({
           placeholderTextColor={theme.colors.placeholder}
           secureTextEntry={hidden}
           allowFontScaling={false}
-          style={[styles.input, style]}
+          style={[styles.input, {{#if RTL}}{ writingDirection: direction }, {{/if}}style]}
           onFocus={event => {
             setFocused(true);
             onFocus?.(event);
@@ -134,6 +140,10 @@ const createStyles = (theme: Theme) =>
       // RTL: no textAlign on purpose. TextInput doesn't mirror 'left' (Android) and mixes both
       // meanings while typing (iOS), so the cursor jumps. 'auto' + the writing direction keeps
       // text at the start – on the right in RTL – on both platforms.
+{{#if RTL}}
+      // writingDirection: set per render from useDirection() (it changes with the language).
+{{else}}
       writingDirection: I18nManager.isRTL ? 'rtl' : 'ltr',
+{{/if}}
     },
   });

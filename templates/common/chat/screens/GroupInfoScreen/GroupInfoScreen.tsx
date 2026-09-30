@@ -2,16 +2,23 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, Modal, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { AppButton } from '{{IMPORT:components.AppButton}}';
+{{#if VECTOR_ICONS}}
+import { AppIcon } from '{{IMPORT:components.AppIcon}}';
+{{/if}}
 import { AppLoader } from '{{IMPORT:components.AppLoader}}';
 import { AppText } from '{{IMPORT:components.AppText}}';
 import { MediaPickerModal, type MediaPickerOption } from '{{IMPORT:components.MediaPickerModal}}';
 import { useAuthSession } from '{{IMPORT:hooks.useAuthSession}}';
+{{#if RTL}}
+import { useDirection } from '{{IMPORT:hooks.useDirection}}';
+{{/if}}
 import { useImagePicker } from '{{IMPORT:hooks.useImagePicker}}';
 import { useStyles, useTheme } from '{{IMPORT:hooks.useTheme}}';
 import { translate } from '{{IMPORT:i18n.index}}';
 import type { MainStackParamList } from '{{IMPORT:navigation.types}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
 import type { ChatParticipant } from '{{IMPORT:chat.types}}';
+import { ChatActions } from '../../components/ChatActions/ChatActions';
 import { UserRow } from '../../components/UserRow/UserRow';
 import { useGroupInfo } from '../../hooks/useGroupInfo';
 import { useUserList } from '../../hooks/useUserList';
@@ -28,17 +35,29 @@ interface AddMembersSheetProps {
 function AddMembersSheet({ visible, memberIds, onClose, onAdd }: AddMembersSheetProps): React.JSX.Element {
   const styles = useStyles(createStyles);
   const { theme } = useTheme();
+{{#if RTL}}
+  // A Modal is its own native root – it needs the app's direction explicitly.
+  const { directionStyle } = useDirection();
+{{/if}}
   const people = useUserList();
   const [selected, setSelected] = useState<string[]>([]);
   const toggle = (id: string) => setSelected(ids => (ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id]));
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={styles.sheet}>
+      <View style={ {{#if RTL}}[styles.sheet, directionStyle]{{else}}styles.sheet{{/if}} }>
         <View style={styles.sheetHeader}>
-          <AppButton variant="outline" intlType="common" value="cancel" onPress={onClose} />
-          <AppText fontFamily="semiBold" fontSize="size16" intlType="common" value="addMembers" />
+          <TouchableOpacity onPress={onClose} hitSlop={12} accessibilityRole="button" accessibilityLabel={translate('common', 'close')} style={styles.close}>
+{{#if VECTOR_ICONS}}
+            <AppIcon name="close" size={24} tintColor={theme.colors.text} />
+{{else}}
+            <AppText fontSize="size20" text="✕" />
+{{/if}}
+          </TouchableOpacity>
+          <AppText fontFamily="semiBold" fontSize="size16" numberOfLines={1} style={styles.sheetTitle} intlType="common" value="addMembers" />
           <AppButton
+            size="small"
+            fullWidth={false}
             intlType="common"
             value="add"
             disabled={!selected.length}
@@ -178,6 +197,11 @@ export function GroupInfoScreen(): React.JSX.Element {
         ))}
       </View>
 
+      {/* Clear chat / Clear all chats – for you only (a group is left, not deleted). */}
+      <View style={styles.actions}>
+        <ChatActions conversationId={group.id} />
+      </View>
+
       <AppButton
         variant="danger"
 {{#if VECTOR_ICONS}}
@@ -227,7 +251,10 @@ const createStyles = (theme: Theme) =>
     card: { backgroundColor: theme.colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border },
     leave: { margin: theme.spacing.spacing16 },
     sheet: { flex: 1, backgroundColor: theme.colors.background },
-    sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.spacing8, padding: theme.spacing.spacing12 },
+    sheetHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.spacing12, paddingHorizontal: theme.spacing.spacing16, paddingVertical: theme.spacing.spacing12 },
+    close: { padding: theme.spacing.spacing4 },
+    sheetTitle: { flex: 1 },
+    actions: { marginTop: theme.spacing.spacing24 },
     search: {
       marginHorizontal: theme.spacing.spacing16,
       marginBottom: theme.spacing.spacing8,

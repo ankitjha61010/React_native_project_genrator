@@ -57,7 +57,7 @@ export function configureApp(app: NestExpressApplication): void {
     // Requests without an Origin (mobile apps, server to server) are allowed.
     origin: (origin, callback) => callback(null, !origin || allowed.has(origin)),
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'{{#if API_ENCRYPTION}}, 'X-Encryption-Key-Id'{{/if}}],
     exposedHeaders: ['X-Request-Id', 'Retry-After'],
     maxAge: 600,
   });

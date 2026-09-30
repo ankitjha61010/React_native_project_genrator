@@ -3,8 +3,7 @@ import type { AuthSession, LoginCredentials{{#if AUTH_EMAIL}}, RegisterInput{{/i
 import type { SocialAuthResult } from '{{IMPORT:auth.socialAuth}}';
 {{/if}}
 {{#if NOTIFICATIONS}}
-import { getDeviceId } from '{{IMPORT:notification.deviceInfo}}';
-import { deviceApi } from './deviceApi';
+import { forgetFcmToken, getDeviceId, getSignInDevice } from '{{IMPORT:notification.deviceInfo}}';
 {{/if}}
 import { authSessionStorage } from '{{IMPORT:storage.session}}';
 import { api } from './apiClient';
@@ -36,14 +35,25 @@ export interface SentCode {
 
 /** No token refresh for the sign-in calls themselves (a 401 there means wrong credentials). */
 const noRefresh = { skipAuthRefresh: true };
+{{#if NOTIFICATIONS}}
+
+/**
+ * Every sign-in / refresh body carries this install (id, type, model, versions, FCM token):
+ * the backend saves the device while signing in – there is no separate device request.
+ */
+const withDevice = async <T extends object>(body: T) => ({ ...body, device: await getSignInDevice() });
+{{else}}
+
+const withDevice = async <T extends object>(body: T) => body;
+{{/if}}
 
 /** Sign-in, sign-out and session requests (profile requests: userApi.ts). */
 export const authApi = {
   login: async (credentials: LoginCredentials) =>
-    toSession(await api.post<ServerSession>('/auth/login', { email: credentials.email.trim().toLowerCase(), password: credentials.password }, noRefresh)),
+    toSession(await api.post<ServerSession>('/auth/login', await withDevice({ email: credentials.email.trim().toLowerCase(), password: credentials.password }), noRefresh)),
 {{#if AUTH_EMAIL}}
 
-  register: async (input: RegisterInput) => toSession(await api.post<ServerSession>('/auth/register', input, noRefresh)),
+  register: async (input: RegisterInput) => toSession(await api.post<ServerSession>('/auth/register', await withDevice(input), noRefresh)),
 
   forgotPassword: (email: string) => api.post<null>('/auth/forgot-password', { email: email.trim().toLowerCase() }, noRefresh),
 
@@ -56,7 +66,7 @@ export const authApi = {
 
   sendOtp: (phone: PhoneNumber) => api.post<SentCode>('/auth/otp/send', phone, noRefresh),
 
-  verifyOtp: async (input: PhoneNumber & { otp: string; name?: string }) => toSession(await api.post<ServerSession>('/auth/otp/verify', input, noRefresh)),
+  verifyOtp: async (input: PhoneNumber & { otp: string; name?: string }) => toSession(await api.post<ServerSession>('/auth/otp/verify', await withDevice(input), noRefresh)),
 {{/if}}
 {{#if HAS_SOCIAL_AUTH}}
 
@@ -65,7 +75,7 @@ export const authApi = {
     toSession(
       await api.post<ServerSession>(
         '/auth/social',
-        {
+        await withDevice({
           provider: result.provider,
           token: result.token,
           tokenType: result.tokenType,
@@ -73,18 +83,18 @@ export const authApi = {
           nonce: result.nonce,
           // Apple only gives the name to the app, on the first sign-in.
           name: result.user.name || undefined,
-        },
+        }),
         noRefresh,
       ),
     ),
 {{/if}}
 
   /** New access (+ refresh) token – called by the API client on a 401. */
-  refresh: async (refreshToken: string) => toSession(await api.post<ServerSession>('/auth/refresh', { refreshToken }, noRefresh)),
+  refresh: async (refreshToken: string) => toSession(await api.post<ServerSession>('/auth/refresh', await withDevice({ refreshToken }), noRefresh)),
 
-  /** Ends this device's session (never throws – logging out must always work locally). */
-  logout: (refreshToken?: string) =>
-    api.post<null>('/auth/logout', refreshToken ? { refreshToken } : undefined, noRefresh).catch(() => null),
+  /** Ends this device's session{{#if NOTIFICATIONS}} and removes the device (`deviceId`){{/if}} – never throws: logging out must always work locally. */
+  logout: (refreshToken?: string, deviceId?: string) =>
+    api.post<null>('/auth/logout', { ...(refreshToken ? { refreshToken } : {}), ...(deviceId ? { deviceId } : {}) }, noRefresh).catch(() => null),
 
   me: async () => toUser(await api.get<ServerUser>('/auth/me')),
 };
@@ -94,9 +104,12 @@ export const authApi = {
  * Never throws – signing out must always work, even offline.
  */
 export async function endServerSession(): Promise<void> {
-{{#if NOTIFICATIONS}}
-  await deviceApi.remove(await getDeviceId()).catch(() => null);
-{{/if}}
   const refreshToken = await authSessionStorage.getRefreshToken();
+{{#if NOTIFICATIONS}}
+  // One request: the backend ends the session and removes this device (no more pushes).
+  await authApi.logout(refreshToken ?? undefined, await getDeviceId());
+  await forgetFcmToken();
+{{else}}
   await authApi.logout(refreshToken ?? undefined);
+{{/if}}
 }

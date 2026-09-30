@@ -23,6 +23,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a deep dive into the archit
 {{#if HAS_SOCIAL_AUTH}}
    - [Social login](#social-login)
 {{/if}}
+{{#if GOOGLE_LOCATION}}
+   - [Google Location SDK](#google-location-sdk)
+{{/if}}
 8. [Environment variables](#environment-variables)
 9. [Navigation](#navigation)
 10. [State management](#state-management)
@@ -55,7 +58,7 @@ Every feature follows the same path: **Screen** (UI only) → **hook** (screen s
 | Terms & Conditions | `{{PATH_COMPONENTS_LEGALLINKS}}` | `useLegalPages` (same file) | `{{PATH_API_LEGAL}}` | `GET /legal` |
 {{/if}}
 {{#if NOTIFICATIONS}}
-| Device registration | – | `{{PATH_NOTIFICATION_SERVICE}}` | `{{PATH_NOTIFICATION_DEVICEINFO}}` · `{{PATH_API_DEVICE}}` | `POST /devices`, `DELETE /devices/:deviceId` |
+| Device (FCM token) | – | `{{PATH_API_AUTH}}` | `{{PATH_NOTIFICATION_DEVICEINFO}}` · `{{PATH_API_DEVICE}}` | `device` in the sign-in / refresh bodies, `deviceId` in `POST /auth/logout`, `PATCH /devices/:deviceId` (rotated token) |
 {{/if}}
 {{#if CHAT}}
 | Chat list | `{{PATH_CHAT_CHATLISTSCREEN}}` | `{{PATH_CHAT_USECHATLIST}}` | `{{PATH_CHAT_SERVICE}}` | `/chat/conversations` |
@@ -95,10 +98,10 @@ Layout direction (RTL / LTR): `{{PATH_I18N_DIRECTION}}`.
 {{else}}
 | Storage | `@react-native-async-storage/async-storage` (behind a replaceable adapter) |
 {{/if}}
-{{#if RTL}}
-| RTL | `react-native-restart` (restarts once when the layout direction changes) |
-{{/if}}
 | Forms | `react-hook-form`, `zod`, `@hookform/resolvers` |
+{{#if GOOGLE_LOCATION}}
+| Location | `react-native-geolocation-service` (Google Fused Location Provider on Android, CoreLocation on iOS); Places / Geocoding over HTTPS |
+{{/if}}
 | i18n | `i18next`, `react-i18next`, `react-native-localize` |
 {{#if VECTOR_ICONS}}
 | UI | `react-native-flash-message`, `@react-native-vector-icons/material-design-icons`, `react-native-webview` |
@@ -199,14 +202,16 @@ Code lives in `{{DIR_NOTIFICATION}}`:
 | --- | --- |
 | `notificationPermissions.ts` | Ask/check permission (iOS + Android 13 `POST_NOTIFICATIONS`) |
 | `notificationToken.ts` | Get / refresh the FCM token |
-| `deviceInfo.ts` | This install: id (created once), FCM token, platform, model, OS / app version → `POST /devices` (`registerDevice`) |
+| `deviceInfo.ts` | This install: id (created once), type, model, OS / app version, FCM token → the `device` of every sign-in (`getSignInDevice`); `syncFcmToken` sends a rotated token |
 | `notificationDisplay.ts` | `displayNotification(message)` – shows an FCM message with Notifee (Android channel `default`) |
 | `notificationHandlers.ts` | `registerNotificationHandlers()` (called in `index.js`) and tap handling |
-| `notificationService.ts` | `notificationService.initialize()` – permission, device registration, token refresh, tap listeners |
+| `notificationService.ts` | `notificationService.initialize()` – permission, token refresh, tap listeners |
 
-**Devices.** A user can be signed in on several devices; each one is a row on the backend (`/devices`). The app
-registers its device right after register / login / social login and on every app start (so `lastActiveAt` stays
-current), again when FCM rotates the token, and removes it on logout (`DELETE /devices/:deviceId`).
+**Devices.** A user can be signed in on several devices; each one is a row on the backend. There is **no separate
+device request**: login, register, OTP, social sign-in and token refresh send `device` (`deviceId`, `deviceType`,
+`deviceModel`, `osVersion`, `appVersion`, `fcmToken`) and the backend saves it while signing in; logout sends
+`deviceId` and the backend removes it. The only device call is `PATCH /devices/:deviceId` when FCM rotates the token
+(or iOS only gets one after notifications are allowed).
 
 **Entry point (`index.js`)**: `registerNotificationHandlers()` runs before the app renders and registers:
 
@@ -287,6 +292,28 @@ The code and all native setup are done, but **every key is a `YOUR_…` placehol
 Step-by-step guide (consoles, SHA-1 and key hashes, backend token verification): [docs/SOCIAL_LOGIN.md](docs/SOCIAL_LOGIN.md).
 
 {{/if}}
+{{#if GOOGLE_LOCATION}}
+## Google Location SDK
+
+The profile's **Location** field (`{{PATH_COMPONENTS_LOCATIONPICKER}}`) suggests cities from Google Places while
+typing and has **Use current location** (device position → "City, Country").
+
+| File | What |
+| --- | --- |
+| `{{PATH_LOCATION_SERVICE}}` | Permission flow (`permissionService` → `location`), `getCurrentPosition()`, `watchPosition()` (returns a stop function), typed `LocationError`s |
+| `{{PATH_LOCATION_PLACES}}` | Google Places API (New) autocomplete + Geocoding API reverse geocoding, typed `PlacesError`s |
+| `{{PATH_LOCATION_USELOCATIONSEARCH}}` | Debounced search, pick a suggestion, current location – UI-free |
+
+Setup:
+
+1. Google Cloud Console → APIs & Services → enable **Places API (New)** and **Geocoding API**.
+2. Create an API key (restrict it to your Android package / iOS bundle id and those two APIs) and set
+   `GOOGLE_MAPS_API_KEY` in `.env`, then restart Metro with `--reset-cache`.
+3. Already configured by the generator: `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` (AndroidManifest.xml),
+   `NSLocationWhenInUseUsageDescription` (Info.plist) and `LocationWhenInUse` in the Podfile's `setup_permissions`.
+   Android needs Google Play Services on the device (emulators: use a "Google APIs" image).
+
+{{/if}}
 ## Environment variables
 
 `.env` is loaded at build time through `react-native-dotenv` and typed in `{{PATH_TYPES_ENV}}`.
@@ -303,6 +330,9 @@ Step-by-step guide (consoles, SHA-1 and key hashes, backend token verification):
 {{#if SOCIAL_GOOGLE}}
 | `GOOGLE_WEB_CLIENT_ID` | Google OAuth **web** client ID (ID token audience) – see [docs/SOCIAL_LOGIN.md](docs/SOCIAL_LOGIN.md) |
 | `GOOGLE_IOS_CLIENT_ID` | Google OAuth **iOS** client ID |
+{{/if}}
+{{#if GOOGLE_LOCATION}}
+| `GOOGLE_MAPS_API_KEY` | Google Places API (New) + Geocoding API key – see [Google Location SDK](#google-location-sdk) |
 {{/if}}
 
 Read values through `{{PATH_CONFIG_ENV}}` – never import `@env` elsewhere.
@@ -331,7 +361,9 @@ Splash ──► Auth (Login) ──► Main ─┬─ Tabs (bottom tab bar): Ho
   header (UINavigationBar / Android toolbar) – no custom header component.{{#if DRAWER}} Left: drawer button.{{/if}}{{#if NOTIFICATIONS}} Right: notification bell with the unread count.{{/if}}
 {{#if HAS_HEADER_BUTTONS}}
 - `{{PATH_NAVIGATION_HEADERBUTTONS}}` – `HeaderIconButton` and the ready-made header buttons. Use them in
-  `headerLeft` / `headerRight` of any screen.
+  `headerLeft` / `headerRight` of any screen – always as an element (`headerRight: () => <MyButton />`, or the
+  `renderDrawerButton` / `renderNotificationBell` helpers), never `headerRight: MyButton`: React Navigation calls
+  these options as plain functions, so a component with hooks passed directly causes "Invalid hook call".
 {{/if}}
 - `{{PATH_NAVIGATION_TYPES}}` – typed params for every route
 - `{{PATH_NAVIGATION_REF}}` – navigate from outside React (notifications, interceptors)
@@ -406,14 +438,16 @@ Arabic (`ar`) is included as the sample RTL language. A language is RTL when it 
 `{{PATH_I18N_LANGUAGES}}`.
 
 - **One place decides the direction:** `{{PATH_I18N_DIRECTION}}`. The saved language → its direction →
-  `I18nManager` (native) → the whole UI. Nothing is flipped screen by screen.
-- On every start and every language change, `applyLayoutDirection()` writes the native flags again (so an
-  interrupted switch can never leave LTR / RTL mixed) and restarts the app once when the direction changes
-  (`react-native-restart`). The selected language and its direction survive restarts.
-- `NavigationContainer` gets the direction explicitly, so native headers, the drawer (it opens from the start
-  side) and swipe-back gestures follow the app's direction – never the device locale.
-- `useDirection()` returns `{ direction, isRTL, backIcon, forwardIcon, backArrow }` – use these icon names for
-  anything that points "back" or "forward" (AppHeader, chat header, profile rows do).
+  the whole UI, **immediately** – switching LTR ⇄ RTL never restarts the app. Nothing is flipped screen by screen.
+- Why not `I18nManager` alone: React Native reads the native direction once at startup and keeps returning it
+  until the app restarts. So the direction is kept in JS: the root view gets `direction` (Yoga mirrors every row,
+  `start` / `end` margin, padding and position below it) and `applyLayoutDirection()` notifies `useDirection()`.
+  The native flags are still written on every start and change, for the next cold start and system UI.
+- `NavigationContainer` gets the live direction, so native headers (back arrow), the drawer (it opens from the
+  start side) and swipe-back gestures follow the app's direction – never the device locale.
+- `useDirection()` returns `{ direction, isRTL, directionStyle, backIcon, forwardIcon, backArrow }` and re-renders
+  on a switch – use these icon names for anything that points "back" or "forward" (AppHeader, chat header,
+  profile rows do). A `<Modal>` is its own native root: put `directionStyle` on its first view.
 - Text: `AppText` and `AppInput` align to the start (right in RTL). For `Text`, React Native mirrors
   `textAlign: 'left'` but not the default `'auto'`, so `AppText` sets `'left'`. For `TextInput` it's the
   opposite: leave `textAlign` unset and set `writingDirection`, as `AppInput` does.

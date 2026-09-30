@@ -27,6 +27,9 @@ import { AppText } from '{{IMPORT:components.AppText}}';
 {{#if VECTOR_ICONS}}
 import { AppIcon } from '{{IMPORT:components.AppIcon}}';
 {{/if}}
+{{#if RTL}}
+import { useDirection } from '{{IMPORT:hooks.useDirection}}';
+{{/if}}
 import { useStyles } from '{{IMPORT:hooks.useTheme}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
 
@@ -229,6 +232,10 @@ export function MediaEditorModal({
   onSend,
 }: MediaEditorModalProps): React.JSX.Element | null {
   const styles = useStyles(createStyles);
+{{#if RTL}}
+  // A Modal is a separate native root – it needs the app's direction explicitly.
+  const { directionStyle } = useDirection();
+{{/if}}
 
   // ── editor state ──────────────────────────────────────────────────────────
   const [rotation, setRotation] = useState(0);
@@ -420,7 +427,7 @@ export function MediaEditorModal({
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={handleClose}>
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={ {{#if RTL}}[styles.container, directionStyle]{{else}}styles.container{{/if}} }>
 
         {/* ── Top Header ─────────────────────────────────────────────── */}
         <View style={styles.header}>

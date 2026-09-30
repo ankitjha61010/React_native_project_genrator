@@ -1,4 +1,7 @@
 import { createHarness, type Harness } from '../support/test-infrastructure.js';
+{{#if NOTIFICATIONS}}
+import { DeviceType } from '{{IMPORT:domain.device}}';
+{{/if}}
 
 /** Lets the clock move on, so timestamps differ. */
 const tick = () => new Promise(resolve => setTimeout(resolve, 3));
@@ -96,6 +99,50 @@ describe('chat', () => {
     expect((await h.chat.listMessages(bob, id, { limit: 10 })).items.map(m => m.text)).toEqual(['new']);
   });
 
+  it('clears a chat for you only – it stays in your list, the other person keeps the messages', async () => {
+    const { id } = await h.chat.startConversation(alice, { participantIds: [bob] });
+    await h.chat.sendMessage(alice, id, { type: 'text', text: 'before' });
+    await tick();
+    await h.chat.clearConversation(bob, id);
+
+    expect((await h.chat.listMessages(bob, id, { limit: 10 })).items).toHaveLength(0);
+    expect((await h.chat.listMessages(alice, id, { limit: 10 })).items.map(m => m.text)).toEqual(['before']);
+    expect(await h.chat.listConversations(bob)).toEqual([expect.objectContaining({ id, unreadCount: 0 })]);
+    expect(h.realtime.eventsFor(bob, 'chat:conversation_cleared')).toEqual([expect.objectContaining({ conversationId: id })]);
+  });
+
+  it('clears all chats of a user at once', async () => {
+    const carol = (await h.repositories.users.create({ email: 'carol@example.com', name: 'Carol' })).id;
+    const withBob = await h.chat.startConversation(alice, { participantIds: [bob] });
+    const withCarol = await h.chat.startConversation(alice, { participantIds: [carol] });
+    await h.chat.sendMessage(bob, withBob.id, { type: 'text', text: 'hi' });
+    await h.chat.sendMessage(carol, withCarol.id, { type: 'text', text: 'hey' });
+    await tick();
+    await h.chat.clearAllConversations(alice);
+
+    expect((await h.chat.listMessages(alice, withBob.id, { limit: 10 })).items).toHaveLength(0);
+    expect((await h.chat.listMessages(alice, withCarol.id, { limit: 10 })).items).toHaveLength(0);
+    expect(await h.chat.listConversations(alice)).toHaveLength(2);
+    expect((await h.chat.listMessages(bob, withBob.id, { limit: 10 })).items).toHaveLength(1);
+  });
+
+  it('replies quote the original message (same conversation, still visible)', async () => {
+    const { id } = await h.chat.startConversation(alice, { participantIds: [bob] });
+    const question = await h.chat.sendMessage(bob, id, { type: 'text', text: 'Hey, are you available today?' });
+    await tick();
+    const answer = await h.chat.sendMessage(alice, id, { type: 'text', text: 'Yes, I am available.', replyToId: question.id });
+
+    const quote = { messageId: question.id, senderId: bob, senderName: 'Bob', type: 'text', text: 'Hey, are you available today?' };
+    expect(answer.replyTo).toEqual(quote);
+    expect(h.realtime.eventsFor(bob, 'chat:receive_message').at(-1)).toMatchObject({ id: answer.id, replyTo: quote });
+    expect((await h.chat.listMessages(bob, id, { limit: 1 })).items[0]?.replyTo).toEqual(quote);
+
+    await h.chat.deleteMessage(bob, id, question.id);
+    expect((await h.chat.listMessages(alice, id, { limit: 10 })).items[0]?.replyTo).toEqual({ messageId: question.id, senderId: bob, senderName: 'Bob', type: 'text', deleted: true });
+    await expect(h.chat.sendMessage(alice, id, { type: 'text', text: 'again', replyToId: question.id })).rejects.toMatchObject({ code: 'REPLY_NOT_FOUND' });
+    await expect(h.chat.sendMessage(alice, id, { type: 'text', text: 'x', replyToId: 'missing' })).rejects.toMatchObject({ code: 'REPLY_NOT_FOUND' });
+  });
+
   it('opens direct chats with exactly one other person', async () => {
     await expect(h.chat.startConversation(alice, { participantIds: [alice] })).rejects.toMatchObject({ code: 'NO_PARTICIPANTS' });
     const eve = (await h.repositories.users.create({ email: 'eve@example.com', name: 'Eve' })).id;
@@ -119,6 +166,20 @@ describe('chat', () => {
       expect(group.participants.map(p => p.role)).toEqual(['member', 'member']);
       expect((await h.chat.getConversation(bob, group.id)).myRole).toBe('member');
       expect(h.realtime.eventsFor(bob, 'chat:conversation_updated')).toEqual([{ conversationId: group.id, change: 'created', byUserId: alice }]);
+    });
+
+    it('writes "Alice added Carol" into the conversation when a member is added', async () => {
+      const group = await h.chat.createGroup(alice, { title: 'Team', participantIds: [bob] });
+      await h.chat.addMembers(alice, group.id, [carol]);
+
+      const added = (await h.chat.listMessages(carol, group.id, { limit: 10 })).items[0];
+      expect(added).toMatchObject({ type: 'system', event: 'MEMBER_ADDED', actor: { id: alice, name: 'Alice' }, target: { id: carol, name: 'Carol' }, senderId: alice });
+      expect(added?.createdAt).toEqual(expect.any(String));
+      expect(h.realtime.eventsFor(bob, 'chat:receive_message')).toEqual([expect.objectContaining({ type: 'system', event: 'MEMBER_ADDED' })]);
+      // Not a normal message: no unread badge, can't be deleted or replied to.
+      expect((await h.chat.getConversation(bob, group.id)).unreadCount).toBe(0);
+      await expect(h.chat.deleteMessage(alice, group.id, added.id)).rejects.toMatchObject({ code: 'SYSTEM_MESSAGE' });
+      await expect(h.chat.sendMessage(bob, group.id, { type: 'text', text: 'hi', replyToId: added.id })).rejects.toMatchObject({ code: 'REPLY_NOT_FOUND' });
     });
 
     it('lets only admins rename, add, remove and promote', async () => {
@@ -170,7 +231,7 @@ describe('chat', () => {
 {{#if NOTIFICATIONS}}
 
   it('pushes to members who are offline', async () => {
-    await h.devices.register(bob, { deviceId: 'bob-phone-1', token: 'bob-device-token', platform: 'android' });
+    await h.devices.save(bob, { deviceId: 'bob-phone-1', fcmToken: 'bob-device-token', deviceType: DeviceType.ANDROID });
     const { id } = await h.chat.startConversation(alice, { participantIds: [bob] });
     await h.chat.sendMessage(alice, id, { type: 'text', text: 'Are you there?' });
 

@@ -46,7 +46,7 @@ The user object (`User`):
 
 ```json
 { "id": "…", "email": "jane@example.com", "name": "Jane", "avatar": "https://…/uploads/avatars/….jpg", "countryCode": "+91", "phone": "9876543210",
-  "location": "Pune", "bio": "…", "role": "user", "emailVerified": true, "phoneVerified": false, "hasPassword": true,
+  "location": "Pune", "bio": "…", "role": "USER", "emailVerified": true, "phoneVerified": false, "hasPassword": true,
   "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "…" }
 ```
 
@@ -59,8 +59,8 @@ Every sign-in endpoint returns a **session**:
 | Method | Path | Body | Returns |
 | --- | --- | --- | --- |
 {{#if AUTH_EMAIL}}
-| POST | `/auth/register` | `name, email, password, countryCode?, phone?` | session (201) – a verification code is emailed |
-| POST | `/auth/login` | `email, password` | session |
+| POST | `/auth/register` | `name, email, password, countryCode?, phone?{{#if DEVICE_INPUT}}, device?{{/if}}` | session (201) – a verification code is emailed |
+| POST | `/auth/login` | `email, password{{#if DEVICE_INPUT}}, device?{{/if}}` | session |
 | POST | `/auth/forgot-password` | `email` | – (always 200) – a 6-digit code is emailed |
 | POST | `/auth/reset-password` | `email, code, newPassword` | – |
 | POST | `/auth/change-password` 🔒 | `currentPassword?, newPassword` | session (other devices are signed out) |
@@ -69,21 +69,32 @@ Every sign-in endpoint returns a **session**:
 {{/if}}
 {{#if AUTH_OTP}}
 | POST | `/auth/otp/send` | `countryCode, phone` | `{ expiresIn, resendIn }` – SMS with a 6-digit code |
-| POST | `/auth/otp/verify` | `countryCode, phone, otp, name?` | session (`isNewUser: true` on the first login) |
+| POST | `/auth/otp/verify` | `countryCode, phone, otp, name?{{#if DEVICE_INPUT}}, device?{{/if}}` | session (`isNewUser: true` on the first login) |
 {{/if}}
 {{#if SOCIAL}}
-| POST | `/auth/social` | `provider ({{SOCIAL_PROVIDER_LIST}}), token, tokenType, authorizationCode?, nonce?, name?` | session |
+| POST | `/auth/social` | `provider ({{SOCIAL_PROVIDER_LIST}}), token, tokenType, authorizationCode?, nonce?, name?{{#if DEVICE_INPUT}}, device?{{/if}}` | session |
 {{/if}}
 {{#if AUTH_REFRESH}}
-| POST | `/auth/refresh` | `refreshToken` | session{{#if AUTH_ROTATION}} (a **new** refresh token – store it; reusing an old one logs the user out){{/if}} |
-| POST | `/auth/logout` | `refreshToken` | – |
-| POST | `/auth/logout-all` 🔒 | – | – |
+| POST | `/auth/refresh` | `refreshToken{{#if DEVICE_INPUT}}, device?{{/if}}` | session{{#if AUTH_ROTATION}} (a **new** refresh token – store it; reusing an old one logs the user out){{/if}} |
+| POST | `/auth/logout` | `refreshToken, deviceId?` | – {{#if DEVICE_INPUT}}(`deviceId`: that device is removed – no more pushes){{/if}} |
+| POST | `/auth/logout-all` 🔒 | – | –{{#if DEVICE_INPUT}} (every device of the user is removed){{/if}} |
 {{else}}
-| POST | `/auth/logout` 🔒 | – | – (every token of the user stops working) |
+| POST | `/auth/logout` 🔒 | `deviceId?` | – (every token of the user stops working{{#if DEVICE_INPUT}}; `deviceId` is removed{{/if}}) |
 {{/if}}
 | GET | `/auth/me` 🔒 | – | User |
 
 🔒 = needs `Authorization: Bearer`.
+{{#if DEVICE_INPUT}}
+
+**`device`** – this app install, saved while signing in (there is no separate "register device" request):
+
+```json
+{ "deviceId": "…generated once per install…", "deviceType": "ANDROID", "deviceModel": "Google Pixel 8", "osVersion": "15", "appVersion": "1.0.0", "fcmToken": "…" }
+```
+
+`deviceType`: `IOS` \| `ANDROID` \| `WEB`. `fcmToken` may be null (push not allowed yet). The same install always sends
+the same `deviceId`; another user signing in on it takes it over, and an FCM token belongs to one install only.
+{{/if}}
 {{#if CODES}}
 
 Codes are 6 digits, valid `VERIFICATION_CODE_TTL` (10 min), a new one can be requested after `resendIn` seconds
@@ -137,20 +148,37 @@ Conversation { id, title, avatar?, isGroup, myRole: 'admin'|'member', unreadCoun
 {{else}}
 Conversation { id, title, avatar?, unreadCount, lastMessage?: ChatMessage, participants: { id, name, avatar?, isOnline, lastSeen? }[], updatedAt }
 {{/if}}
-ChatMessage  { id, conversationId, senderId, senderName, senderAvatar?, type: 'text'|'image'|'video'|'audio'|'document',
-               text?, mediaUrl?, thumbnailUrl?, fileName?, fileSize?, duration?, crop?, createdAt, status: 'sent'|'read', isMe? }
+ChatMessage  { id, conversationId, senderId, senderName, senderAvatar?, type: 'text'|'image'|'video'|'audio'|'document'|'system',
+               text?, mediaUrl?, thumbnailUrl?, fileName?, fileSize?, duration?, crop?,
+               event?, actor?: { id, name }, target?: { id, name },          // system messages
+               replyTo?: { messageId, senderId, senderName, type, text?, deleted? },
+               createdAt, status: 'sent'|'read', isMe? }
 ```
+{{#if GROUP_CHAT}}
+
+**System messages** are written by the backend, never sent by the app – e.g. adding a member stores
+`{ type: 'system', event: 'MEMBER_ADDED', actor: { id, name: 'Abhishek' }, target: { id, name: 'Rahul' }, createdAt }`
+in the conversation ("Abhishek added Rahul"). They don't count as unread, can't be deleted or replied to, and are never pushed.
+{{/if}}
+
+**Replies**: send `replyToId` with a message; the answer carries `replyTo` (the quote). When the original is deleted
+the quote becomes `{ …, deleted: true }` without its text.
+
+**Clearing** is always for the caller only: the other members keep their messages. "Clear chat" keeps the conversation
+in your list; "Delete chat" also hides it until a new message arrives.
 
 | Method | Path | Body / query | Returns |
 | --- | --- | --- | --- |
 | GET | `/chat/conversations` | – | Conversation[] (newest activity first) |
 | POST | `/chat/conversations` | `participantIds: [otherUserId]` | Conversation (the direct chat is reused) |
 | GET | `/chat/conversations/:id` | – | Conversation |
-| DELETE | `/chat/conversations/:id` | – | – (hidden until a new message{{#if GROUP_CHAT}}; a group: leave it{{/if}}) |
+| DELETE | `/chat/conversations/:id` | – | – ("Delete chat": cleared and hidden until a new message{{#if GROUP_CHAT}}; a group: leave it{{/if}}) |
+| POST | `/chat/conversations/:id/clear` | – | – ("Clear chat" – for you only, `chat:conversation_cleared` to your devices) |
+| POST | `/chat/conversations/clear` | – | – ("Clear all chats" – for you only) |
 | GET | `/chat/conversations/:id/messages?before=<messageId>&limit=30` | – | ChatMessage[] oldest → newest, `meta.hasMore` |
-| POST | `/chat/conversations/:id/messages` | `type, text?, mediaUrl?, thumbnailUrl?, fileName?, fileSize?, duration?, crop?` | ChatMessage (201) |
+| POST | `/chat/conversations/:id/messages` | `type, text?, mediaUrl?, thumbnailUrl?, fileName?, fileSize?, duration?, crop?, replyToId?` | ChatMessage (201) |
 | POST | `/chat/conversations/:id/read` | – | – |
-| DELETE | `/chat/conversations/:id/messages/:messageId` | – | – (own messages only) |
+| DELETE | `/chat/conversations/:id/messages/:messageId` | – | – (own messages only, for everyone) |
 | POST | `/chat/upload` | multipart, field `file` | `{ url, type, fileName, fileSize, mimeType }` – send `url` as `mediaUrl` |
 | POST | `/chat/upload-voice` | multipart, field `file` (audio) | same |
 {{#if GROUP_CHAT}}
@@ -168,13 +196,14 @@ All chat routes need `Authorization: Bearer`.
 
 ## Devices – `/devices`
 
-One row per app install; a user can have several devices. Pushes go to every device that has a token.
+One row per app install (the `devices` table); a user can have several devices. Pushes go to every device that has a
+token. Devices are **saved by the sign-in requests** (their `device`, see Auth) and removed by logout – the app never
+registers a device separately.
 
 | Method | Path | Body | Returns |
 | --- | --- | --- | --- |
-| POST | `/devices` | `deviceId, token? (FCM), platform: ios \| android \| web, deviceName?, osVersion?, appVersion?` | Device – call after every sign-in, on app start and on token refresh |
-| GET | `/devices` | – | `Device { deviceId, platform, deviceName, osVersion, appVersion, pushEnabled, lastActiveAt, createdAt }[]` |
-| DELETE | `/devices/:deviceId` | – | – (call on logout) |
+| GET | `/devices` | – | `Device { deviceId, deviceType, deviceModel, osVersion, appVersion, pushEnabled, lastActiveAt, createdAt }[]` |
+| PATCH | `/devices/:deviceId` | `fcmToken` | Device – only when FCM rotates the token of this install |
 {{/if}}
 {{#if NOTIFICATIONS}}
 

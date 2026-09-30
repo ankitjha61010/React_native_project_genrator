@@ -2,6 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { FlatList, Image, Modal, Pressable, SafeAreaView, StyleSheet, TextInput, View } from 'react-native';
 import { COUNTRIES, type Country } from '{{IMPORT:assets.countries}}';
 import { AppText } from '{{IMPORT:components.AppText}}';
+{{#if RTL}}
+import { useDirection } from '{{IMPORT:hooks.useDirection}}';
+{{/if}}
 import { useStyles, useTheme } from '{{IMPORT:hooks.useTheme}}';
 import { translate } from '{{IMPORT:i18n.index}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
@@ -17,6 +20,10 @@ export interface CountryPickerProps {
 export function CountryPicker({ visible, selectedCode, onSelect, onClose }: CountryPickerProps): React.JSX.Element {
   const { theme } = useTheme();
   const styles = useStyles(createStyles);
+{{#if RTL}}
+  // A Modal is a separate native root – it needs the app's direction explicitly.
+  const { directionStyle } = useDirection();
+{{/if}}
   const [query, setQuery] = useState('');
 
   const countries = useMemo(() => {
@@ -33,7 +40,7 @@ export function CountryPicker({ visible, selectedCode, onSelect, onClose }: Coun
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={close}>
-      <SafeAreaView style={styles.screen}>
+      <SafeAreaView style={ {{#if RTL}}[styles.screen, directionStyle]{{else}}styles.screen{{/if}} }>
         <View style={styles.header}>
           <AppText fontFamily="semiBold" fontSize="size16" intlType="auth" value="countryCode" />
           <Pressable accessibilityRole="button" hitSlop={theme.spacing.spacing8} onPress={close}>

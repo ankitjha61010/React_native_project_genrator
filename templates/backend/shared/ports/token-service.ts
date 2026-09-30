@@ -1,9 +1,9 @@
-import type { Role } from '{{IMPORT:domain.roles}}';
+import type { UserRole } from '{{IMPORT:domain.roles}}';
 
 export interface AccessTokenPayload {
   /** User id. */
   sub: string;
-  role: Role;
+  role: UserRole;
   /** User token version – tokens with an older version are rejected. */
   tv: number;
 }

@@ -1,5 +1,8 @@
 import request from 'supertest';
 import { createTestApp, type TestApp } from '../support/test-app.js';
+{{#if AUTH_EMAIL}}
+import { UserRole } from '{{IMPORT:domain.roles}}';
+{{/if}}
 
 const api = '/api/v1';
 
@@ -30,7 +33,7 @@ describe('auth API', () => {
     it('POST /auth/register creates an account (with mobile number)', async () => {
       const res = await request(app.server).post(`${api}/auth/register`).send(user).expect(201);
 
-      expect(res.body).toMatchObject({ success: true, data: { user: { email: user.email, name: user.name, countryCode: '+91', phone: '9876543210', role: 'user', emailVerified: false, hasPassword: true } } });
+      expect(res.body).toMatchObject({ success: true, data: { user: { email: user.email, name: user.name, countryCode: '+91', phone: '9876543210', role: UserRole.USER, emailVerified: false, hasPassword: true } } });
       expect(res.body.data.user.passwordHash).toBeUndefined();
       expect(res.body.data.tokens.tokenType).toBe('Bearer');
       accessToken = res.body.data.tokens.accessToken;

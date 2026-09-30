@@ -25,6 +25,7 @@ export const modular: ArchitectureDefinition = {
     notification: 'src/infrastructure/notification',
     permissions: 'src/infrastructure/permissions',
     media: 'src/infrastructure/media',
+    location: 'src/infrastructure/location',
     firebase: 'src/infrastructure/firebase',
     auth: `${m}/auth`,
   },
@@ -44,7 +45,7 @@ export const modular: ArchitectureDefinition = {
     [`${m}/settings/index.ts`]: ['screens.Settings'],
     [`${m}/notifications/index.ts`]: ['screens.Notifications'],
   },
-  barrels: ['theme', 'components', 'navigation', 'api', 'storage', 'notification', 'permissions', 'media', 'firebase'],
+  barrels: ['theme', 'components', 'navigation', 'api', 'storage', 'notification', 'permissions', 'media', 'location', 'firebase'],
   docs: {
     concepts: [
       { title: 'Core', body: '`src/core` – the application shell: providers, navigation, global store, configuration and i18n. Core wires modules together.' },

@@ -1,5 +1,5 @@
 {{#if AUTH}}
-import type { Role } from '{{IMPORT:domain.roles}}';
+import type { UserRole } from '{{IMPORT:domain.roles}}';
 
 /** A user as the application sees it (independent of the database). */
 export interface User {
@@ -9,7 +9,7 @@ export interface User {
   name: string;
   /** Null for accounts without a password (mobile / social sign-in). */
   passwordHash: string | null;
-  role: Role;
+  role: UserRole;
   emailVerifiedAt: Date | null;
   /** Dial code, e.g. "+91". */
   countryCode: string | null;
@@ -42,7 +42,7 @@ export interface PublicUser {
   phone: string | null;
   location: string | null;
   bio: string | null;
-  role: Role;
+  role: UserRole;
   emailVerified: boolean;
   phoneVerified: boolean;
   hasPassword: boolean;

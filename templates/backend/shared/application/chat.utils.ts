@@ -1,7 +1,7 @@
-import type { MessageType } from '{{IMPORT:domain.chat}}';
+import type { MessageType, SendableMessageType } from '{{IMPORT:domain.chat}}';
 
 /** Which uploads may be sent, and as which message type. */
-const MEDIA_TYPES: Array<[RegExp, MessageType]> = [
+const MEDIA_TYPES: Array<[RegExp, SendableMessageType]> = [
   [/^image\/(jpeg|png|gif|webp|heic|heif)$/, 'image'],
   [/^video\/(mp4|quicktime|3gpp|webm)$/, 'video'],
   [/^audio\/(mpeg|mp4|aac|x-m4a|m4a|ogg|wav|webm|3gpp|x-wav)$/, 'audio'],
@@ -9,7 +9,7 @@ const MEDIA_TYPES: Array<[RegExp, MessageType]> = [
 ];
 
 /** `image/png` → `image`; undefined for files that can't be sent. */
-export function messageTypeOf(mimeType: string): MessageType | undefined {
+export function messageTypeOf(mimeType: string): SendableMessageType | undefined {
   return MEDIA_TYPES.find(([pattern]) => pattern.test(mimeType))?.[1];
 }
 
@@ -22,7 +22,7 @@ export function humanSize(bytes: number): string {
 
 /** The text of a push notification for a message. */
 export function messagePreview(message: { type: MessageType; text: string | null; fileName: string | null }): string {
-  if (message.type === 'text') return message.text ?? '';
+  if (message.type === 'text' || message.type === 'system') return message.text ?? '';
   const label = { image: 'Photo', video: 'Video', audio: 'Voice message', document: message.fileName ?? 'Document' }[message.type];
   return `📎 ${label}`;
 }

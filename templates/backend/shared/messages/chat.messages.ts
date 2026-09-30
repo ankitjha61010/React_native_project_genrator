@@ -5,6 +5,8 @@ export const CHAT_MESSAGES = {
   conversations: 'Conversations',
   conversation: 'Conversation',
   conversationDeleted: 'Conversation deleted',
+  chatCleared: 'Chat cleared',
+  allChatsCleared: 'All chats cleared',
   messages: 'Messages',
   messageSent: 'Message sent',
   markedRead: 'Marked as read',
@@ -33,6 +35,8 @@ export const CHAT_MESSAGES = {
   emptyMessage: { message: 'A text message needs text', code: 'EMPTY_MESSAGE' },
   mediaRequired: { message: 'Upload the file first and send its mediaUrl', code: 'MEDIA_REQUIRED' },
   notYourMessage: { message: 'You can only delete your own messages', code: 'NOT_YOUR_MESSAGE' },
+  replyNotFound: { message: 'The message you reply to was not found', code: 'REPLY_NOT_FOUND' },
+  systemMessage: { message: 'System messages cannot be changed', code: 'SYSTEM_MESSAGE' },
   invalidFileType: (mimeType: string): ErrorMessage => ({ message: `Files of type ${mimeType} can't be sent`, code: 'INVALID_FILE_TYPE' }),
 {{#if GROUP_CHAT}}
   titleRequired: { message: 'A group needs a name', code: 'TITLE_REQUIRED' },

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, I18nManager, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, {{#if !RTL}}I18nManager, {{/if}}StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { errorCodes, isErrorWithCode, pick as pickDocument, types } from '@react-native-documents/picker';
 {{#if VECTOR_ICONS}}
 import { AppIcon } from '{{IMPORT:components.AppIcon}}';
@@ -7,13 +7,18 @@ import { AppIcon } from '{{IMPORT:components.AppIcon}}';
 import { AppText } from '{{IMPORT:components.AppText}}';
 import { MediaEditorModal, type MediaItem } from '{{IMPORT:components.MediaEditorModal}}';
 import { MediaPickerModal, type MediaPickerOption } from '{{IMPORT:components.MediaPickerModal}}';
+{{#if RTL}}
+import { useDirection } from '{{IMPORT:hooks.useDirection}}';
+{{/if}}
 import { useImagePicker } from '{{IMPORT:hooks.useImagePicker}}';
 import { useStyles, useTheme } from '{{IMPORT:hooks.useTheme}}';
 import { translate } from '{{IMPORT:i18n.index}}';
 import { permissionService } from '{{IMPORT:permissions.service}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
 import { flash } from '{{IMPORT:utils.flashMessage}}';
+import type { ChatMessage } from '{{IMPORT:chat.types}}';
 import type { MessageDraft } from '../../services/chatService';
+import { messagePreview } from '../../utils/chatFormat';
 import { voiceService } from '../../services/voiceService';
 import { formatDuration } from '../AudioMessage/AudioMessage';
 
@@ -24,13 +29,40 @@ export interface ChatInputBarProps {
   /** Text, or a local file (photo / video / document / voice note) – the room uploads it. */
   onSend: (draft: MessageDraft) => void;
   onTyping?: () => void;
+  /** The message being replied to – shown above the input; the next message quotes it. */
+  replyTo?: ChatMessage | null;
+  onCancelReply?: () => void;
+}
+
+/** "Replying to Rahul · Hey, are you available today?" above the input, with ✕ to cancel. */
+function ReplyBar({ message, onCancel }: { message: ChatMessage; onCancel?: () => void }): React.JSX.Element {
+  const styles = useStyles(createStyles);
+  const { theme } = useTheme();
+  return (
+    <View style={styles.replyBar}>
+      <View style={styles.replyText}>
+        <AppText fontSize="size12" fontFamily="semiBold" color="primary" numberOfLines={1} text={translate('common', 'replyingTo', { value1: message.isMe ? translate('common', 'you') : message.senderName })} />
+        <AppText fontSize="size12" color="textSecondary" numberOfLines={1} text={messagePreview(message, undefined)} />
+      </View>
+      <TouchableOpacity onPress={onCancel} hitSlop={10} accessibilityRole="button" accessibilityLabel={translate('common', 'cancel')}>
+{{#if VECTOR_ICONS}}
+        <AppIcon name="close" size={20} tintColor={theme.colors.textSecondary} />
+{{else}}
+        <AppText color="textSecondary" text="✕" />
+{{/if}}
+      </TouchableOpacity>
+    </View>
+  );
 }
 
 /** The message composer: text, camera, attachments (photo, video, file) and voice messages. */
-export function ChatInputBar({ onSend, onTyping }: ChatInputBarProps): React.JSX.Element {
+export function ChatInputBar({ onSend, onTyping, replyTo, onCancelReply }: ChatInputBarProps): React.JSX.Element {
   const styles = useStyles(createStyles);
   const { theme } = useTheme();
   const { pick } = useImagePicker();
+{{#if RTL}}
+  const { direction } = useDirection();
+{{/if}}
   const [text, setText] = useState('');
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [editingMedia, setEditingMedia] = useState<MediaItem | null>(null);
@@ -161,6 +193,8 @@ export function ChatInputBar({ onSend, onTyping }: ChatInputBarProps): React.JSX
   }
 
   return (
+    <View>
+      {replyTo ? <ReplyBar message={replyTo} onCancel={onCancelReply} /> : null}
     <View style={styles.container}>
       <TouchableOpacity style={styles.actionBtn} onPress={() => setShowAttachMenu(true)} accessibilityRole="button" accessibilityLabel="Attach">
 {{#if VECTOR_ICONS}}
@@ -171,7 +205,7 @@ export function ChatInputBar({ onSend, onTyping }: ChatInputBarProps): React.JSX
       </TouchableOpacity>
 
       <TextInput
-        style={styles.input}
+        style={ {{#if RTL}}[styles.input, { writingDirection: direction }]{{else}}styles.input{{/if}} }
         placeholder={translate('common', 'typeMessage')}
         placeholderTextColor={theme.colors.placeholder}
         value={text}
@@ -220,6 +254,7 @@ export function ChatInputBar({ onSend, onTyping }: ChatInputBarProps): React.JSX
       {/* Crop / rotate photos, trim videos before sending. */}
       <MediaEditorModal visible={Boolean(editingMedia)} media={editingMedia} onClose={() => setEditingMedia(null)} onSend={sendEditedMedia} />
     </View>
+    </View>
   );
 }
 
@@ -244,7 +279,9 @@ const createStyles = (theme: Theme) =>
     input: {
       flex: 1,
       // Text and cursor start on the reading side (like AppInput – no textAlign).
+{{#if !RTL}}
       writingDirection: I18nManager.getConstants().isRTL ? 'rtl' : 'ltr',
+{{/if}}
       minHeight: 40,
       maxHeight: 110,
       backgroundColor: theme.colors.background,
@@ -270,6 +307,22 @@ const createStyles = (theme: Theme) =>
       alignItems: 'center',
       gap: theme.spacing.spacing8,
       paddingHorizontal: theme.spacing.spacing8,
+    },
+    replyBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.spacing8,
+      paddingVertical: theme.spacing.spacing6,
+      paddingHorizontal: theme.spacing.spacing12,
+      marginHorizontal: theme.spacing.spacing8,
+      marginTop: theme.spacing.spacing6,
+      borderStartWidth: 3,
+      borderStartColor: theme.colors.primary,
+      borderRadius: theme.borderRadius.radius8,
+      backgroundColor: theme.colors.background,
+    },
+    replyText: {
+      flex: 1,
     },
     recordingDot: {
       width: 10,

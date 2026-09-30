@@ -16,8 +16,8 @@ import { endServerSession } from './authApi';
  * whatever state management the app uses. The state (Redux / Zustand / Context / none) only
  * keeps `user` + `token` for the screens.
  *
- * The signed-in part of the app registers the device when it opens (notificationService),
- * i.e. right after register / login / social login and on every app start.
+ * The device (install id, FCM token…) travels with the sign-in / refresh requests themselves
+ * (authApi.ts) – there is no separate device request after signing in.
  */
 export const sessionService = {
   /** After register / login / social login: persist the session. */

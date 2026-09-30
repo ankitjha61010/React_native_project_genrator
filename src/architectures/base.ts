@@ -16,6 +16,7 @@ export const BASE_GROUPS: Record<GroupId, string> = {
   notification: 'src/services/notification',
   permissions: 'src/services/permissions',
   media: 'src/services/media',
+  location: 'src/services/location',
   firebase: 'src/services/firebase',
   socket: 'src/services/socket',
   chat: 'src/features/chat',
@@ -36,6 +37,7 @@ export const DEFAULT_BARRELS: GroupId[] = [
   'notification',
   'permissions',
   'media',
+  'location',
   'firebase',
   'socket',
 ];

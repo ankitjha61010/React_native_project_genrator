@@ -9,12 +9,15 @@ import { intlRef, type IntlProps } from '{{IMPORT:i18n.index}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
 
 type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
+/** `small`: compact buttons in headers / toolbars (35 pt high, plus hitSlop for an easy tap). */
+type Size = 'medium' | 'small';
 
 interface AppButtonOwnProps {
   /** Plain label when no translation is needed. */
   title?: string;
   onPress?: () => void;
   variant?: Variant;
+  size?: Size;
 {{#if VECTOR_ICONS}}
   icon?: AppIconName;
 {{/if}}
@@ -50,6 +53,7 @@ export function AppButton({
   title,
   onPress,
   variant = 'primary',
+  size = 'medium',
 {{#if VECTOR_ICONS}}
   icon,
 {{/if}}
@@ -72,8 +76,10 @@ export function AppButton({
       accessibilityState={{ disabled: inactive, busy: loading }}
       disabled={inactive}
       onPress={onPress}
+      hitSlop={size === 'small' ? 6 : undefined}
       style={({ pressed }) => [
         styles.base,
+        size === 'small' && styles.small,
         fullWidth && styles.fullWidth,
         {
           backgroundColor: colorOf(pressed ? scheme.pressed : scheme.background),
@@ -83,7 +89,7 @@ export function AppButton({
         style,
       ]}>
       {loading ? (
-        <ActivityIndicator color={theme.colors[scheme.text]} />
+        <ActivityIndicator size="small" color={theme.colors[scheme.text]} />
       ) : (
         <View style={styles.content}>
 {{#if VECTOR_ICONS}}
@@ -91,7 +97,7 @@ export function AppButton({
 {{/if}}
           <AppText
             fontFamily="semiBold"
-            fontSize="size16"
+            fontSize={size === 'small' ? 'size14' : 'size16'}
             color={scheme.text}
             {...intlRef(intlType, value)}
             value1={value1}
@@ -115,6 +121,11 @@ const createStyles = (theme: Theme) =>
       borderWidth: theme.spacing.spacing1,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    small: {
+      minHeight: theme.spacing.spacing35,
+      paddingHorizontal: theme.spacing.spacing16,
+      borderRadius: theme.borderRadius.radius20,
     },
     fullWidth: {
       alignSelf: 'stretch',

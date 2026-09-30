@@ -1,5 +1,8 @@
 import request from 'supertest';
 import { createTestApp, type TestApp } from '../support/test-app.js';
+{{#if AUTH}}
+import { UserRole } from '{{IMPORT:domain.roles}}';
+{{/if}}
 
 const api = '/api/v1';
 {{#if AUTH}}
@@ -17,7 +20,7 @@ describe('users API', () => {
     app = await createTestApp();
 {{#if AUTH}}
     user = await app.signUp('Jane User');
-    admin = await app.signUp('Ada Admin', 'admin');
+    admin = await app.signUp('Ada Admin', UserRole.ADMIN);
 {{/if}}
   });
 

@@ -5,6 +5,9 @@ import { AUTH_MESSAGES } from '{{IMPORT:messages.auth}}';
 {{#if SOCIAL}}
 import type { SocialProvider } from '{{IMPORT:domain.authTokens}}';
 {{/if}}
+{{#if DEVICE_INPUT}}
+import type { DeviceInput } from '{{IMPORT:domain.device}}';
+{{/if}}
 import { toPublicUser, type PublicUser, type User } from '{{IMPORT:domain.user}}';
 
 export interface AuthTokens {
@@ -48,6 +51,10 @@ export function toSessionView(result: AuthResult): SessionView {
 export interface ClientContext {
   ip?: string;
   userAgent?: string;
+{{#if DEVICE_INPUT}}
+  /** The app install signing in (the request body's `device`) – saved with the sign-in. */
+  device?: DeviceInput;
+{{/if}}
 }
 {{#if AUTH_EMAIL}}
 

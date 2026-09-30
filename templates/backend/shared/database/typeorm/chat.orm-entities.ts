@@ -61,6 +61,10 @@ export class ConversationMemberOrmEntity {
   @Column({ name: 'cleared_at', type: TIMESTAMP, nullable: true })
   clearedAt: Date | null;
 
+  /** "Delete chat": out of the list until a new message arrives. */
+  @Column({ type: 'boolean', default: false })
+  hidden: boolean;
+
   @CreateDateColumn({ name: 'joined_at', type: TIMESTAMP })
   joinedAt: Date;
 }
@@ -109,6 +113,18 @@ export class MessageOrmEntity {
 
   @Column({ type: JSON_TYPE, nullable: true })
   crop: MediaCrop | null;
+
+  /** `system` messages: what happened (SystemEvent). */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  event: string | null;
+
+  /** `system` messages: who it happened to. */
+  @UuidColumn({ name: 'target_user_id', nullable: true })
+  targetUserId: string | null;
+
+  /** The message this one replies to. */
+  @UuidColumn({ name: 'reply_to_id', nullable: true })
+  replyToId: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: TIMESTAMP })
   createdAt: Date;

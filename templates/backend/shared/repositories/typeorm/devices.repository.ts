@@ -1,5 +1,5 @@
 import { In, Not, IsNull, type DataSource, type Repository } from 'typeorm';
-import type { Device, DeviceInput, DevicePlatform } from '{{IMPORT:domain.device}}';
+import type { Device, DeviceInput } from '{{IMPORT:domain.device}}';
 import type { DevicesRepository } from '{{IMPORT:contract.devices}}';
 import { DeviceOrmEntity } from '{{IMPORT:typeorm.device}}';
 
@@ -7,9 +7,9 @@ const toDevice = (e: DeviceOrmEntity): Device => ({
   id: e.id,
   userId: e.userId,
   deviceId: e.deviceId,
-  token: e.token,
-  platform: e.platform as DevicePlatform,
-  deviceName: e.deviceName,
+  fcmToken: e.fcmToken,
+  deviceType: e.deviceType,
+  deviceModel: e.deviceModel,
   osVersion: e.osVersion,
   appVersion: e.appVersion,
   lastActiveAt: e.lastActiveAt,
@@ -27,18 +27,28 @@ export class TypeOrmDevicesRepository implements DevicesRepository {
   save(userId: string, input: DeviceInput): Promise<Device> {
     const data = {
       userId,
-      token: input.token ?? null,
-      platform: input.platform,
-      deviceName: input.deviceName ?? null,
+      fcmToken: input.fcmToken ?? null,
+      deviceType: input.deviceType,
+      deviceModel: input.deviceModel ?? null,
       osVersion: input.osVersion ?? null,
       appVersion: input.appVersion ?? null,
       lastActiveAt: new Date(),
     };
     return this.dataSource.transaction(async manager => {
       // A token belongs to one install – forget it on any other device.
-      if (data.token) await manager.update(DeviceOrmEntity, { token: data.token, deviceId: Not(input.deviceId) }, { token: null });
+      if (data.fcmToken) await manager.update(DeviceOrmEntity, { fcmToken: data.fcmToken, deviceId: Not(input.deviceId) }, { fcmToken: null });
       await manager.upsert(DeviceOrmEntity, { deviceId: input.deviceId, ...data }, ['deviceId']);
       return toDevice(await manager.findOneByOrFail(DeviceOrmEntity, { deviceId: input.deviceId }));
+    });
+  }
+
+  updateFcmToken(userId: string, deviceId: string, fcmToken: string): Promise<Device | null> {
+    return this.dataSource.transaction(async manager => {
+      const device = await manager.findOneBy(DeviceOrmEntity, { userId, deviceId });
+      if (!device) return null;
+      await manager.update(DeviceOrmEntity, { fcmToken, deviceId: Not(deviceId) }, { fcmToken: null });
+      await manager.update(DeviceOrmEntity, { deviceId }, { fcmToken, lastActiveAt: new Date() });
+      return toDevice(await manager.findOneByOrFail(DeviceOrmEntity, { deviceId }));
     });
   }
 
@@ -47,14 +57,18 @@ export class TypeOrmDevicesRepository implements DevicesRepository {
   }
 
   async listWithToken(userIds: string[]): Promise<Device[]> {
-    return userIds.length ? (await this.devices.findBy({ userId: In(userIds), token: Not(IsNull()) })).map(toDevice) : [];
+    return userIds.length ? (await this.devices.findBy({ userId: In(userIds), fcmToken: Not(IsNull()) })).map(toDevice) : [];
   }
 
   async remove(userId: string, deviceId: string): Promise<boolean> {
     return ((await this.devices.delete({ userId, deviceId })).affected ?? 0) > 0;
   }
 
+  async removeAllForUser(userId: string): Promise<void> {
+    await this.devices.delete({ userId });
+  }
+
   async removeTokens(tokens: string[]): Promise<void> {
-    await this.devices.delete({ token: In(tokens) });
+    await this.devices.delete({ fcmToken: In(tokens) });
   }
 }

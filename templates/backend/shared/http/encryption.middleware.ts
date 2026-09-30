@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import { config } from '{{IMPORT:config.env}}';
 import { errorResponse } from '{{IMPORT:core.response}}';
@@ -18,6 +18,17 @@ export function encryptText(text: string): string {
   return Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]).toString('base64');
 }
 
+/**
+ * First 12 hex characters of SHA-256(key + iv). The app sends its own in `X-Encryption-Key-Id`,
+ * so a body that can't be decrypted tells whether the keys differ (an app bundle built with an
+ * old `.env`) or the body itself is broken.
+ */
+export function encryptionKeyId(): string {
+  return createHash('sha256').update(config.encryption.key + config.encryption.iv, 'utf8').digest('hex').slice(0, 12);
+}
+
+export const ENCRYPTION_KEY_ID_HEADER = 'x-encryption-key-id';
+
 export function decryptText(base64: string): string {
   const decipher = createDecipheriv('aes-256-cbc', key(), iv());
   return Buffer.concat([decipher.update(base64, 'base64'), decipher.final()]).toString('utf8');
@@ -32,7 +43,13 @@ export function apiEncryption(req: Request, res: Response, next: NextFunction): 
     try {
       req.body = JSON.parse(decryptText((body as { data: string }).data));
     } catch {
-      res.status(400).json(errorResponse(COMMON_MESSAGES.decryptionFailed));
+      const appKeyId = req.get(ENCRYPTION_KEY_ID_HEADER);
+      const mismatch = Boolean(appKeyId) && appKeyId !== encryptionKeyId();
+      if (mismatch) {
+        // Almost always a stale app bundle: react-native-dotenv inlines .env at build time.
+        req.log?.warn({ appKeyId, serverKeyId: encryptionKeyId() }, 'Encryption key mismatch – rebuild the app (npm start -- --reset-cache)');
+      }
+      res.status(400).json(errorResponse(mismatch ? COMMON_MESSAGES.encryptionKeyMismatch : COMMON_MESSAGES.decryptionFailed));
       return;
     }
   }

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 {{#if AUTH}}
-import { ROLES } from '{{IMPORT:domain.roles}}';
+import { UserRole } from '{{IMPORT:domain.roles}}';
 {{/if}}
 
 const name = z.string().trim().min(1).max(120).meta({ example: 'Jane Doe' });
@@ -14,7 +14,7 @@ export const updateUserSchema = z.object({ name: name.optional() }).meta({ id: '
 {{else}}
 
 export const updateUserSchema = z
-  .object({ name: name.optional(), role: z.enum(ROLES).optional(), isActive: z.boolean().optional() })
+  .object({ name: name.optional(), role: z.enum(UserRole).optional(), isActive: z.boolean().optional() })
   .refine(value => Object.keys(value).length > 0, 'Provide at least one field')
   .meta({ id: 'UpdateUserRequest' });
 
@@ -44,7 +44,7 @@ export const publicUserSchema = z
     phone: z.string().nullable(),
     location: z.string().nullable(),
     bio: z.string().nullable(),
-    role: z.enum(ROLES),
+    role: z.enum(UserRole),
     emailVerified: z.boolean(),
     phoneVerified: z.boolean(),
     hasPassword: z.boolean(),

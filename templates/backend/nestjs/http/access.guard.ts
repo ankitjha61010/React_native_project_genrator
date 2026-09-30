@@ -1,7 +1,7 @@
 import { Injectable, type CanActivate, type ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ForbiddenError } from '{{IMPORT:core.errors}}';
-import { hasPermission, type Permission, type Role } from '{{IMPORT:domain.roles}}';
+import { hasPermission, type Permission, type UserRole } from '{{IMPORT:domain.roles}}';
 import { PERMISSIONS, ROLES, type AuthenticatedRequest } from '{{IMPORT:nest.decorators}}';
 
 /** Global guard (after JwtAuthGuard): enforces `@Roles()` and `@RequirePermissions()`. */
@@ -11,7 +11,7 @@ export class AccessGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const targets = [context.getHandler(), context.getClass()];
-    const roles = this.reflector.getAllAndOverride<Role[] | undefined>(ROLES, targets);
+    const roles = this.reflector.getAllAndOverride<UserRole[] | undefined>(ROLES, targets);
     const permissions = this.reflector.getAllAndOverride<Permission[] | undefined>(PERMISSIONS, targets);
     if (!roles?.length && !permissions?.length) return true;
 

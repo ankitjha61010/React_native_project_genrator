@@ -1,4 +1,4 @@
-import type { Conversation, ConversationMember, MediaCrop, Message, MessageType } from '{{IMPORT:domain.chat}}';
+import type { Conversation, ConversationMember, MediaCrop, Message, MessageType, SystemEvent } from '{{IMPORT:domain.chat}}';
 
 export interface CreateConversationData {
   createdById: string;
@@ -22,6 +22,9 @@ export interface CreateMessageData {
   fileSize?: string | null;
   duration?: number | null;
   crop?: MediaCrop | null;
+  event?: SystemEvent | null;
+  targetUserId?: string | null;
+  replyToId?: string | null;
 }
 
 /** Conversations, their members and messages. */
@@ -40,7 +43,9 @@ export interface ChatRepository {
 
   listMembers(conversationIds: string[]): Promise<ConversationMember[]>;
   findMember(conversationId: string, userId: string): Promise<ConversationMember | null>;
-  updateMember(conversationId: string, userId: string, data: Partial<Pick<ConversationMember, 'lastReadAt' | 'clearedAt'{{#if GROUP_CHAT}} | 'role'{{/if}}>>): Promise<void>;
+  updateMember(conversationId: string, userId: string, data: Partial<Pick<ConversationMember, 'lastReadAt' | 'clearedAt' | 'hidden'{{#if GROUP_CHAT}} | 'role'{{/if}}>>): Promise<void>;
+  /** Every membership of the user at once ("Clear all chats"). */
+  updateMemberships(userId: string, data: Partial<Pick<ConversationMember, 'clearedAt' | 'hidden'>>): Promise<void>;
 {{#if GROUP_CHAT}}
   /** New group members (role `member`). */
   addMembers(conversationId: string, userIds: string[]): Promise<void>;
@@ -50,6 +55,8 @@ export interface ChatRepository {
   /** Stores the message and bumps the conversation's `lastMessageAt`. */
   createMessage(data: CreateMessageData): Promise<Message>;
   findMessage(id: string): Promise<Message | null>;
+  /** The originals of replies (deleted ones included). */
+  findMessages(ids: string[]): Promise<Message[]>;
   /**
    * Newest first (createdAt, then id). `after`: hide older messages ("delete chat");
    * `before`: the oldest message already loaded (pagination cursor).
@@ -57,7 +64,7 @@ export interface ChatRepository {
   listMessages(conversationId: string, options: { after?: Date | null; before?: Pick<Message, 'createdAt' | 'id'>; limit: number }): Promise<Message[]>;
   /** The newest non-deleted message of each conversation. */
   lastMessages(conversationIds: string[]): Promise<Message[]>;
-  /** Messages from others created after `since` (and after `after`). */
+  /** Messages from others created after `since` (and after `after`) – `system` messages don't count. */
   countUnread(conversationId: string, userId: string, since: Date | null, after: Date | null): Promise<number>;
   softDeleteMessage(id: string): Promise<void>;
 }

@@ -15,8 +15,8 @@ import { initGit } from './gitGenerator.js';
 import { generateNavigation, generateScreens } from './navigationGenerator.js';
 import { generateNotifications } from './notificationGenerator.js';
 import { generateSocialAuth } from './socialAuthGenerator.js';
-import { configureAndroidLayoutDirection, configureAndroidMicrophone, installAndroidFonts } from './native/android.js';
-import { configureIosMicrophone, configureXcodeEnv, linkIosFonts, VECTOR_ICON_FONTS } from './native/ios.js';
+import { configureAndroidLayoutDirection, configureAndroidLocation, configureAndroidMicrophone, installAndroidFonts } from './native/android.js';
+import { configureIosLocation, configureIosMicrophone, configureXcodeEnv, linkIosFonts, VECTOR_ICON_FONTS } from './native/ios.js';
 import { initReactNativeProject } from './reactNativeInit.js';
 
 /** Files of the React Native template that the generated project replaces. */
@@ -132,6 +132,19 @@ export async function generateProject(options: ProjectOptions, hooks: Generation
         },
         'Microphone permission added (Android & iOS)',
       );
+    }
+
+    if (options.googleLocation) {
+      await step(
+        'Configuring Google Location SDK',
+        async () => {
+          await configureAndroidLocation(projectDir);
+          await configureIosLocation(projectDir, options.appName, options.displayName, true);
+        },
+        'Location permission added (Android & iOS) – set GOOGLE_MAPS_API_KEY in .env',
+      );
+    } else {
+      await configureIosLocation(projectDir, options.appName, options.displayName, false);
     }
 
     if (hasSocialLogin(options.socialAuth)) {

@@ -31,6 +31,7 @@ export interface CliFlags {
   groupChat?: boolean;
   terms?: boolean;
   deleteAccount?: boolean;
+  googleLocation?: boolean;
   socket?: boolean;
   chat?: boolean;
   drawer?: boolean;
@@ -110,6 +111,8 @@ export function parseArgs(argv: string[], version: string): CliFlags {
     .option('--no-terms', 'no Terms & Conditions links')
     .option('--delete-account', 'Profile → Delete account (DELETE /users/me)')
     .option('--no-delete-account', 'no delete account')
+    .option('--google-location', 'Google Location SDK: current location + Google Places search (profile location)')
+    .option('--no-google-location', 'no Google Location SDK')
     .option('--socket', 'implement Socket.io client for real-time events')
     .option('--no-socket', 'no socket client')
     .option('--chat', 'implement real-time chat with media/audio/video/documents')

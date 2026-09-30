@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
+import { errorMessage } from '{{IMPORT:api.errors}}';
 import type { Conversation } from '{{IMPORT:chat.types}}';
 import { SOCKET_EVENTS } from '{{IMPORT:socket.events}}';
 import { socketService } from '{{IMPORT:socket.service}}';
+import { flash } from '{{IMPORT:utils.flashMessage}}';
 import { chatService } from '../services/chatService';
 
 /** The conversation list: refreshed when shown and on every new message; presence is live. */
@@ -43,6 +45,8 @@ export function useChatList() {
       // A new message anywhere: its conversation moves to the top with the new unread count.
       socketService.on(SOCKET_EVENTS.RECEIVE_MESSAGE, load),
       socketService.onReconnect(load),
+      // Cleared on another device: previews / unread counts change.
+      socketService.on(SOCKET_EVENTS.CONVERSATION_CLEARED, load),
       socketService.on<{ userId: string }>(SOCKET_EVENTS.USER_ONLINE, event => setOnline(event.userId, true)),
       socketService.on<{ userId: string; lastSeen?: string }>(SOCKET_EVENTS.USER_OFFLINE, event => setOnline(event.userId, false, event.lastSeen)),
 {{#if GROUP_CHAT}}
@@ -53,5 +57,19 @@ export function useChatList() {
     return () => subscriptions.forEach(off => off());
   }, [load]);
 
-  return { conversations, loading, refreshing, refresh };
+  /** "Delete chat" (for you only{{#if GROUP_CHAT}}; leaves a group{{/if}}) – gone from the list at once. */
+  const remove = useCallback(
+    async (conversationId: string) => {
+      setConversations(current => current.filter(c => c.id !== conversationId));
+      try {
+        await chatService.deleteConversation(conversationId);
+      } catch (error) {
+        flash.error({ message: errorMessage(error) });
+        load();
+      }
+    },
+    [load],
+  );
+
+  return { conversations, loading, refreshing, refresh, remove };
 }

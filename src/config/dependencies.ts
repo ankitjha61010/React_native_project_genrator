@@ -78,8 +78,8 @@ export const DEPENDENCY_REGISTRY = {
     socialGoogle: { dependencies: ['@react-native-google-signin/google-signin'], devDependencies: [] },
     socialFacebook: { dependencies: ['react-native-fbsdk-next'], devDependencies: [] },
     socialApple: { dependencies: ['@invertase/react-native-apple-authentication'], devDependencies: [] },
-    // Switching the native layout direction needs an app restart (I18nManager is read at startup).
-    rtl: { dependencies: ['react-native-restart'], devDependencies: [] },
+    // Google Location SDK: Fused Location Provider (Android) / CoreLocation (iOS). Places search is plain HTTPS.
+    googleLocation: { dependencies: ['react-native-geolocation-service'], devDependencies: [] },
   },
   /** The selected key-value storage. MMKV v4 is a Nitro module. */
   storageDependencies: {

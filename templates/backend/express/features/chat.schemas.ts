@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { {{#if GROUP_CHAT}}MEMBER_ROLES, {{/if}}MESSAGE_TYPES } from '{{IMPORT:domain.chat}}';
+import { {{#if GROUP_CHAT}}MEMBER_ROLES, {{/if}}MESSAGE_TYPES, SystemEvent } from '{{IMPORT:domain.chat}}';
 
 export const conversationParams = z.object({ conversationId: z.string().min(1).max(64) });
 export const messageParams = conversationParams.extend({ messageId: z.string().min(1).max(64) });
@@ -53,6 +53,7 @@ export const sendMessageSchema = z
     fileSize: z.string().max(32).optional(),
     duration: z.number().int().min(0).max(86_400).optional(),
     crop: cropSchema.optional(),
+    replyToId: z.string().min(1).max(64).optional().meta({ description: 'Reply: the id of the quoted message (same conversation)' }),
   })
   .meta({ id: 'SendMessageRequest' });
 
@@ -63,6 +64,19 @@ export const listMessagesQuery = z.object({
 
 // ── responses (used by the OpenAPI document) ──────────────────────────────────
 
+const person = z.object({ id: z.string(), name: z.string() });
+
+const replyToSchema = z
+  .object({
+    messageId: z.string(),
+    senderId: z.string(),
+    senderName: z.string(),
+    type: z.enum([...MESSAGE_TYPES, 'system']),
+    text: z.string().optional(),
+    deleted: z.literal(true).optional().meta({ description: 'The quoted message was deleted' }),
+  })
+  .meta({ id: 'ReplyTo' });
+
 export const chatMessageSchema = z
   .object({
     id: z.string(),
@@ -70,7 +84,7 @@ export const chatMessageSchema = z
     senderId: z.string(),
     senderName: z.string(),
     senderAvatar: z.url().optional(),
-    type: z.enum(MESSAGE_TYPES),
+    type: z.enum([...MESSAGE_TYPES, 'system']),
     text: z.string().optional(),
     mediaUrl: z.url().optional(),
     thumbnailUrl: z.url().optional(),
@@ -78,6 +92,10 @@ export const chatMessageSchema = z
     fileSize: z.string().optional(),
     duration: z.number().optional(),
     crop: cropSchema.optional(),
+    event: z.enum(SystemEvent).optional().meta({ description: '`system` messages: what happened – rendered by the app ("Jane added John")' }),
+    actor: person.optional().meta({ description: '`system` messages: who did it' }),
+    target: person.optional().meta({ description: '`system` messages: who it happened to' }),
+    replyTo: replyToSchema.optional(),
     createdAt: z.iso.datetime(),
     status: z.enum(['sent', 'read']),
     isMe: z.boolean().optional(),

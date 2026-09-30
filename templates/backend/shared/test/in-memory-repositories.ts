@@ -19,7 +19,9 @@ import type { Device, DeviceInput } from '{{IMPORT:domain.device}}';
 {{/if}}
 {{#if NOTIFICATIONS}}
 import type { Broadcast, Notification } from '{{IMPORT:domain.notification}}';
-import type { Role } from '{{IMPORT:domain.roles}}';
+{{/if}}
+{{#if AUTH}}
+import { DEFAULT_ROLE{{#if NOTIFICATIONS}}, type UserRole{{/if}} } from '{{IMPORT:domain.roles}}';
 {{/if}}
 import type { User } from '{{IMPORT:domain.user}}';
 import type { Repositories } from '{{IMPORT:db.repositories}}';
@@ -78,7 +80,7 @@ export class InMemoryUsersRepository implements UsersRepository {
 {{/if}}
 {{#if NOTIFICATIONS}}
 
-  async activeUserIds(role?: Role) {
+  async activeUserIds(role?: UserRole) {
     return [...this.users.values()].filter(u => u.isActive && (!role || u.role === role)).map(u => u.id);
   }
 {{/if}}
@@ -98,7 +100,7 @@ export class InMemoryUsersRepository implements UsersRepository {
       email: data.email ?? null,
       name: data.name,
       passwordHash: data.passwordHash ?? null,
-      role: data.role ?? 'user',
+      role: data.role ?? DEFAULT_ROLE,
       emailVerifiedAt: data.emailVerifiedAt ?? null,
       countryCode: data.countryCode ?? null,
       phone: data.phone ?? null,
@@ -270,6 +272,7 @@ export class InMemoryChatRepository implements ChatRepository {
 {{/if}}
         lastReadAt: null,
         clearedAt: null,
+        hidden: false,
         joinedAt: new Date(now.getTime() + i),
       }),
     );
@@ -291,7 +294,7 @@ export class InMemoryChatRepository implements ChatRepository {
     const now = Date.now();
     userIds.forEach((userId, i) => {
       if (!this.members.some(m => m.conversationId === conversationId && m.userId === userId)) {
-        this.members.push({ conversationId, userId, role: 'member', lastReadAt: null, clearedAt: null, joinedAt: new Date(now + 1000 + i) });
+        this.members.push({ conversationId, userId, role: 'member', lastReadAt: null, clearedAt: null, hidden: false, joinedAt: new Date(now + 1000 + i) });
       }
     });
   }
@@ -320,8 +323,12 @@ export class InMemoryChatRepository implements ChatRepository {
     return this.members.find(m => m.conversationId === conversationId && m.userId === userId) ?? null;
   }
 
-  async updateMember(conversationId: string, userId: string, data: Partial<Pick<ConversationMember, 'lastReadAt' | 'clearedAt'{{#if GROUP_CHAT}} | 'role'{{/if}}>>) {
+  async updateMember(conversationId: string, userId: string, data: Partial<Pick<ConversationMember, 'lastReadAt' | 'clearedAt' | 'hidden'{{#if GROUP_CHAT}} | 'role'{{/if}}>>) {
     this.members = this.members.map(m => (m.conversationId === conversationId && m.userId === userId ? { ...m, ...data } : m));
+  }
+
+  async updateMemberships(userId: string, data: Partial<Pick<ConversationMember, 'clearedAt' | 'hidden'>>) {
+    this.members = this.members.map(m => (m.userId === userId ? { ...m, ...data } : m));
   }
 
   async removeMember(conversationId: string, userId: string) {
@@ -342,6 +349,9 @@ export class InMemoryChatRepository implements ChatRepository {
       fileSize: data.fileSize ?? null,
       duration: data.duration ?? null,
       crop: data.crop ?? null,
+      event: data.event ?? null,
+      targetUserId: data.targetUserId ?? null,
+      replyToId: data.replyToId ?? null,
       createdAt,
       deletedAt: null,
     };
@@ -353,6 +363,10 @@ export class InMemoryChatRepository implements ChatRepository {
 
   async findMessage(id: string) {
     return this.messages.get(id) ?? null;
+  }
+
+  async findMessages(ids: string[]) {
+    return ids.flatMap(id => this.messages.get(id) ?? []);
   }
 
   async listMessages(conversationId: string, options: { after?: Date | null; before?: Pick<Message, 'createdAt' | 'id'>; limit: number }) {
@@ -367,7 +381,7 @@ export class InMemoryChatRepository implements ChatRepository {
   }
 
   async countUnread(conversationId: string, userId: string, since: Date | null, after: Date | null) {
-    return this.visible(conversationId).filter(m => m.senderId !== userId && (!since || m.createdAt > since) && (!after || m.createdAt > after)).length;
+    return this.visible(conversationId).filter(m => m.senderId !== userId && m.type !== 'system' && (!since || m.createdAt > since) && (!after || m.createdAt > after)).length;
   }
 
   async softDeleteMessage(id: string) {
@@ -388,17 +402,17 @@ export class InMemoryDevicesRepository implements DevicesRepository {
 
   async save(userId: string, input: DeviceInput) {
     const now = new Date();
-    const token = input.token ?? null;
+    const fcmToken = input.fcmToken ?? null;
     // A token belongs to one install.
-    if (token) this.devices = this.devices.map(d => (d.token === token && d.deviceId !== input.deviceId ? { ...d, token: null } : d));
+    if (fcmToken) this.forgetToken(fcmToken, input.deviceId);
     const existing = this.devices.find(d => d.deviceId === input.deviceId);
     const device: Device = {
       id: existing?.id ?? randomUUID(),
       userId,
       deviceId: input.deviceId,
-      token,
-      platform: input.platform,
-      deviceName: input.deviceName ?? null,
+      fcmToken,
+      deviceType: input.deviceType,
+      deviceModel: input.deviceModel ?? null,
       osVersion: input.osVersion ?? null,
       appVersion: input.appVersion ?? null,
       lastActiveAt: now,
@@ -409,12 +423,21 @@ export class InMemoryDevicesRepository implements DevicesRepository {
     return device;
   }
 
+  async updateFcmToken(userId: string, deviceId: string, fcmToken: string) {
+    const existing = this.devices.find(d => d.userId === userId && d.deviceId === deviceId);
+    if (!existing) return null;
+    this.forgetToken(fcmToken, deviceId);
+    const device = { ...existing, fcmToken, lastActiveAt: new Date(), updatedAt: new Date() };
+    this.devices = this.devices.map(d => (d.deviceId === deviceId ? device : d));
+    return device;
+  }
+
   async listByUser(userId: string) {
     return this.devices.filter(d => d.userId === userId).toSorted((a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime());
   }
 
   async listWithToken(userIds: string[]) {
-    return this.devices.filter(d => userIds.includes(d.userId) && d.token !== null);
+    return this.devices.filter(d => userIds.includes(d.userId) && d.fcmToken !== null);
   }
 
   async remove(userId: string, deviceId: string) {
@@ -423,8 +446,16 @@ export class InMemoryDevicesRepository implements DevicesRepository {
     return this.devices.length < before;
   }
 
+  async removeAllForUser(userId: string) {
+    this.devices = this.devices.filter(d => d.userId !== userId);
+  }
+
   async removeTokens(tokens: string[]) {
-    this.devices = this.devices.filter(d => !d.token || !tokens.includes(d.token));
+    this.devices = this.devices.filter(d => !d.fcmToken || !tokens.includes(d.fcmToken));
+  }
+
+  private forgetToken(fcmToken: string, exceptDeviceId: string) {
+    this.devices = this.devices.map(d => (d.fcmToken === fcmToken && d.deviceId !== exceptDeviceId ? { ...d, fcmToken: null } : d));
   }
 }
 {{/if}}

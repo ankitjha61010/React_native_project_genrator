@@ -8,6 +8,7 @@ import type { UsersRepository } from '{{IMPORT:contract.users}}';
 import type { PushMessage, PushSender } from '{{IMPORT:port.pushSender}}';
 import type { Realtime } from '{{IMPORT:port.realtime}}';
 import { NOTIFICATIONS_MESSAGES } from '{{IMPORT:messages.notifications}}';
+import { UserRole } from '{{IMPORT:domain.roles}}';
 
 export interface NotifyInput {
   type?: NotificationType;
@@ -86,7 +87,7 @@ export class NotificationsService {
     const type = input.type ?? 'general';
     const audience = input.audience ?? 'all';
     const data = input.data ?? {};
-    const recipients = await users.activeUserIds(audience === 'admins' ? 'admin' : audience === 'users' ? 'user' : undefined);
+    const recipients = await users.activeUserIds(audience === 'admins' ? UserRole.ADMIN : audience === 'users' ? UserRole.USER : undefined);
 
     const broadcast = await notifications.createBroadcast({ title: input.title, body: input.body, type, data, audience, sentById: actorId, recipientCount: recipients.length });
     for (let i = 0; i < recipients.length; i += BATCH) {

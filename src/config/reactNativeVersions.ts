@@ -64,7 +64,6 @@ const ECOSYSTEM_2026_08: Record<string, string> = {
   '@notifee/react-native': '9.1.8',
   'react-native-mmkv': '4.3.2',
   'react-native-nitro-modules': '0.37.1',
-  'react-native-restart': '0.0.29',
   '@react-native-google-signin/google-signin': '16.1.5',
   'react-native-fbsdk-next': '13.4.3',
   '@invertase/react-native-apple-authentication': '2.5.1',
@@ -72,6 +71,8 @@ const ECOSYSTEM_2026_08: Record<string, string> = {
   // Chat: voice messages (record + play, a Nitro module like MMKV) and "send a file".
   'react-native-nitro-sound': '0.2.20',
   '@react-native-documents/picker': '12.0.2',
+  // Google Location SDK (optional).
+  'react-native-geolocation-service': '5.3.1',
 };
 
 const SUPPORTED_2026_08: Record<string, string> = {

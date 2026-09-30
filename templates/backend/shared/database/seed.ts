@@ -3,6 +3,7 @@ import { logger } from '{{IMPORT:core.logger}}';
 import { createDatabase } from '{{IMPORT:db.connection}}';
 import { createRepositories } from '{{IMPORT:db.repositories}}';
 {{#if AUTH}}
+import { UserRole } from '{{IMPORT:domain.roles}}';
 import { normalizeEmail{{#if AUTH_OTP}}, normalizePhone{{/if}}, type User } from '{{IMPORT:domain.user}}';
 {{/if}}
 {{#if AUTH_EMAIL}}
@@ -36,7 +37,7 @@ try {
 {{/if}}
 
   if (admin) {
-    if (admin.role !== 'admin') await users.update(admin.id, { role: 'admin' });
+    if (admin.role !== UserRole.ADMIN) await users.update(admin.id, { role: UserRole.ADMIN });
     logger.info({ userId: admin.id }, 'Administrator ready');
   } else if (!email{{#if AUTH_OTP}} && !phone{{/if}}) {
     logger.warn('SEED_ADMIN_EMAIL{{#if AUTH_OTP}} / SEED_ADMIN_PHONE{{/if}} not set – no administrator created');
@@ -64,7 +65,7 @@ try {
       phoneVerifiedAt: phone ? new Date() : null,
 {{/if}}
       name: adminName,
-      role: 'admin',
+      role: UserRole.ADMIN,
     });
     logger.info({ userId: admin.id }, 'Administrator created');
   }

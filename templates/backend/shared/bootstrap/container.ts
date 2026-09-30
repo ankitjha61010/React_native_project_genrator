@@ -48,7 +48,7 @@ import { createEventBus } from '{{IMPORT:impl.eventBus}}';
 import { EventRealtime } from '{{IMPORT:events.realtime}}';
 {{/if}}
 {{#if SVC_IDENTITY}}
-import { PublishingUsersRepository } from '{{IMPORT:events.usersPublisher}}';
+import { {{#if DEVICE_EVENTS}}PublishingDeviceRegistry, {{/if}}PublishingUsersRepository } from '{{IMPORT:events.usersPublisher}}';
 {{/if}}
 {{#if PUSH_EVENTS}}
 import { EVENT_CHANNELS } from '{{IMPORT:port.eventBus}}';
@@ -246,6 +246,14 @@ export function createServices(infra: Infrastructure) {
       socialVerifier: infra.socialVerifier,
 {{/if}}
       settings: authSettings(),
+{{#if DEVICE_INPUT}}
+{{#if DEVICE_EVENTS}}
+      // The notifications service owns the devices – sign-in / logout devices are published to it.
+      devices: new PublishingDeviceRegistry(infra.eventBus, logger),
+{{else}}
+      devices,
+{{/if}}
+{{/if}}
       logger,
     }),
 {{/if}}

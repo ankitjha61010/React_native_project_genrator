@@ -8,7 +8,7 @@ import type { Request } from 'express';
 import { config } from '{{IMPORT:config.env}}';
 {{/if}}
 import { UnauthorizedError } from '{{IMPORT:core.errors}}';
-import type { Permission, Role } from '{{IMPORT:domain.roles}}';
+import type { Permission, UserRole } from '{{IMPORT:domain.roles}}';
 import type { User } from '{{IMPORT:domain.user}}';
 import type { ClientContext } from '{{IMPORT:app.authTypes}}';
 {{else}}
@@ -29,7 +29,7 @@ export const PERMISSIONS = 'auth:permissions';
 export const Public = () => SetMetadata(IS_PUBLIC, true);
 
 /** Requires one of the roles. */
-export const Roles = (...roles: Role[]) => SetMetadata(ROLES, roles);
+export const Roles = (...roles: UserRole[]) => SetMetadata(ROLES, roles);
 
 /** Requires every permission (granted to roles in roles.ts) – prefer this over roles. */
 export const RequirePermissions = (...permissions: Permission[]) => SetMetadata(PERMISSIONS, permissions);

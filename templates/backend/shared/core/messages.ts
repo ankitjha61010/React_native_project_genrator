@@ -29,5 +29,7 @@ export const COMMON_MESSAGES = {
   internal: { message: 'Internal server error', code: 'INTERNAL_ERROR' },
 {{#if API_ENCRYPTION}}
   decryptionFailed: { message: 'The request body could not be decrypted', code: 'DECRYPTION_FAILED' },
+  /** The app sent a different key fingerprint: it was built with an old API_ENCRYPTION_KEY / IV. */
+  encryptionKeyMismatch: { message: 'The app and the server use different encryption keys', code: 'ENCRYPTION_KEY_MISMATCH' },
 {{/if}}
 } as const;

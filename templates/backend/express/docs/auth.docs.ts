@@ -21,6 +21,7 @@ import {
 {{#if AUTH_REFRESH}}
   refreshTokenSchema,
 {{/if}}
+  logoutSchema,
   sessionSchema,
 } from '{{IMPORT:ex.auth.schemas}}';
 import { publicUserSchema } from '{{IMPORT:ex.users.schemas}}';
@@ -46,10 +47,10 @@ export const authDocs: ApiDocGroup = {
 {{else}}
     { method: 'post', path: '/auth/refresh', summary: 'New access token for a refresh token', body: refreshTokenSchema, response: sessionSchema, errors: [401, 422, 429] },
 {{/if}}
-    { method: 'post', path: '/auth/logout', summary: 'End the session of a refresh token', body: refreshTokenSchema, errors: [422] },
+    { method: 'post', path: '/auth/logout', summary: 'End the session of a refresh token (and remove this device: `deviceId`)', body: logoutSchema, errors: [422] },
     { method: 'post', path: '/auth/logout-all', summary: 'Log out on every device', auth: true, errors: [401] },
 {{else}}
-    { method: 'post', path: '/auth/logout', summary: 'Log out (invalidates every token of the user)', auth: true, errors: [401] },
+    { method: 'post', path: '/auth/logout', summary: 'Log out (invalidates every token of the user; `deviceId` stops its pushes)', auth: true, body: logoutSchema, errors: [401, 422] },
 {{/if}}
     { method: 'get', path: '/auth/me', summary: 'The signed-in user', auth: true, response: publicUserSchema, errors: [401] },
 {{#if AUTH_EMAIL}}

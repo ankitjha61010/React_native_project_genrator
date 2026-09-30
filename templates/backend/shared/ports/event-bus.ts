@@ -8,6 +8,8 @@ export const EVENT_CHANNELS = {
   push: 'push',
   /** notifications → chat (the socket server): `{ to: 'user' | 'conversation', id, event, payload }` */
   realtime: 'realtime',
+  /** identity → notifications: `{ type: 'device.saved', userId, device }` / `{ type: 'device.removed', userId, deviceId? }` */
+  devices: 'devices',
 } as const;
 
 export type EventChannel = (typeof EVENT_CHANNELS)[keyof typeof EVENT_CHANNELS];

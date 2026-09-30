@@ -19,6 +19,7 @@ export const clean: ArchitectureDefinition = {
     notification: 'src/core/notification',
     permissions: 'src/core/permissions',
     media: 'src/core/media',
+    location: 'src/core/location',
     firebase: 'src/core/firebase',
     i18n: 'src/core/i18n',
     config: 'src/core/config',

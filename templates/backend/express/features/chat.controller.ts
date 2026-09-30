@@ -47,6 +47,19 @@ export class ChatController {
     sendSuccess(res, CHAT_MESSAGES.conversationDeleted);
   };
 
+  /** POST /chat/conversations/:conversationId/clear – "Clear chat": empties it for you only (it stays in your list) */
+  clearConversation = async (req: Request, res: Response) => {
+    const { conversationId } = parseParams(conversationParams, req);
+    await this.chat.clearConversation(currentUser(req).id, conversationId);
+    sendSuccess(res, CHAT_MESSAGES.chatCleared);
+  };
+
+  /** POST /chat/conversations/clear – "Clear all chats": every conversation, for you only */
+  clearAllConversations = async (req: Request, res: Response) => {
+    await this.chat.clearAllConversations(currentUser(req).id);
+    sendSuccess(res, CHAT_MESSAGES.allChatsCleared);
+  };
+
   /** GET /chat/conversations/:conversationId/messages – oldest → newest; `before` loads older pages */
   listMessages = async (req: Request, res: Response) => {
     const { conversationId } = parseParams(conversationParams, req);

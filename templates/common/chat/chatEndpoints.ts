@@ -8,6 +8,9 @@ export const CHAT_ENDPOINTS = {
   // Conversations
   CONVERSATIONS: '/chat/conversations',
   CONVERSATION: (conversationId: string) => `/chat/conversations/${id(conversationId)}`,
+  /** "Clear chat" / "Clear all chats" – for you only. */
+  CLEAR_CONVERSATION: (conversationId: string) => `/chat/conversations/${id(conversationId)}/clear`,
+  CLEAR_ALL_CONVERSATIONS: '/chat/conversations/clear',
 
   // Messages
   MESSAGES: (conversationId: string) => `/chat/conversations/${id(conversationId)}/messages`,

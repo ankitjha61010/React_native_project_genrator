@@ -1,6 +1,6 @@
 import type { PageQuery } from '{{IMPORT:core.pagination}}';
 {{#if AUTH}}
-import type { Role } from '{{IMPORT:domain.roles}}';
+import type { UserRole } from '{{IMPORT:domain.roles}}';
 {{/if}}
 import type { User } from '{{IMPORT:domain.user}}';
 
@@ -9,7 +9,7 @@ export interface CreateUserData {
   email?: string | null;
   name: string;
   passwordHash?: string | null;
-  role?: Role;
+  role?: UserRole;
   emailVerifiedAt?: Date | null;
   countryCode?: string | null;
   phone?: string | null;
@@ -53,7 +53,7 @@ export interface UsersRepository {
 {{/if}}
 {{#if NOTIFICATIONS}}
   /** Ids of active users, optionally with one role (broadcast audiences). */
-  activeUserIds(role?: Role): Promise<string[]>;
+  activeUserIds(role?: UserRole): Promise<string[]>;
 {{/if}}
   list(query: PageQuery): Promise<{ items: User[]; total: number }>;
   /** Throws ConflictError when the email{{#if AUTH}} / phone number{{/if}} is taken. */

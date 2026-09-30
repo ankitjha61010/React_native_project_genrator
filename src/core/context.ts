@@ -82,6 +82,7 @@ export function prepareGeneration(options: ProjectOptions): PreparedGeneration {
     /** Terms & Conditions / Privacy Policy links from the backend (GET /legal). */
     TERMS: options.termsAndConditions,
     DELETE_ACCOUNT: options.deleteAccount,
+    GOOGLE_LOCATION: options.googleLocation,
     DRAWER: options.drawer,
     HAS_HEADER_BUTTONS: options.drawer || options.notifications,
   };

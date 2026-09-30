@@ -32,6 +32,13 @@ export class ChatController {
     return this.chat.startConversation(user.id, dto);
   }
 
+  // Before `conversations/:conversationId` routes – "clear" is not an id.
+  @Post('conversations/clear')
+  @Endpoint({ summary: 'Clear all chats – every conversation, for you only', message: CHAT_MESSAGES.allChatsCleared, status: 200, errors: [401], bearer: true })
+  async clearAll(@CurrentUser() user: User) {
+    await this.chat.clearAllConversations(user.id);
+  }
+
   @Get('conversations/:conversationId')
   @Endpoint({ summary: 'One conversation', message: CHAT_MESSAGES.conversation, response: ConversationDto, errors: [401, 404], bearer: true })
   get(@CurrentUser() user: User, @Param('conversationId') conversationId: string) {
@@ -61,6 +68,12 @@ export class ChatController {
   @Endpoint({ summary: 'Mark the conversation as read (others get `chat:message_read`)', message: CHAT_MESSAGES.markedRead, status: 200, errors: [401, 404], bearer: true })
   async read(@CurrentUser() user: User, @Param('conversationId') conversationId: string) {
     await this.chat.markRead(user.id, conversationId);
+  }
+
+  @Post('conversations/:conversationId/clear')
+  @Endpoint({ summary: 'Clear chat – hides its messages for you only (the others keep theirs); it stays in your list', message: CHAT_MESSAGES.chatCleared, status: 200, errors: [401, 404], bearer: true })
+  async clear(@CurrentUser() user: User, @Param('conversationId') conversationId: string) {
+    await this.chat.clearConversation(user.id, conversationId);
   }
 
   @Delete('conversations/:conversationId/messages/:messageId')

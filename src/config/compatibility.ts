@@ -64,7 +64,7 @@ export function resolveDependencies(
   profile: ReactNativeProfile,
   options: Pick<
     ProjectOptions,
-    'architecture' | 'stateManagement' | 'apiEncryption' | 'vectorIcons' | 'notifications' | 'analytics' | 'rtl' | 'storage' | 'socket' | 'chat' | 'socialAuth'
+    'architecture' | 'stateManagement' | 'apiEncryption' | 'vectorIcons' | 'notifications' | 'analytics' | 'storage' | 'socket' | 'chat' | 'socialAuth' | 'googleLocation'
   >,
 ): ResolvedDependencies {
   assertCompatible(profile);
@@ -75,8 +75,8 @@ export function resolveDependencies(
     options.vectorIcons ? featureDependencies.vectorIcons : undefined,
     options.notifications ? featureDependencies.notifications : undefined,
     options.analytics ? featureDependencies.analytics : undefined,
-    options.rtl ? featureDependencies.rtl : undefined,
     options.socket ? featureDependencies.socket : undefined,
+    options.googleLocation ? featureDependencies.googleLocation : undefined,
     options.chat ? featureDependencies.chat : undefined,
     social.google ? featureDependencies.socialGoogle : undefined,
     social.facebook ? featureDependencies.socialFacebook : undefined,

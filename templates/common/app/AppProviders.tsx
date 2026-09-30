@@ -8,6 +8,7 @@ import { I18nextProvider } from 'react-i18next';
 import { Provider as ReduxProvider } from 'react-redux';
 {{/if}}
 {{#if RTL}}
+import { useDirection } from '{{IMPORT:hooks.useDirection}}';
 import { applyLayoutDirection, i18n, initI18n } from '{{IMPORT:i18n.index}}';
 {{else}}
 import { i18n, initI18n } from '{{IMPORT:i18n.index}}';
@@ -56,6 +57,10 @@ function StateProvider({ children }: { children: React.ReactNode }) {
 /** Every app-wide provider, in one place. */
 export function AppProviders({ children }: { children: React.ReactNode }): React.JSX.Element | null {
   const [i18nReady, setI18nReady] = useState(i18n.isInitialized);
+{{#if RTL}}
+  // The whole tree is laid out in this direction – it changes live with the language.
+  const { directionStyle } = useDirection();
+{{/if}}
 
   useEffect(() => {
     let unmounted = false;
@@ -66,7 +71,7 @@ export function AppProviders({ children }: { children: React.ReactNode }): React
 
     initI18n()
 {{#if RTL}}
-      // Match the native layout direction to the saved / device language (restarts once if needed).
+      // Match the layout direction to the saved / device language.
       .then(() => applyLayoutDirection(i18n.language))
 {{/if}}
       .catch(error => logger.error('i18n initialisation failed', error))
@@ -86,7 +91,7 @@ export function AppProviders({ children }: { children: React.ReactNode }): React
   }
 
   return (
-    <GestureHandlerRootView style={styles.root}>
+    <GestureHandlerRootView style={ {{#if RTL}}[styles.root, directionStyle]{{else}}styles.root{{/if}} }>
       <SafeAreaProvider>
         <I18nextProvider i18n={i18n}>
           <ThemeRoot>

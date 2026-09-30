@@ -77,13 +77,17 @@ export class Sessions {
   }
 
   /** Ends the session of this refresh token (other devices stay signed in). Never fails. */
-  async logout(refreshToken: string): Promise<void> {
+  /** Revokes the session of a refresh token. Returns its user (null for an unknown / invalid token). */
+  async logout(refreshToken: string): Promise<string | null> {
     try {
       const payload = this.tokens.verifyRefreshToken(refreshToken);
       const stored = await this.refreshTokens.findById(payload.jti);
-      if (stored && safeEqual(stored.tokenHash, sha256(refreshToken))) await this.refreshTokens.revoke(stored.id);
+      if (!stored || !safeEqual(stored.tokenHash, sha256(refreshToken))) return null;
+      await this.refreshTokens.revoke(stored.id);
+      return stored.userId;
     } catch {
       // Invalid / expired token – nothing to revoke.
+      return null;
     }
   }
 {{else}}

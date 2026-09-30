@@ -5,7 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { analyticsService } from '{{IMPORT:firebase.analytics}}';
 {{/if}}
 {{#if RTL}}
-import { currentDirection } from '{{IMPORT:i18n.index}}';
+import { useDirection } from '{{IMPORT:hooks.useDirection}}';
 {{/if}}
 import { SplashScreen } from '{{IMPORT:screens.Splash}}';
 import { AuthNavigator } from './AuthNavigator';
@@ -18,11 +18,15 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 /**
  * Root flow: Splash → Auth (Login) → Main (bottom tabs + pushed screens).{{#if RTL}}
- * `direction` is passed explicitly so native headers, the drawer and gestures always follow the
- * app's direction (i18n/direction.ts), never the device locale.{{/if}}
+ * `direction` is passed explicitly (and changes live with the language) so native headers, the
+ * back arrow, the drawer and gestures always follow the app's direction (i18n/direction.ts),
+ * never the device locale – and never need a restart.{{/if}}
  */
 export function AppNavigator(): React.JSX.Element {
   const navigationTheme = useNavigationTheme();
+{{#if RTL}}
+  const { direction } = useDirection();
+{{/if}}
 {{#if ANALYTICS}}
   const currentRoute = useRef<string | undefined>(undefined);
 
@@ -37,9 +41,9 @@ export function AppNavigator(): React.JSX.Element {
 
   return (
 {{#if ANALYTICS}}
-    <NavigationContainer ref={navigationRef} theme={navigationTheme}{{#if RTL}} direction={currentDirection()}{{/if}} onReady={trackScreen} onStateChange={trackScreen}>
+    <NavigationContainer ref={navigationRef} theme={navigationTheme}{{#if RTL}} direction={direction}{{/if}} onReady={trackScreen} onStateChange={trackScreen}>
 {{else}}
-    <NavigationContainer ref={navigationRef} theme={navigationTheme}{{#if RTL}} direction={currentDirection()}{{/if}}>
+    <NavigationContainer ref={navigationRef} theme={navigationTheme}{{#if RTL}} direction={direction}{{/if}}>
 {{/if}}
       <Stack.Navigator initialRouteName="Splash" screenOptions={{ headerShown: false, animation: 'fade' }}>
         <Stack.Screen name="Splash" component={SplashScreen} />

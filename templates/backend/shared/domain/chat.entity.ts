@@ -1,5 +1,13 @@
+/** What a member can send. */
 export const MESSAGE_TYPES = ['text', 'image', 'video', 'audio', 'document'] as const;
-export type MessageType = (typeof MESSAGE_TYPES)[number];
+export type SendableMessageType = (typeof MESSAGE_TYPES)[number];
+/** `system`: written by the backend ("Jane added John") – never sent by a client. */
+export type MessageType = SendableMessageType | 'system';
+
+/** What a `system` message says happened. The app renders its own text per event. */
+export enum SystemEvent {
+  MEMBER_ADDED = 'MEMBER_ADDED',
+}
 
 /** How the app cropped / filtered an image before sending it (stored as-is). */
 export interface MediaCrop {
@@ -42,8 +50,10 @@ export interface ConversationMember {
 {{/if}}
   /** Messages up to this moment are read. */
   lastReadAt: Date | null;
-  /** "Delete chat": messages before this moment are hidden for this member. */
+  /** "Clear chat" / "Delete chat": messages before this moment are hidden for this member only. */
   clearedAt: Date | null;
+  /** "Delete chat": the conversation is out of this member's list until a new message arrives. */
+  hidden: boolean;
   joinedAt: Date;
 }
 
@@ -61,6 +71,12 @@ export interface Message {
   /** Seconds (audio / video). */
   duration: number | null;
   crop: MediaCrop | null;
+  /** `system` messages: what happened; the sender is who did it. */
+  event: SystemEvent | null;
+  /** `system` messages: who it happened to (e.g. the member who was added). */
+  targetUserId: string | null;
+  /** The message this one replies to (same conversation). */
+  replyToId: string | null;
   createdAt: Date;
   deletedAt: Date | null;
 }
@@ -78,6 +94,24 @@ export interface ChatParticipantView {
 {{/if}}
 }
 
+/** A person in a message view. */
+export interface ChatPersonView {
+  id: string;
+  name: string;
+}
+
+/** The quoted message above a reply. */
+export interface ReplyToView {
+  messageId: string;
+  senderId: string;
+  senderName: string;
+  type: MessageType;
+  /** Text, or the file name of a document. */
+  text?: string;
+  /** The original was deleted – the app shows "Deleted message". */
+  deleted?: true;
+}
+
 export interface ChatMessageView {
   id: string;
   conversationId: string;
@@ -92,6 +126,11 @@ export interface ChatMessageView {
   fileSize?: string;
   duration?: number;
   crop?: MediaCrop;
+  /** `system` messages: `{ event, actor, target }` – the app renders "Jane added John". */
+  event?: SystemEvent;
+  actor?: ChatPersonView;
+  target?: ChatPersonView;
+  replyTo?: ReplyToView;
   createdAt: string;
   status: 'sent' | 'read';
   /** Set in REST responses (it depends on who asks); socket events leave it out. */

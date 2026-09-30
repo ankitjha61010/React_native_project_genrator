@@ -1,55 +1,39 @@
-import React, { useCallback, useLayoutEffect } from 'react';
-import { ActivityIndicator, FlatList, Image, RefreshControl, StyleSheet, TouchableOpacity, View, type StyleProp, type ViewStyle } from 'react-native';
+import React, { useLayoutEffect } from 'react';
+import { ActivityIndicator, Alert, FlatList, Image, RefreshControl, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { AppText } from '{{IMPORT:components.AppText}}';
 {{#if VECTOR_ICONS}}
 import { AppIcon } from '{{IMPORT:components.AppIcon}}';
 {{/if}}
+import { useAuthSession } from '{{IMPORT:hooks.useAuthSession}}';
 import { useStyles } from '{{IMPORT:hooks.useTheme}}';
 import { translate } from '{{IMPORT:i18n.index}}';
 import type { RootNavigation } from '{{IMPORT:navigation.types}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
-import type { ChatMessage, Conversation } from '{{IMPORT:chat.types}}';
+import type { Conversation } from '{{IMPORT:chat.types}}';
 import { useChatList } from '../../hooks/useChatList';
-
-/** "Photo", "Voice message"… for the last-message line. */
-function preview(message: ChatMessage | undefined): string {
-  if (!message) return translate('common', 'startChat');
-  switch (message.type) {
-    case 'image':
-      return `📷 ${translate('common', 'photo')}`;
-    case 'video':
-      return `🎥 ${translate('common', 'video')}`;
-    case 'audio':
-      return `🎙️ ${translate('common', 'voiceMessage')}`;
-    case 'document':
-      return `📄 ${message.fileName ?? translate('common', 'document')}`;
-    default:
-      return message.text ?? '';
-  }
-}
-
-interface NewChatButtonProps {
-  onPress: () => void;
-  color: string;
-  style: StyleProp<ViewStyle>;
-}
+import { messagePreview } from '../../utils/chatFormat';
 
 /**
- * Header button → New chat. No hooks in here: the screen passes everything in, and renders it
- * as an element from `headerRight` (React Navigation calls `headerRight` as a plain function).
+ * Header button → New chat. A real component: its hooks run in its own render, because it is
+ * rendered as an element (renderNewChatButton) – never passed as `headerRight: NewChatButton`,
+ * which React Navigation would call as a plain function ("Invalid hook call").
  */
-function NewChatButton({ onPress, color, style }: NewChatButtonProps): React.JSX.Element {
+function NewChatButton(): React.JSX.Element {
+  const navigation = useNavigation<RootNavigation>();
+  const styles = useStyles(createStyles);
   return (
-    <TouchableOpacity onPress={onPress} hitSlop={10} accessibilityRole="button" accessibilityLabel={translate('common', 'newChat')} style={style}>
+    <TouchableOpacity onPress={() => navigation.navigate('Main', { screen: 'NewChat' })} hitSlop={10} accessibilityRole="button" accessibilityLabel={translate('common', 'newChat')} style={styles.newChat}>
 {{#if VECTOR_ICONS}}
-      <AppIcon name="square-edit-outline" size={24} tintColor={color} />
+      <AppIcon name="square-edit-outline" size={24} tintColor={styles.accent.color} />
 {{else}}
       <AppText color="primary" text="✎" />
 {{/if}}
     </TouchableOpacity>
   );
 }
+
+const renderNewChatButton = () => <NewChatButton />;
 
 function Separator(): React.JSX.Element {
   const styles = useStyles(createStyles);
@@ -60,14 +44,20 @@ function Separator(): React.JSX.Element {
 export function ChatListScreen(): React.JSX.Element {
   const navigation = useNavigation<RootNavigation>();
   const styles = useStyles(createStyles);
-  const { conversations, loading, refreshing, refresh } = useChatList();
-
-  const openNewChat = useCallback(() => navigation.navigate('Main', { screen: 'NewChat' }), [navigation]);
+  const { user } = useAuthSession();
+  const { conversations, loading, refreshing, refresh, remove } = useChatList();
 
   // Before the first paint, so the button never pops in.
   useLayoutEffect(() => {
-    navigation.setOptions({ headerRight: () => <NewChatButton onPress={openNewChat} color={styles.accent.color} style={styles.newChat} /> });
-  }, [navigation, openNewChat, styles]);
+    navigation.setOptions({ headerRight: renderNewChatButton });
+  }, [navigation]);
+
+  /** Long press: delete the chat – for you only (like WhatsApp){{#if GROUP_CHAT}}; a group is left{{/if}}. */
+  const confirmDelete = (conversation: Conversation) =>
+    Alert.alert({{#if GROUP_CHAT}}translate('common', conversation.isGroup ? 'leaveGroup' : 'deleteChat'){{else}}translate('common', 'deleteChat'){{/if}}, {{#if GROUP_CHAT}}translate('common', conversation.isGroup ? 'leaveGroupConfirm' : 'deleteChatConfirm'){{else}}translate('common', 'deleteChatConfirm'){{/if}}, [
+      { text: translate('common', 'cancel'), style: 'cancel' },
+      { text: {{#if GROUP_CHAT}}translate('common', conversation.isGroup ? 'leaveGroup' : 'delete'){{else}}translate('common', 'delete'){{/if}}, style: 'destructive', onPress: () => remove(conversation.id) },
+    ]);
 
   const renderItem = ({ item }: { item: Conversation }) => {
     const time = item.lastMessage ? new Date(item.lastMessage.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
@@ -76,6 +66,7 @@ export function ChatListScreen(): React.JSX.Element {
       <TouchableOpacity
         style={styles.row}
         activeOpacity={0.7}
+        onLongPress={() => confirmDelete(item)}
         onPress={() => navigation.navigate('Main', { screen: 'ChatRoom', params: { conversationId: item.id, title: item.title, avatar: item.avatar{{#if GROUP_CHAT}}, isGroup: item.isGroup{{/if}} } })}>
         <View>
           {item.avatar ? (
@@ -94,7 +85,7 @@ export function ChatListScreen(): React.JSX.Element {
             <AppText fontSize="size12" color="textSecondary" text={time} />
           </View>
           <View style={styles.line}>
-            <AppText fontSize="size14" color="textSecondary" numberOfLines={1} style={styles.grow} text={preview(item.lastMessage)} />
+            <AppText fontSize="size14" color="textSecondary" numberOfLines={1} style={styles.grow} text={messagePreview(item.lastMessage, user?.id)} />
             {item.unreadCount ? (
               <View style={styles.unread}>
                 <AppText fontSize="size10" fontFamily="bold" color="onPrimary" text={String(item.unreadCount)} />
@@ -124,7 +115,7 @@ export function ChatListScreen(): React.JSX.Element {
               <AppIcon name="chat-outline" size={56} tintColor={styles.muted.color} />
 {{/if}}
               <AppText color="textSecondary" intlType="common" value="noConversations" />
-              <TouchableOpacity onPress={openNewChat} accessibilityRole="button">
+              <TouchableOpacity onPress={() => navigation.navigate('Main', { screen: 'NewChat' })} accessibilityRole="button">
                 <AppText color="primary" fontFamily="semiBold" intlType="common" value="startChat" />
               </TouchableOpacity>
             </View>

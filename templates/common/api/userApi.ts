@@ -1,4 +1,4 @@
-import type { User } from '{{IMPORT:auth.types}}';
+import type { User, UserRole } from '{{IMPORT:auth.types}}';
 import { api{{#if CHAT}}, type Page{{/if}} } from './apiClient';
 
 /** The backend's user (see the backend's docs/API.md). */
@@ -11,7 +11,7 @@ export interface ServerUser {
   phone: string | null;
   location: string | null;
   bio: string | null;
-  role: 'user' | 'admin';
+  role: UserRole;
   emailVerified: boolean;
   phoneVerified: boolean;
   /** False for accounts created with a mobile number or a social login. */

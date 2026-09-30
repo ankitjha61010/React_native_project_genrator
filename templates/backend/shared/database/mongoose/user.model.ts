@@ -1,4 +1,7 @@
 import { Schema, model, type InferSchemaType, type Types } from 'mongoose';
+{{#if AUTH}}
+import { UserRole } from '{{IMPORT:domain.roles}}';
+{{/if}}
 
 const userSchema = new Schema(
   {
@@ -11,7 +14,7 @@ const userSchema = new Schema(
     name: { type: String, required: true, trim: true, maxlength: 120 },
 {{#if AUTH}}
     passwordHash: { type: String, default: null },
-    role: { type: String, required: true, default: 'user', maxlength: 20 },
+    role: { type: String, required: true, enum: Object.values(UserRole), default: UserRole.USER },
     emailVerifiedAt: { type: Date, default: null },
     countryCode: { type: String, default: null, maxlength: 8 },
     phone: { type: String, default: null, maxlength: 20 },

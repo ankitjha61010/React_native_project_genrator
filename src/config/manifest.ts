@@ -21,6 +21,7 @@ const notifications = (ctx: RenderContext) => ctx.options.notifications;
 const drawer = (ctx: RenderContext) => ctx.options.drawer;
 const headerButtons = (ctx: RenderContext) => ctx.options.drawer || ctx.options.notifications;
 const terms = (ctx: RenderContext) => ctx.options.termsAndConditions;
+const googleLocation = (ctx: RenderContext) => ctx.options.googleLocation;
 
 /** Country flags for the phone number picker (templates/common/assets/flags/*.png). */
 const COUNTRY_FLAGS = fs
@@ -166,7 +167,7 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
   ...entries('notification', [
     ['notification.permissions', 'notificationPermissions.ts'],
     ['notification.token', 'notificationToken.ts'],
-    // This install (id, FCM token, model, versions) → POST /devices.
+    // This install (id, type, model, versions, FCM token) → the `device` of every sign-in request.
     ['notification.deviceInfo', 'deviceInfo.ts'],
     ['notification.display', 'notificationDisplay.ts'],
     ['notification.handlers', 'notificationHandlers.ts'],
@@ -200,6 +201,13 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['components.MediaEditorModal', 'MediaEditorModal/MediaEditorModal.tsx'],
   ]),
   { ...entries('components', [['components.LegalLinks', 'LegalLinks/LegalLinks.tsx']])[0]!, when: terms },
+  // Google Location SDK (optional): position + permission, Google Places search, the profile's location field.
+  ...entries('location', [
+    ['location.service', 'locationService.ts'],
+    ['location.places', 'placesService.ts'],
+    ['location.useLocationSearch', 'useLocationSearch.ts'],
+  ]).map(e => ({ ...e, when: googleLocation })),
+  { ...entries('components', [['components.LocationPicker', 'LocationPicker/LocationPicker.tsx']])[0]!, when: googleLocation },
   ...entries('components', [
     ['components.CountryPicker', 'CountryPicker/CountryPicker.tsx'],
     ['components.PhoneInput', 'PhoneInput/PhoneInput.tsx'],
@@ -274,10 +282,15 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['chat.ChatListScreen', 'screens/ChatListScreen/ChatListScreen.tsx'],
     ['chat.ChatRoomScreen', 'screens/ChatRoomScreen/ChatRoomScreen.tsx'],
     ['chat.NewChatScreen', 'screens/NewChatScreen/NewChatScreen.tsx'],
+    ['chat.ChatDetailsScreen', 'screens/ChatDetailsScreen/ChatDetailsScreen.tsx'],
     ['chat.ChatBubble', 'components/ChatBubble/ChatBubble.tsx'],
     ['chat.ChatInputBar', 'components/ChatInputBar/ChatInputBar.tsx'],
     ['chat.ChatMediaPreview', 'components/ChatMediaPreview/ChatMediaPreview.tsx'],
     ['chat.TypingIndicator', 'components/TypingIndicator/TypingIndicator.tsx'],
+    // Centred pill: date separators ("Today") and system messages ("Jane added John").
+    ['chat.ChatNotice', 'components/ChatNotice/ChatNotice.tsx'],
+    // Clear chat / Clear all chats / Delete chat (Chat details, Group info).
+    ['chat.ChatActions', 'components/ChatActions/ChatActions.tsx'],
     ['chat.AudioMessage', 'components/AudioMessage/AudioMessage.tsx'],
     ['chat.UserRow', 'components/UserRow/UserRow.tsx'],
     // Voice messages: record / play (react-native-nitro-sound).
@@ -286,6 +299,9 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['chat.useChatList', 'hooks/useChatList.ts'],
     ['chat.useChatRoom', 'hooks/useChatRoom.ts'],
     ['chat.useUserList', 'hooks/useUserList.ts'],
+    ['chat.useChatActions', 'hooks/useChatActions.ts'],
+    // Date separators, system message texts, previews.
+    ['chat.format', 'utils/chatFormat.ts'],
   ]).map(e => ({ ...e, when: chat })),
   ...entries('chat', [
     ['chat.groupService', 'services/groupService.ts'],

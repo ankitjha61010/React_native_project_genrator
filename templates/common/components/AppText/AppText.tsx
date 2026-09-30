@@ -1,6 +1,13 @@
 import React from 'react';
+{{#if RTL}}
+import { StyleSheet, Text, type TextProps, type TextStyle } from 'react-native';
+{{else}}
 import { I18nManager, Text, type TextProps, type TextStyle } from 'react-native';
+{{/if}}
 import { useTranslation } from 'react-i18next';
+{{#if RTL}}
+import { useDirection } from '{{IMPORT:hooks.useDirection}}';
+{{/if}}
 import { useTheme, type ColorName } from '{{IMPORT:hooks.useTheme}}';
 import { translate, type IntlProps } from '{{IMPORT:i18n.index}}';
 import type { Typography } from '{{IMPORT:theme.index}}';
@@ -27,11 +34,20 @@ export type FontSize = keyof Typography['fontSize'];
  * RTL: React Native treats `textAlign: 'left'` as "start" and flips it to the right in RTL
  * layouts, but leaves the default `'auto'` untouched – so without this, Arabic text stays
  * left-aligned. `writingDirection` keeps mixed text ("السمة: light") in the right order (iOS).
+{{#if RTL}}
+ * Picked per render from useDirection(), so text follows a language switch at once.
+ */
+const TEXT_DIRECTION = StyleSheet.create({
+  ltr: { textAlign: 'left', writingDirection: 'ltr' },
+  rtl: { textAlign: 'left', writingDirection: 'rtl' },
+});
+{{else}}
  */
 const TEXT_DIRECTION: TextStyle = {
   textAlign: 'left',
   writingDirection: I18nManager.isRTL ? 'rtl' : 'ltr',
 };
+{{/if}}
 
 interface AppTextOwnProps {
   /**
@@ -85,6 +101,9 @@ export function AppText({
   // Subscribes to language changes.
   useTranslation();
   const { theme } = useTheme();
+{{#if RTL}}
+  const { direction } = useDirection();
+{{/if}}
 
   // Resolve translated content if intl props are supplied.
   const intlContent = intlType && value
@@ -115,7 +134,7 @@ export function AppText({
     <Text
       allowFontScaling={false}
       style={[
-        TEXT_DIRECTION,
+        {{#if RTL}}TEXT_DIRECTION[direction]{{else}}TEXT_DIRECTION{{/if}},
         {
           fontFamily: theme.typography.fontFamily[fontFamily],
           fontSize: theme.typography.fontSize[fontSize],

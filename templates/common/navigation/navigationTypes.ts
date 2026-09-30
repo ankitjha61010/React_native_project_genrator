@@ -61,6 +61,8 @@ export type MainStackParamList = {
     isOnline?: boolean;
     isGroup?: boolean;
   };
+  /** A direct chat's details: clear / delete the chat. */
+  ChatDetails: { conversationId: string };
   NewChat: undefined;
 {{#if GROUP_CHAT}}
   CreateGroup: undefined;

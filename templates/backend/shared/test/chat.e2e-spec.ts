@@ -108,6 +108,29 @@ describe('chat API + Socket.IO', () => {
     expect((await deleted).messageId).toBe(sent.body.data.id);
   });
 
+  it('replies to a message, clears a chat and all chats – for the caller only', async () => {
+    const question = await request(app.server).post(`${api}/chat/conversations/${conversationId}/messages`).set(bearer(bob.token)).send({ type: 'text', text: 'Available today?' }).expect(201);
+    const reply = await request(app.server)
+      .post(`${api}/chat/conversations/${conversationId}/messages`)
+      .set(bearer(alice.token))
+      .send({ type: 'text', text: 'Yes', replyToId: question.body.data.id })
+      .expect(201);
+    expect(reply.body.data.replyTo).toMatchObject({ messageId: question.body.data.id, senderId: bob.id, text: 'Available today?' });
+    await request(app.server).post(`${api}/chat/conversations/${conversationId}/messages`).set(bearer(alice.token)).send({ type: 'text', text: 'x', replyToId: 'missing' }).expect(404);
+
+    await request(app.server).post(`${api}/chat/conversations/${conversationId}/clear`).set(bearer(alice.token)).expect(200);
+    const mine = await request(app.server).get(`${api}/chat/conversations/${conversationId}/messages`).set(bearer(alice.token)).expect(200);
+    expect(mine.body.data).toHaveLength(0);
+    const theirs = await request(app.server).get(`${api}/chat/conversations/${conversationId}/messages`).set(bearer(bob.token)).expect(200);
+    expect(theirs.body.data.length).toBeGreaterThan(0);
+
+    await request(app.server).post(`${api}/chat/conversations/clear`).set(bearer(bob.token)).expect(200);
+    const cleared = await request(app.server).get(`${api}/chat/conversations/${conversationId}/messages`).set(bearer(bob.token)).expect(200);
+    expect(cleared.body.data).toHaveLength(0);
+    const list = await request(app.server).get(`${api}/chat/conversations`).set(bearer(bob.token)).expect(200);
+    expect(list.body.data.map((c: { id: string }) => c.id)).toContain(conversationId);
+  });
+
   it('broadcasts presence: offline (with lastSeen) when the last socket disconnects', async () => {
     const eve = await app.signUp('Eve');
     const online = next<{ userId: string }>(bobSocket, 'presence:user_online');
@@ -135,6 +158,8 @@ describe('chat API + Socket.IO', () => {
     await request(app.server).patch(`${api}/chat/groups/${groupId}/members/${bob.id}`).set(bearer(alice.token)).send({ role: 'admin' }).expect(200);
     await request(app.server).delete(`${api}/chat/groups/${groupId}/members/${carol.id}`).set(bearer(bob.token)).expect(200);
     await request(app.server).post(`${api}/chat/groups/${groupId}/members`).set(bearer(bob.token)).send({ userIds: [carol.id] }).expect(200);
+    const messages = await request(app.server).get(`${api}/chat/conversations/${groupId}/messages`).set(bearer(carol.token)).expect(200);
+    expect(messages.body.data.at(-1)).toMatchObject({ type: 'system', event: 'MEMBER_ADDED', actor: { id: bob.id, name: 'Bob' }, target: { id: carol.id, name: 'Carol' } });
 
     await request(app.server).post(`${api}/chat/groups/${groupId}/leave`).set(bearer(alice.token)).expect(200);
     const group = await request(app.server).get(`${api}/chat/conversations/${groupId}`).set(bearer(carol.token)).expect(200);

@@ -14,11 +14,13 @@ export function chatRoutes(services: Services): Router {
 
   router.get('/conversations', chat.listConversations);
   router.post('/conversations', chat.startConversation);
+  router.post('/conversations/clear', chat.clearAllConversations);
   router.get('/conversations/:conversationId', chat.getConversation);
   router.delete('/conversations/:conversationId', chat.deleteConversation);
   router.get('/conversations/:conversationId/messages', chat.listMessages);
   router.post('/conversations/:conversationId/messages', chat.sendMessage);
   router.post('/conversations/:conversationId/read', chat.markRead);
+  router.post('/conversations/:conversationId/clear', chat.clearConversation);
   router.delete('/conversations/:conversationId/messages/:messageId', chat.deleteMessage);
 {{#if GROUP_CHAT}}
   // Groups (changes are for admins, see ChatService).

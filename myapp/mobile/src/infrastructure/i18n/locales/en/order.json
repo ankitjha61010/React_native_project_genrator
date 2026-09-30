@@ -1,0 +1,10 @@
+{
+  "myOrders": "My orders",
+  "orderNumber": "Order #{{value1}}",
+  "placeOrder": "Place order",
+  "orderPending": "Pending",
+  "orderShipped": "Shipped",
+  "orderDelivered": "Delivered",
+  "orderCancelled": "Cancelled",
+  "noOrders": "You haven't placed any orders yet."
+}

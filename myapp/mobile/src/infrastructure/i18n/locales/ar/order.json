@@ -1,0 +1,10 @@
+{
+  "myOrders": "طلباتي",
+  "orderNumber": "طلب رقم {{value1}}",
+  "placeOrder": "إتمام الطلب",
+  "orderPending": "قيد الانتظار",
+  "orderShipped": "تم الشحن",
+  "orderDelivered": "تم التوصيل",
+  "orderCancelled": "ملغي",
+  "noOrders": "لم تقم بأي طلب بعد."
+}

@@ -1,0 +1,40 @@
+{
+  "extends": "@react-native/typescript-config",
+  "compilerOptions": {
+    // Repeated from @react-native/typescript-config so the editor still understands JSX and
+    // imports if that package can't be resolved yet (before `npm install`, or a stale TS server).
+    "jsx": "react-jsx",
+    "strict": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "customConditions": ["react-native"],
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "paths": {
+      "@assets": ["./src/assets"],
+      "@assets/*": ["./src/assets/*"],
+      "@business": ["./src/business"],
+      "@business/*": ["./src/business/*"],
+      "@data": ["./src/data"],
+      "@data/*": ["./src/data/*"],
+      "@features": ["./src/features"],
+      "@features/*": ["./src/features/*"],
+      "@infrastructure": ["./src/infrastructure"],
+      "@infrastructure/*": ["./src/infrastructure/*"],
+      "@presentation": ["./src/presentation"],
+      "@presentation/*": ["./src/presentation/*"],
+      "@services": ["./src/services"],
+      "@services/*": ["./src/services/*"],
+      "@typings": ["./src/types"],
+      "@typings/*": ["./src/types/*"],
+      "@utils": ["./src/utils"],
+      "@utils/*": ["./src/utils/*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["**/node_modules", "**/Pods"]
+}

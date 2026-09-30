@@ -1,0 +1,200 @@
+import React, { useLayoutEffect } from 'react';
+import { ActivityIndicator, Alert, FlatList, Image, RefreshControl, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { AppText } from '@presentation/components/AppText';
+import { AppIcon } from '@presentation/components/AppIcon';
+import { useAuthSession } from '@presentation/hooks/useAuthSession';
+import { useStyles } from '@presentation/hooks/useTheme';
+import { translate } from '@infrastructure/i18n';
+import type { RootNavigation } from '@presentation/navigation/navigationTypes';
+import type { Theme } from '@presentation/theme';
+import type { Conversation } from '@features/chat/types/chat';
+import { useChatList } from '../../hooks/useChatList';
+import { messagePreview } from '../../utils/chatFormat';
+
+/**
+ * Header button → New chat. A real component: its hooks run in its own render, because it is
+ * rendered as an element (renderNewChatButton) – never passed as `headerRight: NewChatButton`,
+ * which React Navigation would call as a plain function ("Invalid hook call").
+ */
+function NewChatButton(): React.JSX.Element {
+  const navigation = useNavigation<RootNavigation>();
+  const styles = useStyles(createStyles);
+  return (
+    <TouchableOpacity onPress={() => navigation.navigate('Main', { screen: 'NewChat' })} hitSlop={10} accessibilityRole="button" accessibilityLabel={translate('common', 'newChat')} style={styles.newChat}>
+      <AppIcon name="square-edit-outline" size={24} tintColor={styles.accent.color} />
+    </TouchableOpacity>
+  );
+}
+
+const renderNewChatButton = () => <NewChatButton />;
+
+function Separator(): React.JSX.Element {
+  const styles = useStyles(createStyles);
+  return <View style={styles.separator} />;
+}
+
+/** The conversation list. UI only – data and live updates come from useChatList. */
+export function ChatListScreen(): React.JSX.Element {
+  const navigation = useNavigation<RootNavigation>();
+  const styles = useStyles(createStyles);
+  const { user } = useAuthSession();
+  const { conversations, loading, refreshing, refresh, remove } = useChatList();
+
+  // Before the first paint, so the button never pops in.
+  useLayoutEffect(() => {
+    navigation.setOptions({ headerRight: renderNewChatButton });
+  }, [navigation]);
+
+  /** Long press: delete the chat – for you only (like WhatsApp); a group is left. */
+  const confirmDelete = (conversation: Conversation) =>
+    Alert.alert(translate('common', conversation.isGroup ? 'leaveGroup' : 'deleteChat'), translate('common', conversation.isGroup ? 'leaveGroupConfirm' : 'deleteChatConfirm'), [
+      { text: translate('common', 'cancel'), style: 'cancel' },
+      { text: translate('common', conversation.isGroup ? 'leaveGroup' : 'delete'), style: 'destructive', onPress: () => remove(conversation.id) },
+    ]);
+
+  const renderItem = ({ item }: { item: Conversation }) => {
+    const time = item.lastMessage ? new Date(item.lastMessage.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    const online = !item.isGroup && item.participants.some(p => p.isOnline);
+    return (
+      <TouchableOpacity
+        style={styles.row}
+        activeOpacity={0.7}
+        onLongPress={() => confirmDelete(item)}
+        onPress={() => navigation.navigate('Main', { screen: 'ChatRoom', params: { conversationId: item.id, title: item.title, avatar: item.avatar, isGroup: item.isGroup } })}>
+        <View>
+          {item.avatar ? (
+            <Image source={{ uri: item.avatar }} style={styles.avatar} />
+          ) : (
+            <View style={[styles.avatar, styles.initials]}>
+              <AppText fontFamily="semiBold" fontSize="size18" color="onPrimary" text={item.title.charAt(0).toUpperCase()} />
+            </View>
+          )}
+          {online ? <View style={styles.onlineBadge} /> : null}
+        </View>
+
+        <View style={styles.info}>
+          <View style={styles.line}>
+            <AppText fontFamily="semiBold" fontSize="size16" numberOfLines={1} style={styles.grow} text={item.title} />
+            <AppText fontSize="size12" color="textSecondary" text={time} />
+          </View>
+          <View style={styles.line}>
+            <AppText fontSize="size14" color="textSecondary" numberOfLines={1} style={styles.grow} text={messagePreview(item.lastMessage, user?.id)} />
+            {item.unreadCount ? (
+              <View style={styles.unread}>
+                <AppText fontSize="size10" fontFamily="bold" color="onPrimary" text={String(item.unreadCount)} />
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  return (
+    <View style={styles.container}>
+      <FlatList
+        data={conversations}
+        keyExtractor={item => item.id}
+        renderItem={renderItem}
+        ItemSeparatorComponent={Separator}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
+        contentContainerStyle={conversations.length === 0 && styles.emptyContainer}
+        ListEmptyComponent={
+          loading ? (
+            <ActivityIndicator />
+          ) : (
+            <View style={styles.empty}>
+              <AppIcon name="chat-outline" size={56} tintColor={styles.muted.color} />
+              <AppText color="textSecondary" intlType="common" value="noConversations" />
+              <TouchableOpacity onPress={() => navigation.navigate('Main', { screen: 'NewChat' })} accessibilityRole="button">
+                <AppText color="primary" fontFamily="semiBold" intlType="common" value="startChat" />
+              </TouchableOpacity>
+            </View>
+          )
+        }
+      />
+    </View>
+  );
+}
+
+const createStyles = (theme: Theme) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    newChat: {
+      paddingHorizontal: theme.spacing.spacing16,
+    },
+    accent: {
+      color: theme.colors.primary,
+    },
+    muted: {
+      color: theme.colors.textSecondary,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.spacing14,
+      paddingHorizontal: theme.spacing.spacing16,
+      paddingVertical: theme.spacing.spacing12,
+      backgroundColor: theme.colors.surface,
+    },
+    avatar: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      backgroundColor: theme.colors.primary,
+    },
+    initials: {
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    onlineBadge: {
+      position: 'absolute',
+      bottom: 2,
+      end: 2,
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      backgroundColor: theme.colors.success,
+      borderWidth: 2,
+      borderColor: theme.colors.surface,
+    },
+    info: {
+      flex: 1,
+      gap: theme.spacing.spacing4,
+    },
+    line: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.spacing8,
+    },
+    grow: {
+      flex: 1,
+    },
+    unread: {
+      minWidth: 20,
+      height: 20,
+      borderRadius: 10,
+      paddingHorizontal: 6,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.colors.primary,
+    },
+    separator: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: theme.colors.border,
+      marginStart: 82,
+    },
+    emptyContainer: {
+      flexGrow: 1,
+      justifyContent: 'center',
+    },
+    empty: {
+      alignItems: 'center',
+      gap: theme.spacing.spacing12,
+      padding: theme.spacing.spacing24,
+    },
+  });

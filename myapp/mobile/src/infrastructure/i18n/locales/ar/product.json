@@ -1,0 +1,15 @@
+{
+  "products": "المنتجات",
+  "addToCart": "أضف إلى السلة",
+  "buyNow": "اشترِ الآن",
+  "price": "السعر: {{value1}}",
+  "outOfStock": "غير متوفر",
+  "productCount_zero": "لا توجد منتجات",
+  "productCount_one": "منتج واحد",
+  "productCount_two": "منتجان",
+  "productCount_few": "{{count}} منتجات",
+  "productCount_many": "{{count}} منتجاً",
+  "productCount_other": "{{count}} منتج",
+  "description": "الوصف",
+  "reviews": "التقييمات"
+}

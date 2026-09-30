@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">myapp</string>
+<!-- rn-architecture-generator: facebook-strings -->
+    <!-- Facebook Login (YOUR_… = not configured yet, see docs/SOCIAL_LOGIN.md) -->
+    <string name="facebook_app_id">YOUR_FACEBOOK_APP_ID</string>
+    <string name="facebook_client_token">YOUR_FACEBOOK_CLIENT_TOKEN</string>
+    <!-- "fb" followed by your app id, e.g. fb1234567890 -->
+    <string name="fb_login_protocol_scheme">fbYOUR_FACEBOOK_APP_ID</string>
+</resources>

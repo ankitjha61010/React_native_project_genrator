@@ -18,6 +18,12 @@ import {
 {{#if AUTH_EMAIL}}
   FakeMailer,
 {{/if}}
+{{#if IAP_ADAPTY}}
+  FakeAdaptyClient,
+{{/if}}
+{{#if GATEWAY}}
+  FakePaymentGateway,
+{{/if}}
 {{#if NOTIFICATIONS}}
   FakePushSender,
 {{/if}}
@@ -29,6 +35,9 @@ import {
 {{/if}}
 {{#if SOCIAL}}
   FakeSocialVerifier,
+{{/if}}
+{{#if IAP_NATIVE}}
+  FakeStorePurchaseVerifier,
 {{/if}}
 {{#if UPLOADS}}
   FakeStorage,
@@ -64,6 +73,15 @@ export function createTestInfrastructure() {
 {{/if}}
 {{#if EVENTS}}
     eventBus: new FakeEventBus(),
+{{/if}}
+{{#if GATEWAY}}
+    paymentGateway: new FakePaymentGateway(),
+{{/if}}
+{{#if IAP_NATIVE}}
+    storeVerifier: new FakeStorePurchaseVerifier(),
+{{/if}}
+{{#if IAP_ADAPTY}}
+    adapty: new FakeAdaptyClient(),
 {{/if}}
   };
 
@@ -103,6 +121,15 @@ export function createTestInfrastructure() {
 {{/if}}
 {{#if EVENTS}}
     eventBus: fakes.eventBus,
+{{/if}}
+{{#if GATEWAY}}
+    paymentGateway: fakes.paymentGateway,
+{{/if}}
+{{#if IAP_NATIVE}}
+    storeVerifier: fakes.storeVerifier,
+{{/if}}
+{{#if IAP_ADAPTY}}
+    adapty: fakes.adapty,
 {{/if}}
   };
   return { infra, ...fakes };

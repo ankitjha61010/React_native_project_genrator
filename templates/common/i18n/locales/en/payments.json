@@ -1,0 +1,20 @@
+{
+  "storeTitle": "Premium",
+  "paypalTitle": "PayPal",
+  "yourAccess": "Your plan",
+  "freePlan": "Free plan",
+  "until": "until {{value1}}",
+  "noExpiry": "no expiry",
+  "active": "ACTIVE",
+  "buy": "Buy",
+  "extend": "Extend",
+  "subscription": "Subscription",
+  "forDays": "{{value1}} days",
+  "lifetime": "Lifetime",
+  "noProducts": "Nothing to buy yet – products are added in the admin panel.",
+  "restore": "Restore purchases",
+  "restored": "Purchases restored",
+  "purchased": "Thank you! Your purchase is active.",
+  "pending": "Payment received – it will be active once it is confirmed.",
+  "storeTerms": "Subscriptions renew automatically until cancelled in your store account settings."
+}

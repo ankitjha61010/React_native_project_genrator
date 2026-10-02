@@ -293,6 +293,14 @@ The code and all native setup are done, but **every key is a `YOUR_…` placehol
 Step-by-step guide (consoles, SHA-1 and key hashes, backend token verification): [docs/SOCIAL_LOGIN.md](docs/SOCIAL_LOGIN.md).
 
 {{/if}}
+{{#if PAYMENTS}}
+## Payments
+
+{{#if IAP}}In-app purchases ({{IAP_PROVIDER_NAME}}){{/if}}{{#if IAP}}{{#if GATEWAY}} and {{/if}}{{/if}}{{#if GATEWAY}}{{GATEWAY_NAME}} checkout{{/if}}: a Store screen (Profile → Premium) selling the
+backend's catalog, and `useAccess().hasAccess('premium')` to unlock features. Store setup, test accounts and
+the store rules: [docs/PAYMENTS.md](docs/PAYMENTS.md).
+{{/if}}
+
 {{#if GOOGLE_LOCATION}}
 ## Google Location SDK
 

@@ -26,6 +26,9 @@ import type { LegalRepository } from '{{IMPORT:contract.legal}}';
 {{#if OTA}}
 import type { OTARepository } from '{{IMPORT:contract.ota}}';
 {{/if}}
+{{#if PAYMENTS}}
+import type { PaymentsRepository } from '{{IMPORT:contract.payments}}';
+{{/if}}
 import type { UsersRepository } from '{{IMPORT:contract.users}}';
 {{#if AUTH_REFRESH}}
 import { MongooseRefreshTokensRepository } from '{{IMPORT:repo.auth}}';
@@ -53,6 +56,9 @@ import { MongooseLegalRepository } from '{{IMPORT:repo.legal}}';
 {{/if}}
 {{#if OTA}}
 import { MongooseOTARepository } from '{{IMPORT:repo.ota}}';
+{{/if}}
+{{#if PAYMENTS}}
+import { MongoosePaymentsRepository } from '{{IMPORT:repo.payments}}';
 {{/if}}
 import { MongooseUsersRepository } from '{{IMPORT:repo.users}}';
 {{#if REDIS_CODES}}
@@ -90,6 +96,9 @@ export interface Repositories {
 {{#if OTA}}
   ota: OTARepository;
 {{/if}}
+{{#if PAYMENTS}}
+  payments: PaymentsRepository;
+{{/if}}
 }
 
 /** Mongoose models use the default connection opened by `createDatabase()`. */
@@ -126,6 +135,9 @@ export function createRepositories(_database: Database): Repositories {
 {{/if}}
 {{#if OTA}}
     ota: new MongooseOTARepository(),
+{{/if}}
+{{#if PAYMENTS}}
+    payments: new MongoosePaymentsRepository(),
 {{/if}}
   };
 }

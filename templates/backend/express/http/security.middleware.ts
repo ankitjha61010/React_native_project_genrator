@@ -25,6 +25,13 @@ import { sanitizeInput } from '{{IMPORT:ex.mw.sanitize}}';
  * - input sanitization (operator / prototype keys removed)
 {{/if}}
  */
+{{#if PAYMENTS}}
+/** Payment webhooks are signed over the exact bytes – keep them next to the parsed body. */
+function keepRawBody(req: object, _res: unknown, buffer: Buffer): void {
+  (req as { rawBody?: Buffer }).rawBody = buffer;
+}
+
+{{/if}}
 export function applySecurity(app: Express): void {
   app.disable('x-powered-by');
   if (config.http.trustProxy) app.set('trust proxy', 1);
@@ -47,10 +54,10 @@ export function applySecurity(app: Express): void {
 {{/if}}
 
 {{#if SEC_BODY_LIMIT}}
-  app.use(express.json({ limit: config.http.bodyLimit }));
+  app.use(express.json({ limit: config.http.bodyLimit{{#if PAYMENTS}}, verify: keepRawBody{{/if}} }));
   app.use(express.urlencoded({ extended: false, limit: config.http.bodyLimit }));
 {{else}}
-  app.use(express.json());
+  app.use(express.json({{#if PAYMENTS}}{ verify: keepRawBody }{{/if}}));
   app.use(express.urlencoded({ extended: false }));
 {{/if}}
 {{#if SEC_SANITIZE}}

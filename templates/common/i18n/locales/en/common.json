@@ -140,5 +140,13 @@
   "missedVoiceCall": "Missed voice call",
   "missedVideoCall": "Missed video call",
   "noAnswer": "No answer",
-  "tapToCallBack": "Tap to call back"
+  "tapToCallBack": "Tap to call back",
+  "deleteNotification": "Delete notification",
+  "deleteNotificationConfirm": "Remove this notification?",
+  "deleteAllNotifications": "Delete all",
+  "deleteAllNotificationsTitle": "Delete all notifications?",
+  "deleteAllNotificationsConfirm": "Every notification will be removed. This cannot be undone.",
+  "notificationDeleted": "Notification deleted",
+  "allNotificationsDeleted": "All notifications deleted",
+  "deleteAllNotificationsFailed": "Couldn't delete the notifications. Please try again."
 }

@@ -12,7 +12,7 @@ import { INFRASTRUCTURE, SERVICES } from '{{IMPORT:nest.tokens}}';
 {{/if}}
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false, logger: new AppLogger() });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false, {{#if PAYMENTS}}rawBody: true, {{/if}}logger: new AppLogger() });
   configureApp(app);
 {{#if REPLICA}}
   // Keeps the local copy of the users in sync, handles events of the other services.

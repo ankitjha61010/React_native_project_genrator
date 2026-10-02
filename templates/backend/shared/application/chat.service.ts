@@ -280,8 +280,8 @@ export class ChatService {
   }
 
   async sendMessage(userId: string, conversationId: string, input: SendMessageInput): Promise<ChatMessageView> {
-    const { conversation, member } = await this.requireMember(userId, conversationId);
 {{#if GROUP_CHAT}}
+    const { conversation, member } = await this.requireMember(userId, conversationId);
     if (!conversation.isGroup) {
       const members = await this.deps.chat.listMembers([conversationId]);
       const other = members.find(m => m.userId !== userId);
@@ -290,8 +290,9 @@ export class ChatService {
       }
     }
 {{else}}
-    const members = await this.deps.chat.listMembers([conversationId]);
-    const other = members.find(m => m.userId !== userId);
+    const { member } = await this.requireMember(userId, conversationId);
+    // Every conversation is direct: no messages to or from someone you blocked (or who blocked you).
+    const other = (await this.deps.chat.listMembers([conversationId])).find(m => m.userId !== userId);
     if (other && (await this.deps.chat.isBlocked(userId, other.userId))) {
       throw new ForbiddenError(CHAT_MESSAGES.userBlockedError);
     }

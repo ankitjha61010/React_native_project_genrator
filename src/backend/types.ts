@@ -1,3 +1,4 @@
+import type { InAppPurchaseProvider, PaymentCredentials, PaymentGateway } from '../config/payments.js';
 import type { SocialCredentials } from '../config/socialAuth.js';
 
 /** What the CLI generates. */
@@ -66,6 +67,10 @@ export interface BackendModules {
   deleteAccount: boolean;
   /** Over-The-Air (OTA) updates module (bundle checks, downloads, releases management). */
   ota?: boolean;
+  /** In-app purchases: verify react-native-iap purchases with Apple / Google, or sync Adapty access levels. */
+  inAppPurchase?: InAppPurchaseProvider;
+  /** Payment gateway: checkout, confirmation, signed webhooks and refunds. */
+  paymentGateway?: PaymentGateway;
 }
 
 /**
@@ -102,6 +107,8 @@ export interface BackendOptions {
   agoraAppId?: string;
   /** Agora App Certificate for backend RTC token generation. */
   agoraAppCertificate?: string;
+  /** Payment keys entered while generating (written to .env; missing ones get dummy values). */
+  paymentCredentials?: PaymentCredentials;
   /** Full-stack: the AES key / IV written to both .env files (generated when missing). */
   encryptionSecrets?: { key: string; iv: string };
   /** Monolith (one API) or gateway + services. */

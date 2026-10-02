@@ -1,3 +1,17 @@
+{{#if GATEWAY}}
+import { BadRequestError } from '{{IMPORT:core.errors}}';
+import type { CreateOrderInput, GatewayConfirmation, GatewayOrder, GatewayWebhookEvent, PaymentGateway } from '{{IMPORT:port.paymentGateway}}';
+{{/if}}
+{{#if IAP_NATIVE}}
+import { NotFoundError } from '{{IMPORT:core.errors}}';
+import type { StorePurchaseInput, StorePurchaseVerifier, VerifiedPurchase } from '{{IMPORT:port.inAppPurchases}}';
+{{/if}}
+{{#if IAP_ADAPTY}}
+import type { AdaptyAccessLevel, AdaptyClient } from '{{IMPORT:port.inAppPurchases}}';
+{{/if}}
+{{#if PAYMENT_VERIFIERS}}
+import { PAYMENTS_MESSAGES } from '{{IMPORT:messages.payments}}';
+{{/if}}
 {{#if UPLOADS}}
 import { randomUUID } from 'node:crypto';
 {{/if}}
@@ -162,3 +176,64 @@ export class FakeHealthCheck implements HealthCheck {
     if (!this.healthy) throw new Error('down');
   }
 }
+{{#if GATEWAY}}
+
+/**
+ * Stands in for {{GATEWAY_NAME}}: orders are recorded, `nextStatus` decides what confirm answers, and a
+ * webhook is "signed" when its `x-fake-signature` header is `valid` (its body is the mapped event).
+ */
+export class FakePaymentGateway implements PaymentGateway {
+  readonly name = '{{GATEWAY_ID}}' as const;
+  readonly orders: CreateOrderInput[] = [];
+  readonly refunds: Array<{ providerPaymentId: string; amount: number }> = [];
+  nextStatus: GatewayConfirmation['status'] = 'paid';
+
+  async createOrder(input: CreateOrderInput): Promise<GatewayOrder> {
+    this.orders.push(input);
+    const providerOrderId = `order_${this.orders.length}`;
+    return { providerOrderId, client: { orderId: providerOrderId } };
+  }
+
+  async confirm(providerOrderId: string): Promise<GatewayConfirmation> {
+    return { status: this.nextStatus, providerPaymentId: this.nextStatus === 'pending' ? null : `pay_${providerOrderId}`, failureReason: this.nextStatus === 'failed' ? 'Card declined' : undefined };
+  }
+
+  async refund(input: { providerPaymentId: string; amount: number }): Promise<{ refundId: string }> {
+    this.refunds.push({ providerPaymentId: input.providerPaymentId, amount: input.amount });
+    return { refundId: `refund_${this.refunds.length}` };
+  }
+
+  async parseWebhook(rawBody: Buffer, headers: Record<string, string | undefined>): Promise<GatewayWebhookEvent> {
+    if (headers['x-fake-signature'] !== 'valid') throw new BadRequestError(PAYMENTS_MESSAGES.invalidWebhook);
+    return JSON.parse(rawBody.toString('utf8')) as GatewayWebhookEvent;
+  }
+}
+{{/if}}
+{{#if IAP_NATIVE}}
+
+/** Stands in for Apple / Google: `purchases` maps a transaction id / purchase token to what the store says. */
+export class FakeStorePurchaseVerifier implements StorePurchaseVerifier {
+  readonly purchases = new Map<string, VerifiedPurchase>();
+
+  async verify(input: StorePurchaseInput): Promise<VerifiedPurchase> {
+    const purchase = this.purchases.get((input.platform === 'ios' ? input.transactionId : input.purchaseToken) ?? '');
+    if (!purchase) throw new NotFoundError(PAYMENTS_MESSAGES.purchaseNotFound);
+    return purchase;
+  }
+}
+{{/if}}
+{{#if IAP_ADAPTY}}
+
+/** Stands in for Adapty: `levels` per customer user id; webhooks need `Authorization: adapty-token`. */
+export class FakeAdaptyClient implements AdaptyClient {
+  readonly levels = new Map<string, AdaptyAccessLevel[]>();
+
+  async accessLevels(customerUserId: string): Promise<AdaptyAccessLevel[]> {
+    return this.levels.get(customerUserId) ?? [];
+  }
+
+  isValidWebhook(authorization: string | undefined): boolean {
+    return authorization === 'adapty-token';
+  }
+}
+{{/if}}

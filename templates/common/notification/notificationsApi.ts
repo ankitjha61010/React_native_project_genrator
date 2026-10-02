@@ -35,4 +35,6 @@ export const notificationsApi = {
   markRead: (id: string) => api.patch<null>(`/notifications/${encodeURIComponent(id)}/read`),
   markAllRead: () => api.post<null>('/notifications/read-all'),
   remove: (id: string) => api.delete<null>(`/notifications/${encodeURIComponent(id)}`),
+  /** Deletes every notification of the signed-in user. */
+  removeAll: () => api.delete<null>('/notifications'),
 };

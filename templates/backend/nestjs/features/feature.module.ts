@@ -62,3 +62,10 @@ import { LegalController } from '{{IMPORT:nest.legal.controller}}';
 @Module({ controllers: [LegalController] })
 export class LegalModule {}
 {{/if}}
+{{#if MODULE_PAYMENTS}}
+import { PaymentsController } from '{{IMPORT:nest.payments.controller}}';
+
+/** Services come from the global CoreModule – a feature module only declares its controller. */
+@Module({ controllers: [PaymentsController] })
+export class PaymentsModule {}
+{{/if}}

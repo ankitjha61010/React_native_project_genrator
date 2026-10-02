@@ -38,5 +38,6 @@ export function useNotifications() {
     markRead: notificationInbox.markRead,
     markAllRead: notificationInbox.markAllRead,
     remove: notificationInbox.remove,
+    removeAll: notificationInbox.removeAll,
   };
 }

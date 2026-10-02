@@ -8,6 +8,9 @@ export const NOTIFICATIONS_MESSAGES = {
   cleared: 'Notifications cleared',
   broadcastSent: 'Broadcast sent',
   broadcasts: 'Broadcasts',
+  broadcastDeleted: 'Broadcast deleted',
+  broadcastsCleared: 'All broadcasts deleted',
   // ── errors ─────────────────────────────────────────────────────────────────
   notFound: { message: 'Notification not found', code: 'NOTIFICATION_NOT_FOUND' },
+  broadcastNotFound: { message: 'Broadcast not found', code: 'BROADCAST_NOT_FOUND' },
 } as const;

@@ -19,6 +19,9 @@ import { legalRoutes } from '{{IMPORT:ex.legal.routes}}';
 {{#if OTA}}
 import { otaRoutes } from '{{IMPORT:ex.ota.routes}}';
 {{/if}}
+{{#if PAYMENTS}}
+import { paymentsRoutes } from '{{IMPORT:ex.payments.routes}}';
+{{/if}}
 {{#if NOTIFICATIONS}}
 import { notificationsRoutes } from '{{IMPORT:ex.notifications.routes}}';
 {{/if}}
@@ -56,6 +59,9 @@ export function apiRoutes(services: Services): Router {
 {{/if}}
 {{#if OTA}}
   api.use('/ota', otaRoutes(services));
+{{/if}}
+{{#if PAYMENTS}}
+  api.use('/payments', paymentsRoutes(services));
 {{/if}}
   return api;
 }

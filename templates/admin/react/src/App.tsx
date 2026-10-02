@@ -10,6 +10,9 @@ import { LegalPage } from './pages/LegalPage';
 {{#if OTA}}
 import { OTAPage } from './pages/OTAPage';
 {{/if}}
+{{#if PAYMENTS}}
+import { PaymentsManager } from './components/PaymentsManager';
+{{/if}}
 
 export const App: React.FC = () => {
   const { user, loading } = useAuth();
@@ -44,6 +47,10 @@ export const App: React.FC = () => {
       case 'ota':
         return { title: 'Over-The-Air (OTA) Updates', subtitle: 'Manage native React Native bundle deployments and rollbacks' };
 {{/if}}
+{{#if PAYMENTS}}
+      case 'payments':
+        return { title: 'Payments', subtitle: 'Products, {{#if GATEWAY}}transactions & refunds, {{/if}}{{#if IAP}}store purchases, {{/if}}user access' };
+{{/if}}
       default:
         return { title: 'Admin Console', subtitle: 'System administration' };
     }
@@ -67,6 +74,13 @@ export const App: React.FC = () => {
           {currentTab === 'legal' && <LegalPage />}
 {{#if OTA}}
           {currentTab === 'ota' && <OTAPage />}
+{{/if}}
+{{#if PAYMENTS}}
+          {currentTab === 'payments' && (
+            <div className="p-8 max-w-7xl mx-auto">
+              <PaymentsManager />
+            </div>
+          )}
 {{/if}}
         </main>
       </div>

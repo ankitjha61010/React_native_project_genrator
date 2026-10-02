@@ -52,6 +52,14 @@ export type MainStackParamList = {
   ChangePassword: undefined;
 {{/if}}
   Settings: undefined;
+{{#if PAYMENTS}}
+  /** Premium / store (payments). */
+  Store: undefined;
+{{/if}}
+{{#if GATEWAY_PAYPAL}}
+  /** PayPal's approval page (the web view settles the checkout). */
+  PayPalCheckout: { paymentId: string; approvalUrl: string; returnUrl: string; cancelUrl: string };
+{{/if}}
 {{#if NOTIFICATIONS}}
   /** `highlightId`: the notification that was tapped (shown highlighted). */
   Notifications: { highlightId?: string } | undefined;

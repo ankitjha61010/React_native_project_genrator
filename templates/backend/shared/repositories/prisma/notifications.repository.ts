@@ -61,4 +61,20 @@ export class PrismaNotificationsRepository implements NotificationsRepository {
     ]);
     return { items: records.map(toBroadcast), total };
   }
+
+  async deleteBroadcast(id: string): Promise<boolean> {
+    const [, deleted] = await this.prisma.$transaction([
+      this.prisma.notification.deleteMany({ where: { broadcastId: id } }),
+      this.prisma.broadcast.deleteMany({ where: { id } }),
+    ]);
+    return deleted.count > 0;
+  }
+
+  async deleteAllBroadcasts(): Promise<number> {
+    const [, deleted] = await this.prisma.$transaction([
+      this.prisma.notification.deleteMany({ where: { broadcastId: { not: null } } }),
+      this.prisma.broadcast.deleteMany(),
+    ]);
+    return deleted.count;
+  }
 }

@@ -13,18 +13,27 @@ import enCommon from './locales/en/common.json';
 import enHome from './locales/en/home.json';
 import enOrder from './locales/en/order.json';
 import enProduct from './locales/en/product.json';
+{{#if PAYMENTS}}
+import enPayments from './locales/en/payments.json';
+{{/if}}
 {{#if RTL}}
 import arAuth from './locales/ar/auth.json';
 import arCommon from './locales/ar/common.json';
 import arHome from './locales/ar/home.json';
 import arOrder from './locales/ar/order.json';
 import arProduct from './locales/ar/product.json';
+{{#if PAYMENTS}}
+import arPayments from './locales/ar/payments.json';
+{{/if}}
 {{/if}}
 import hiAuth from './locales/hi/auth.json';
 import hiCommon from './locales/hi/common.json';
 import hiHome from './locales/hi/home.json';
 import hiOrder from './locales/hi/order.json';
 import hiProduct from './locales/hi/product.json';
+{{#if PAYMENTS}}
+import hiPayments from './locales/hi/payments.json';
+{{/if}}
 
 export const resources = {
   en: {
@@ -33,6 +42,9 @@ export const resources = {
     home: enHome,
     product: enProduct,
     order: enOrder,
+{{#if PAYMENTS}}
+    payments: enPayments,
+{{/if}}
   },
   hi: {
     common: hiCommon,
@@ -40,6 +52,9 @@ export const resources = {
     home: hiHome,
     product: hiProduct,
     order: hiOrder,
+{{#if PAYMENTS}}
+    payments: hiPayments,
+{{/if}}
   },
 {{#if RTL}}
   ar: {
@@ -48,6 +63,9 @@ export const resources = {
     home: arHome,
     product: arProduct,
     order: arOrder,
+{{#if PAYMENTS}}
+    payments: arPayments,
+{{/if}}
   },
 {{/if}}
 } as const;

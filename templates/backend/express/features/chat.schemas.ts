@@ -3,6 +3,8 @@ import { {{#if GROUP_CHAT}}MEMBER_ROLES, {{/if}}MESSAGE_TYPES, SystemEvent } fro
 
 export const conversationParams = z.object({ conversationId: z.string().min(1).max(64) });
 export const messageParams = conversationParams.extend({ messageId: z.string().min(1).max(64) });
+/** Block / unblock (direct chats – also without groups). */
+export const userParams = z.object({ userId: z.string().min(1).max(64) });
 
 export const startConversationSchema = z
   .object({ participantIds: z.array(z.string().min(1).max(64)).length(1).meta({ description: 'The other person' }) })
@@ -12,7 +14,6 @@ export const startConversationSchema = z
 const userIds = z.array(z.string().min(1).max(64)).min(1).max(256);
 
 export const memberParams = conversationParams.extend({ userId: z.string().min(1).max(64) });
-export const userParams = z.object({ userId: z.string().min(1).max(64) });
 
 export const createGroupSchema = z
   .object({

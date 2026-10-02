@@ -1,4 +1,5 @@
 import { Command, InvalidArgumentError, Option } from 'commander';
+import { IAP_PROVIDERS, PAYMENT_GATEWAYS, type InAppPurchaseProvider, type PaymentGateway } from '../config/payments.js';
 import { parseSocialAuth, type SocialProviders } from '../config/socialAuth.js';
 import { ARCHITECTURE_IDS } from '../architectures/index.js';
 import { STATE_MANAGEMENT_IDS, STORAGE_IDS } from '../config/constants.js';
@@ -67,6 +68,10 @@ export interface CliFlags {
   adminPanel?: boolean;
   /** Admin panel tech stack choice (react or next). */
   adminTechStack?: 'react' | 'next';
+  /** In-app purchases: none | iap (react-native-iap) | adapty. */
+  iap?: InAppPurchaseProvider;
+  /** Payment gateway: none | stripe | razorpay | paypal. */
+  paymentGateway?: PaymentGateway;
   storage?: string;
   install: boolean;
   pods: boolean;
@@ -142,6 +147,8 @@ export function parseArgs(argv: string[], version: string): CliFlags {
     .option('--admin-panel', 'generate web Admin Panel')
     .option('--no-admin-panel', 'no admin panel')
     .addOption(new Option('--admin-tech-stack <stack>', 'admin panel framework').choices(['react', 'next']))
+    .addOption(new Option('--iap <provider>', 'in-app purchases: none, iap (react-native-iap) or adapty').choices(IAP_PROVIDERS))
+    .addOption(new Option('--payment-gateway <gateway>', 'payment gateway: none, stripe, razorpay or paypal').choices(PAYMENT_GATEWAYS))
     .option('--analytics', 'add Firebase Analytics (screen tracking + analyticsService)')
     .option('--no-analytics', 'no Firebase Analytics')
     .addOption(new Option('--storage <engine>', 'key-value storage').choices(STORAGE_IDS))

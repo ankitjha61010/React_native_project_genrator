@@ -4,6 +4,8 @@ import { checkbox, confirm, input, select } from '@inquirer/prompts';
 import chalk from 'chalk';
 import type { CliFlags } from '../cli/args.js';
 import { log } from '../cli/logger.js';
+import { askPayments } from '../cli/paymentPrompts.js';
+import { GATEWAY_LABELS, IAP_LABELS } from '../config/payments.js';
 import { GeneratorError } from '../utils/errors.js';
 import { resolveUserPath } from '../utils/paths.js';
 import { validateFacebookAppId, validateGoogleClientId, type SocialCredentials } from '../config/socialAuth.js';
@@ -118,6 +120,7 @@ export function describeBackend(o: BackendOptions): string[] {
     ...(auth && o.authMethods.email ? [`Hashing:        ${HASHING_LABELS[o.hashing]}`] : []),
     ...(auth ? [`Modules:        chat ${on(o.modules.chat)} · group chat ${on(o.modules.groupChat)} · audio call ${on(o.modules.audioCall)} · video call ${on(o.modules.videoCall)} · push notifications ${on(o.modules.notifications)} · delete account ${on(o.modules.deleteAccount)}`] : []),
     `Legal pages:    ${on(o.modules.legal)}`,
+    ...(auth ? [`Payments:       in-app purchases ${chalk.cyan(IAP_LABELS[o.modules.inAppPurchase ?? 'none'])} · gateway ${chalk.cyan(GATEWAY_LABELS[o.modules.paymentGateway ?? 'none'])}`] : []),
     ...(auth ? [`Deployment:     ${o.deployment === 'microservices' ? 'microservices (gateway + services, Redis)' : 'monolith'}`] : []),
     `Redis:          ${on(o.redis)}${o.redis ? chalk.dim(' (rate limits, Socket.IO adapter, cache, OTP codes)') : ''}`,
     `Docker:         ${on(o.docker)}`,
@@ -144,6 +147,7 @@ export type BackendPreset = Pick<
   | 'installDependencies'
   | 'initGit'
   | 'firebaseServiceAccountPath'
+  | 'paymentCredentials'
   | 'agoraAppId'
   | 'agoraAppCertificate'
 >;
@@ -372,6 +376,7 @@ export async function collectBackendOptions(flags: CliFlags, previous?: BackendO
       label,
       v => (v ? 'yes' : 'no'),
     );
+  let paymentCredentials = preset?.paymentCredentials ?? previous?.paymentCredentials;
   if (preset) {
     modules = { ...preset.modules };
   } else if (auth !== 'none') {
@@ -386,7 +391,10 @@ export async function collectBackendOptions(flags: CliFlags, previous?: BackendO
       : await yesNo(flags.notifications, 'Do you want FCM / Push Notification support (device registration, device APIs)?', 'Push notifications', false, previous?.modules.notifications);
     const legal = await yesNo(flags.terms, 'Do you want Terms & Conditions (GET /legal + editable pages)?', 'Terms & Conditions', true, previous?.modules.legal);
     const deleteAccount = await yesNo(flags.deleteAccount, 'Do you want Delete Account functionality (DELETE /users/me)?', 'Delete account', true, previous?.modules.deleteAccount);
-    modules = { chat, groupChat, audioCall, videoCall, notifications, legal, deleteAccount };
+    // Payments: the same questions (and key prompts) as the app wizard.
+    const payments = await askPayments(flags, interactive);
+    paymentCredentials = payments.paymentCredentials;
+    modules = { chat, groupChat, audioCall, videoCall, notifications, legal, deleteAccount, inAppPurchase: payments.inAppPurchase, paymentGateway: payments.paymentGateway };
     if (fromFlag) log.success(`Modules: ${chalk.cyan(fromFlag.join(', ') || 'none')}`);
   } else {
     // No accounts: only the legal pages make sense.
@@ -582,6 +590,7 @@ export async function collectBackendOptions(flags: CliFlags, previous?: BackendO
     modules,
     apiEncryption,
     socialCredentials,
+    paymentCredentials,
     firebaseServiceAccountPath,
     agoraAppId,
     agoraAppCertificate,

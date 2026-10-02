@@ -84,6 +84,11 @@ const ECOSYSTEM_2026_08: Record<string, string> = {
   'react-native-zip-archive': '9.5.2',
   'react-native-restart': '0.0.27',
   'react-native-device-info': '15.0.2',
+  // Payments (optional): in-app purchases (react-native-iap is a Nitro module) and payment gateways.
+  'react-native-iap': '16.7.2',
+  'react-native-adapty': '4.2.1',
+  '@stripe/stripe-react-native': '0.80.0',
+  'react-native-razorpay': '3.0.0',
 };
 
 const SUPPORTED_2026_08: Record<string, string> = {

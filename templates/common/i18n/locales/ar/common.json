@@ -140,5 +140,13 @@
   "missedVoiceCall": "مكالمة صوتية فائتة",
   "missedVideoCall": "مكالمة فيديو فائتة",
   "noAnswer": "لا يوجد رد",
-  "tapToCallBack": "انقر لمعاودة الاتصال"
+  "tapToCallBack": "انقر لمعاودة الاتصال",
+  "deleteNotification": "حذف الإشعار",
+  "deleteNotificationConfirm": "هل تريد إزالة هذا الإشعار؟",
+  "deleteAllNotifications": "حذف الكل",
+  "deleteAllNotificationsTitle": "حذف جميع الإشعارات؟",
+  "deleteAllNotificationsConfirm": "ستتم إزالة جميع الإشعارات. لا يمكن التراجع عن ذلك.",
+  "notificationDeleted": "تم حذف الإشعار",
+  "allNotificationsDeleted": "تم حذف جميع الإشعارات",
+  "deleteAllNotificationsFailed": "تعذر حذف الإشعارات. حاول مرة أخرى."
 }

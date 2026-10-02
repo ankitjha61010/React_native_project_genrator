@@ -37,6 +37,10 @@ export function decryptText(base64: string): string {
 /** Decrypts `{ data }` request bodies and encrypts every JSON response. Multipart uploads pass through. */
 export function apiEncryption(req: Request, res: Response, next: NextFunction): void {
   if (!config.encryption.enabled) return next();
+{{#if PAYMENTS}}
+  // Payment providers call the webhooks with plain JSON (and check nothing in the response).
+  if (req.path.startsWith('/payments/webhooks/')) return next();
+{{/if}}
 
   const body: unknown = req.body;
   if (body && typeof body === 'object' && typeof (body as { data?: unknown }).data === 'string') {

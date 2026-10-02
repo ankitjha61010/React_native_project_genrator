@@ -26,6 +26,9 @@ import { BroadcastOrmEntity, NotificationOrmEntity } from '{{IMPORT:typeorm.noti
 {{#if LEGAL}}
 import { LegalSettingsOrmEntity } from '{{IMPORT:typeorm.legal}}';
 {{/if}}
+{{#if PAYMENTS}}
+import { EntitlementOrmEntity, PaymentProductOrmEntity{{#if GATEWAY}}, PaymentOrmEntity{{/if}}{{#if IAP}}, StorePurchaseOrmEntity{{/if}} } from '{{IMPORT:typeorm.payments}}';
+{{/if}}
 import { UserOrmEntity } from '{{IMPORT:typeorm.user}}';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -67,6 +70,16 @@ export function createDataSource(url: string): DataSource {
 {{/if}}
 {{#if LEGAL}}
       LegalSettingsOrmEntity,
+{{/if}}
+{{#if PAYMENTS}}
+      PaymentProductOrmEntity,
+      EntitlementOrmEntity,
+{{#if GATEWAY}}
+      PaymentOrmEntity,
+{{/if}}
+{{#if IAP}}
+      StorePurchaseOrmEntity,
+{{/if}}
 {{/if}}
     ],
     // Schema changes only through migrations – never `synchronize` in a real database.

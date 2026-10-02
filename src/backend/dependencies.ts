@@ -65,6 +65,8 @@ export const BACKEND_VERSIONS: Record<string, string> = {
   typescript: '6.0.3',
   // Calling: Agora access token generation (server-side, never sent to client directly)
   'agora-access-token': '2.0.4',
+  // Payments: only Stripe needs an SDK (Razorpay, PayPal, Apple, Google and Adapty are plain HTTPS + node:crypto).
+  stripe: '23.0.0',
   // Tooling continues
   '@types/node': '24.19.0',
   tsx: '4.23.15',
@@ -142,6 +144,8 @@ export function resolveBackendDependencies(o: BackendOptions): BackendDependenci
     }
     if (o.modules.notifications) add(runtime, 'firebase-admin');
     if (o.modules.audioCall || o.modules.videoCall) add(runtime, 'agora-access-token');
+    // Payments run in the monolith / identity service only.
+    if (o.modules.paymentGateway === 'stripe' && o.service !== 'chat' && o.service !== 'notifications') add(runtime, 'stripe');
   }
   // Redis: always for microservices (events), optional for a monolith.
   if (o.redis || o.service) {

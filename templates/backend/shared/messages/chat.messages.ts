@@ -50,7 +50,8 @@ export const CHAT_MESSAGES = {
   adminOnly: { message: 'Only group admins can do this', code: 'ADMIN_ONLY' },
   notAMember: { message: 'This user is not a member of the group', code: 'NOT_A_MEMBER' },
   removeYourself: { message: 'Use "Leave group" to remove yourself', code: 'USE_LEAVE' },
+{{/if}}
+  // Direct chats too (editing messages, blocking people) – never inside the GROUP_CHAT block.
   onlyTextEditable: { message: 'Only text messages can be edited', code: 'NOT_EDITABLE' },
   cannotBlockYourself: { message: 'You cannot block yourself', code: 'CANNOT_BLOCK_YOURSELF' },
-{{/if}}
 } as const satisfies Record<string, string | ErrorMessage | ((...args: never[]) => ErrorMessage)>;

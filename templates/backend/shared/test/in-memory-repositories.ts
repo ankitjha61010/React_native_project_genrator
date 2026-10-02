@@ -50,6 +50,29 @@ import type { DevicesRepository } from '{{IMPORT:contract.devices}}';
 {{#if NOTIFICATIONS}}
 import type { CreateNotificationData, NotificationsRepository } from '{{IMPORT:contract.notifications}}';
 {{/if}}
+{{#if PAYMENTS}}
+import {
+  isEntitlementActive,
+  type Entitlement,
+  type EntitlementInput,
+  type EntitlementSource,
+{{#if GATEWAY}}
+  type Payment,
+  type PaymentInput,
+  type PaymentProvider,
+  type PaymentStatus,
+{{/if}}
+  type PaymentStats,
+  type Product,
+  type ProductInput,
+{{#if IAP}}
+  type Purchase,
+  type PurchaseInput,
+  type PurchaseStore,
+{{/if}}
+} from '{{IMPORT:domain.payments}}';
+import type { PaymentsRepository } from '{{IMPORT:contract.payments}}';
+{{/if}}
 {{#if OTA}}
 import type { OTADownloadEvent, OTARelease } from '{{IMPORT:domain.ota}}';
 import type { OTARepository } from '{{IMPORT:contract.ota}}';
@@ -566,6 +589,21 @@ export class InMemoryNotificationsRepository implements NotificationsRepository 
     const all = this.broadcasts.toSorted(newest);
     return { items: all.slice(pageOffset(query), pageOffset(query) + query.limit), total: all.length };
   }
+
+  async deleteBroadcast(id: string) {
+    const index = this.broadcasts.findIndex(b => b.id === id);
+    if (index === -1) return false;
+    this.broadcasts.splice(index, 1);
+    this.notifications = this.notifications.filter(n => n.broadcastId !== id);
+    return true;
+  }
+
+  async deleteAllBroadcasts() {
+    const count = this.broadcasts.length;
+    this.broadcasts.length = 0;
+    this.notifications = this.notifications.filter(n => !n.broadcastId);
+    return count;
+  }
 }
 {{/if}}
 {{#if CALLING}}
@@ -667,6 +705,152 @@ export class InMemoryLegalRepository implements LegalRepository {
 }
 {{/if}}
 
+{{#if PAYMENTS}}
+export class InMemoryPaymentsRepository implements PaymentsRepository {
+  products: Product[] = [];
+  entitlements: Entitlement[] = [];
+{{#if GATEWAY}}
+  payments: Payment[] = [];
+{{/if}}
+{{#if IAP}}
+  purchases: Purchase[] = [];
+{{/if}}
+
+  async listProducts(filter: { activeOnly: boolean }) {
+    return this.products.filter(p => !filter.activeOnly || p.active).toSorted((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+  }
+
+  async findProduct(id: string) {
+    return this.products.find(p => p.id === id) ?? null;
+  }
+{{#if IAP}}
+
+  async findProductByStoreId(storeProductId: string) {
+    return this.products.find(p => p.appleProductId === storeProductId || p.googleProductId === storeProductId) ?? null;
+  }
+{{/if}}
+
+  async createProduct(data: ProductInput) {
+    const product: Product = { id: randomUUID(), ...data, createdAt: new Date(), updatedAt: new Date() };
+    this.products.push(product);
+    return product;
+  }
+
+  async updateProduct(id: string, data: Partial<ProductInput>) {
+    const product = this.products.find(p => p.id === id);
+    if (!product) return null;
+    Object.assign(product, data, { updatedAt: new Date() });
+    return product;
+  }
+
+  async deleteProduct(id: string) {
+    const before = this.products.length;
+    this.products = this.products.filter(p => p.id !== id);
+    return this.products.length < before;
+  }
+
+  async listEntitlements(filter: { userId?: string }, query: PageQuery) {
+    const all = this.entitlements.filter(e => !filter.userId || e.userId === filter.userId).toSorted(newest);
+    return { items: all.slice(pageOffset(query), pageOffset(query) + query.limit), total: all.length };
+  }
+
+  async activeEntitlements(userId: string, now: Date) {
+    return this.entitlements.filter(e => e.userId === userId && isEntitlementActive(e, now));
+  }
+
+  async findEntitlement(id: string) {
+    return this.entitlements.find(e => e.id === id) ?? null;
+  }
+
+  async findEntitlementByReference(userId: string, source: EntitlementSource, referenceId: string) {
+    return this.entitlements.findLast(e => e.userId === userId && e.source === source && e.referenceId === referenceId) ?? null;
+  }
+
+  async createEntitlement(data: EntitlementInput) {
+    const entitlement: Entitlement = { id: randomUUID(), ...data, revokedAt: null, createdAt: new Date(), updatedAt: new Date() };
+    this.entitlements.push(entitlement);
+    return entitlement;
+  }
+
+  async updateEntitlement(id: string, data: Partial<Pick<Entitlement, 'expiresAt' | 'revokedAt' | 'productId'>>) {
+    const entitlement = this.entitlements.find(e => e.id === id);
+    if (!entitlement) return null;
+    Object.assign(entitlement, data, { updatedAt: new Date() });
+    return entitlement;
+  }
+{{#if GATEWAY}}
+
+  async createPayment(data: PaymentInput) {
+    const payment: Payment = { id: randomUUID(), ...data, createdAt: new Date(), updatedAt: new Date() };
+    this.payments.push(payment);
+    return payment;
+  }
+
+  async findPayment(id: string) {
+    return this.payments.find(p => p.id === id) ?? null;
+  }
+
+  async findPaymentByProviderOrder(provider: PaymentProvider, providerOrderId: string) {
+    return this.payments.find(p => p.provider === provider && p.providerOrderId === providerOrderId) ?? null;
+  }
+
+  async findPaymentByProviderPayment(provider: PaymentProvider, providerPaymentId: string) {
+    return this.payments.find(p => p.provider === provider && p.providerPaymentId === providerPaymentId) ?? null;
+  }
+
+  async transitionPayment(id: string, from: PaymentStatus[], data: Partial<PaymentInput>) {
+    const payment = this.payments.find(p => p.id === id && from.includes(p.status));
+    if (!payment) return null;
+    Object.assign(payment, data, { updatedAt: new Date() });
+    return payment;
+  }
+
+  async listPayments(filter: { userId?: string; status?: PaymentStatus }, query: PageQuery) {
+    const all = this.payments.filter(p => (!filter.userId || p.userId === filter.userId) && (!filter.status || p.status === filter.status)).toSorted(newest);
+    return { items: all.slice(pageOffset(query), pageOffset(query) + query.limit), total: all.length };
+  }
+{{/if}}
+{{#if IAP}}
+
+  async findPurchase(store: PurchaseStore, transactionId: string) {
+    return this.purchases.find(p => p.store === store && p.transactionId === transactionId) ?? null;
+  }
+
+  async upsertPurchase(data: PurchaseInput) {
+    const existing = this.purchases.find(p => p.store === data.store && p.transactionId === data.transactionId);
+    if (existing) return Object.assign(existing, data, { updatedAt: new Date() });
+    const purchase: Purchase = { id: randomUUID(), ...data, createdAt: new Date(), updatedAt: new Date() };
+    this.purchases.push(purchase);
+    return purchase;
+  }
+
+  async listPurchases(filter: { userId?: string }, query: PageQuery) {
+    const all = this.purchases.filter(p => !filter.userId || p.userId === filter.userId).toSorted(newest);
+    return { items: all.slice(pageOffset(query), pageOffset(query) + query.limit), total: all.length };
+  }
+{{/if}}
+
+  async stats(now: Date): Promise<PaymentStats> {
+{{#if GATEWAY}}
+    const settled = this.payments.filter(p => p.status === 'paid' || p.status === 'partially_refunded' || p.status === 'refunded');
+    const revenue = new Map<string, number>();
+    for (const p of settled) revenue.set(p.currency, (revenue.get(p.currency) ?? 0) + p.amount - p.refundedAmount);
+{{/if}}
+    return {
+      activeEntitlements: this.entitlements.filter(e => isEntitlementActive(e, now)).length,
+      products: this.products.length,
+{{#if GATEWAY}}
+      paidPayments: settled.length,
+      revenue: [...revenue].map(([currency, amount]) => ({ currency, amount })).toSorted((a, b) => a.currency.localeCompare(b.currency)),
+{{/if}}
+{{#if IAP}}
+      purchases: this.purchases.length,
+{{/if}}
+    };
+  }
+}
+{{/if}}
+
 {{#if OTA}}
 export class InMemoryOTARepository implements OTARepository {
   releases: OTARelease[] = [];
@@ -737,6 +921,9 @@ export function createInMemoryRepositories() {
 {{/if}}
 {{#if OTA}}
     ota: new InMemoryOTARepository(),
+{{/if}}
+{{#if PAYMENTS}}
+    payments: new InMemoryPaymentsRepository(),
 {{/if}}
   } satisfies Repositories;
 }

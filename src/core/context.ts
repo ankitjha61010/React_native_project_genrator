@@ -1,3 +1,4 @@
+import { GATEWAY_LABELS, IAP_LABELS, paymentValues } from '../config/payments.js';
 import { ARCHITECTURES, getArchitecture } from '../architectures/index.js';
 import { STATE_MANAGEMENT_LABELS } from '../config/constants.js';
 import { getProfile } from '../config/compatibility.js';
@@ -51,6 +52,8 @@ export function prepareGeneration(options: ProjectOptions): PreparedGeneration {
   const sm = options.stateManagement;
   const social = options.socialAuth;
   const socialConfig = socialValues(options.socialCredentials);
+  const iap = options.inAppPurchase ?? 'none';
+  const gateway = options.paymentGateway ?? 'none';
 
   const flags: Record<string, boolean> = {
     STATE_REDUX: sm === 'redux',
@@ -89,6 +92,15 @@ export function prepareGeneration(options: ProjectOptions): PreparedGeneration {
     DRAWER: options.drawer,
     HAS_HEADER_BUTTONS: options.drawer || options.notifications,
     OTA: Boolean(options.ota),
+    /** Payments: in-app purchases and / or a payment gateway (Store screen, access levels). */
+    PAYMENTS: iap !== 'none' || gateway !== 'none',
+    IAP: iap !== 'none',
+    IAP_NATIVE: iap === 'iap',
+    IAP_ADAPTY: iap === 'adapty',
+    GATEWAY: gateway !== 'none',
+    GATEWAY_STRIPE: gateway === 'stripe',
+    GATEWAY_RAZORPAY: gateway === 'razorpay',
+    GATEWAY_PAYPAL: gateway === 'paypal',
     ADMIN_PANEL: Boolean(options.adminPanel),
   };
   for (const a of ARCHITECTURES) {
@@ -116,6 +128,10 @@ export function prepareGeneration(options: ProjectOptions): PreparedGeneration {
     GOOGLE_IOS_URL_SCHEME: socialConfig.googleIosUrlScheme,
     FACEBOOK_APP_ID: socialConfig.facebookAppId,
     FACEBOOK_CLIENT_TOKEN: socialConfig.facebookClientToken,
+    // Payments – the only payment key in the app is Adapty's public SDK key (everything secret stays in the backend).
+    ADAPTY_PUBLIC_SDK_KEY: paymentValues(options.paymentCredentials).adaptyPublicSdkKey,
+    IAP_PROVIDER_NAME: IAP_LABELS[iap],
+    GATEWAY_NAME: GATEWAY_LABELS[gateway],
     SOCIAL_STATUS_TEXT: [
       social.google && `Google – ${options.socialCredentials.googleWebClientId ? 'configured' : 'placeholders (skipped)'}`,
       social.facebook && `Facebook – ${options.socialCredentials.facebookAppId ? 'configured' : 'placeholders (skipped)'}`,

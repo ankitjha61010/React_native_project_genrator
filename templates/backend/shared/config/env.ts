@@ -108,6 +108,45 @@ const schema = z.object({
   /** Ringing timeout in seconds before call is marked missed. */
   CALL_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(60),
 {{/if}}
+{{#if GATEWAY_STRIPE}}
+  // Stripe (dashboard → Developers → API keys / Webhooks). Values containing REPLACE_ME count as "not set".
+  STRIPE_SECRET_KEY: z.string().default(''),
+  STRIPE_PUBLISHABLE_KEY: z.string().default(''),
+  STRIPE_WEBHOOK_SECRET: z.string().default(''),
+{{/if}}
+{{#if GATEWAY_RAZORPAY}}
+  // Razorpay (dashboard → Account & Settings → API Keys / Webhooks).
+  RAZORPAY_KEY_ID: z.string().default(''),
+  RAZORPAY_KEY_SECRET: z.string().default(''),
+  RAZORPAY_WEBHOOK_SECRET: z.string().default(''),
+{{/if}}
+{{#if GATEWAY_PAYPAL}}
+  // PayPal (developer.paypal.com → Apps & Credentials, and the app's webhook id).
+  PAYPAL_CLIENT_ID: z.string().default(''),
+  PAYPAL_CLIENT_SECRET: z.string().default(''),
+  PAYPAL_WEBHOOK_ID: z.string().default(''),
+  PAYPAL_MODE: z.enum(['sandbox', 'live']).default('sandbox'),
+{{/if}}
+{{#if IAP_NATIVE}}
+  // App Store Server API (App Store Connect → Users and Access → Integrations → In-App Purchase).
+  APPLE_IAP_ISSUER_ID: z.string().default(''),
+  APPLE_IAP_KEY_ID: z.string().default(''),
+  /** Path to the SubscriptionKey_XXXX.p8 file (or the PEM itself). */
+  APPLE_IAP_PRIVATE_KEY: z.string().default(''),
+  /** The iOS bundle id. */
+  APPLE_BUNDLE_ID: z.string().default('{{APP_PACKAGE}}'),
+  /** Path to (or JSON of) a service account with access to the Google Play Developer API. */
+  GOOGLE_PLAY_SERVICE_ACCOUNT: z.string().default(''),
+  /** The Android application id. */
+  GOOGLE_PLAY_PACKAGE_NAME: z.string().default('{{APP_PACKAGE}}'),
+  /** Development only: trust purchases without asking Apple / Google (refused in production). */
+  IAP_SKIP_VERIFICATION: boolean.default(false),
+{{/if}}
+{{#if IAP_ADAPTY}}
+  // Adapty (app settings → API keys: the secret key; Integrations → Webhooks: the authorization token).
+  ADAPTY_SECRET_KEY: z.string().default(''),
+  ADAPTY_WEBHOOK_TOKEN: z.string().default(''),
+{{/if}}
 {{#if HASH_CONFIGURABLE}}
   PASSWORD_HASH_ALGORITHM: z.enum(['argon2', 'bcrypt']).default('argon2'),
 {{/if}}
@@ -165,6 +204,12 @@ if (env.JWT_ACCESS_SECRET === env.JWT_REFRESH_SECRET) {
   process.exit(1);
 }
 {{/if}}
+{{/if}}
+{{#if IAP_NATIVE}}
+if (env.NODE_ENV === 'production' && env.IAP_SKIP_VERIFICATION) {
+  process.stderr.write('Invalid environment configuration: IAP_SKIP_VERIFICATION must not be true in production.\n');
+  process.exit(1);
+}
 {{/if}}
 
 /** Typed, validated configuration – the only place that reads `process.env`. */
@@ -297,6 +342,36 @@ export const config = {
 {{#if DELETE_ACCOUNT}}
     /** A web page explaining how to delete an account (Google Play asks for one). */
     deleteAccountUrl: env.DELETE_ACCOUNT_URL || `${env.APP_URL.replace(/\/$/, '')}/delete-account`,
+{{/if}}
+  },
+{{/if}}
+{{#if PAYMENTS}}
+  payments: {
+    appName: '{{DISPLAY_NAME}}',
+{{#if GATEWAY_STRIPE}}
+    stripe: { secretKey: env.STRIPE_SECRET_KEY, publishableKey: env.STRIPE_PUBLISHABLE_KEY, webhookSecret: env.STRIPE_WEBHOOK_SECRET },
+{{/if}}
+{{#if GATEWAY_RAZORPAY}}
+    razorpay: { keyId: env.RAZORPAY_KEY_ID, keySecret: env.RAZORPAY_KEY_SECRET, webhookSecret: env.RAZORPAY_WEBHOOK_SECRET },
+{{/if}}
+{{#if GATEWAY_PAYPAL}}
+    paypal: {
+      clientId: env.PAYPAL_CLIENT_ID,
+      clientSecret: env.PAYPAL_CLIENT_SECRET,
+      webhookId: env.PAYPAL_WEBHOOK_ID,
+      apiUrl: env.PAYPAL_MODE === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com',
+      /** PayPal sends the buyer back here – the app's web view watches for it. */
+      returnUrl: `${env.APP_URL.replace(/\/$/, '')}/payments/paypal/return`,
+      cancelUrl: `${env.APP_URL.replace(/\/$/, '')}/payments/paypal/cancel`,
+    },
+{{/if}}
+{{#if IAP_NATIVE}}
+    apple: { issuerId: env.APPLE_IAP_ISSUER_ID, keyId: env.APPLE_IAP_KEY_ID, privateKey: env.APPLE_IAP_PRIVATE_KEY, bundleId: env.APPLE_BUNDLE_ID },
+    google: { serviceAccount: env.GOOGLE_PLAY_SERVICE_ACCOUNT, packageName: env.GOOGLE_PLAY_PACKAGE_NAME },
+    skipVerification: env.IAP_SKIP_VERIFICATION,
+{{/if}}
+{{#if IAP_ADAPTY}}
+    adapty: { secretKey: env.ADAPTY_SECRET_KEY, webhookToken: env.ADAPTY_WEBHOOK_TOKEN },
 {{/if}}
   },
 {{/if}}

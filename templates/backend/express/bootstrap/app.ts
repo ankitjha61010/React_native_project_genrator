@@ -15,6 +15,9 @@ import { globalRateLimit } from '{{IMPORT:ex.mw.rateLimit}}';
 import { requestLogger } from '{{IMPORT:ex.mw.requestLogger}}';
 import { applySecurity } from '{{IMPORT:ex.mw.security}}';
 import { apiRoutes } from '{{IMPORT:ex.routes}}';
+{{#if GATEWAY_PAYPAL}}
+import { PAYMENTS_MESSAGES } from '{{IMPORT:messages.payments}}';
+{{/if}}
 
 /**
  * Builds the Express app: middleware (logging, security{{#if SEC_RATE_LIMIT}}, rate limit{{/if}}), the API routes, then the
@@ -31,6 +34,13 @@ export function createApp(services: Services): Express {
 {{#if UPLOADS}}
   // Uploaded files (avatars, chat media). Never executed, never listed.
   app.use(config.uploads.publicPath, express.static(config.uploads.dir, { index: false, dotfiles: 'deny', maxAge: '7d' }));
+{{/if}}
+{{#if GATEWAY_PAYPAL}}
+  // PayPal sends the buyer back here (PAYPAL return / cancel URL); the app's web view stops at it.
+  app.get('/payments/paypal/:result', (req, res) => {
+    const text = req.params.result === 'return' ? PAYMENTS_MESSAGES.paypalApproved : PAYMENTS_MESSAGES.paypalCancelled;
+    res.type('html').send(`<!doctype html><meta name="viewport" content="width=device-width"><p style="font:16px system-ui;text-align:center;margin-top:40vh">${text}</p>`);
+  });
 {{/if}}
 {{#if LEGAL}}
   // Legal pages the app opens: /terms-and-conditions, /privacy-policy… – the HTML saved in the

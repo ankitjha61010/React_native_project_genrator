@@ -61,6 +61,12 @@ const legal: Condition = ctx => ctx.options.modules.legal && !replica(ctx);
 const deleteAccount: Condition = ctx => auth(ctx) && ctx.options.modules.deleteAccount && !replica(ctx);
 /** Over-The-Air updates: public update checks, admin-only releases (monolith / identity service). */
 const ota: Condition = ctx => auth(ctx) && Boolean(ctx.options.modules.ota) && !replica(ctx);
+/** Payments (monolith / identity service): in-app purchases and / or a payment gateway. */
+const iapProvider = (ctx: BackendContext) => (auth(ctx) && !replica(ctx) ? (ctx.options.modules.inAppPurchase ?? 'none') : 'none');
+const gatewayProvider = (ctx: BackendContext) => (auth(ctx) && !replica(ctx) ? (ctx.options.modules.paymentGateway ?? 'none') : 'none');
+const iap: Condition = ctx => iapProvider(ctx) !== 'none';
+const gateway: Condition = ctx => gatewayProvider(ctx) !== 'none';
+const payments: Condition = ctx => iap(ctx) || gateway(ctx);
 const realtime: Condition = ctx => chat(ctx) || notifications(ctx) || calling(ctx);
 const encryption: Condition = ({ options }) => options.apiEncryption;
 const prisma: Condition = ({ options }) => options.orm === 'prisma';
@@ -108,6 +114,7 @@ const FEATURES: Array<[BackendFeature, Condition]> = [
   ['calling', calling],
   ['legal', legal],
   ['ota', ota],
+  ['payments', payments],
 ];
 
 export const BACKEND_MANIFEST: BackendManifestEntry[] = [
@@ -264,6 +271,29 @@ export const BACKEND_MANIFEST: BackendManifestEntry[] = [
   { id: 'contract.ota', template: 'shared/domain/ota.repository.ts', layer: 'repositoryContract', feature: 'ota', file: 'ota.repository.ts', when: ota, mergeInto: ['repo.ota'] },
   { id: 'repo.ota', template: 'shared/repositories/{orm}/ota.repository.ts', layer: 'repositoryImpl', feature: 'ota', file: repoFile('ota'), when: ota },
   { id: 'app.otaService', template: 'shared/application/ota.service.ts', layer: 'application', feature: 'ota', file: 'ota.service.ts', when: ota },
+  // ── Payments: catalog, entitlements, admin screens + in-app purchases and / or a gateway ──
+  { id: 'domain.payments', template: 'shared/domain/payment.entity.ts', layer: 'domain', feature: 'payments', file: 'payment.entity.ts', when: payments },
+  { id: 'contract.payments', template: 'shared/domain/payments.repository.ts', layer: 'repositoryContract', feature: 'payments', file: 'payments.repository.ts', when: payments, mergeInto: ['repo.payments'] },
+  { id: 'repo.payments', template: 'shared/repositories/{orm}/payments.repository.ts', layer: 'repositoryImpl', feature: 'payments', file: repoFile('payments'), when: payments },
+  { id: 'app.paymentsService', template: 'shared/application/payments.service.ts', layer: 'application', feature: 'payments', file: 'payments.service.ts', when: payments },
+  // The gateway (one of Stripe / Razorpay / PayPal) behind one interface – swapping it never touches the service.
+  { id: 'port.paymentGateway', template: 'shared/ports/payment-gateway.ts', layer: 'ports', file: 'payment-gateway.ts', when: gateway, mergeInto: ['impl.paymentGateway'] },
+  { id: 'impl.paymentGateway', template: 'shared/adapters/stripe-payment-gateway.ts', layer: 'adapters', file: 'stripe-payment-gateway.ts', when: ctx => gatewayProvider(ctx) === 'stripe' },
+  { id: 'impl.paymentGateway', template: 'shared/adapters/razorpay-payment-gateway.ts', layer: 'adapters', file: 'razorpay-payment-gateway.ts', when: ctx => gatewayProvider(ctx) === 'razorpay' },
+  { id: 'impl.paymentGateway', template: 'shared/adapters/paypal-payment-gateway.ts', layer: 'adapters', file: 'paypal-payment-gateway.ts', when: ctx => gatewayProvider(ctx) === 'paypal' },
+  // In-app purchases: Apple / Google verification (react-native-iap) or the Adapty server API.
+  { id: 'port.inAppPurchases', template: 'shared/ports/in-app-purchases.ts', layer: 'ports', file: 'in-app-purchases.ts', when: iap, mergeInto: ['impl.inAppPurchases'] },
+  { id: 'impl.inAppPurchases', template: 'shared/adapters/store-purchase-verifier.ts', layer: 'adapters', file: 'store-purchase-verifier.ts', when: ctx => iapProvider(ctx) === 'iap' },
+  { id: 'impl.inAppPurchases', template: 'shared/adapters/adapty-client.ts', layer: 'adapters', file: 'adapty-client.ts', when: ctx => iapProvider(ctx) === 'adapty' },
+  // Database: own Prisma schema file + migration, TypeORM entities + migration, Mongoose models.
+  { id: 'prisma.payments', template: 'shared/database/prisma/payments.schema.prisma', file: 'prisma/payments.prisma', when: all(prisma, payments) },
+  { id: 'prisma.paymentsMigration', template: 'shared/database/prisma/payments.migration.sql', file: 'prisma/migrations/20260101000100_payments/migration.sql', when: all(prisma, payments) },
+  { id: 'typeorm.payments', template: 'shared/database/typeorm/payment.orm-entities.ts', layer: 'model', feature: 'payments', file: 'payment.orm-entities.ts', when: all(typeorm, payments) },
+  { id: 'typeorm.paymentsMigration', template: 'shared/database/typeorm/payments.migration.ts', layer: 'database', file: 'migrations/1767225600100-Payments.ts', when: all(typeorm, payments) },
+  { id: 'mongoose.payments', template: 'shared/database/mongoose/payment.models.ts', layer: 'model', feature: 'payments', file: 'payment.models.ts', when: all(mongoose, payments) },
+  { id: 'root.paymentsDoc', template: 'root/PAYMENTS.md', file: 'docs/PAYMENTS.md', when: payments },
+  { id: 'test.unit.payments', template: 'shared/test/payments.spec.ts', file: 'test/unit/payments.spec.ts', when: payments },
+  { id: 'test.e2e.payments', template: 'shared/test/payments.e2e-spec.ts', file: 'test/e2e/payments.e2e-spec.ts', when: payments },
   // Tests
   { id: 'test.unit.calling', template: 'shared/test/calling.spec.ts', file: 'test/unit/calling.spec.ts', when: calling },
   { id: 'test.e2e.calling', template: 'shared/test/calling.e2e-spec.ts', file: 'test/e2e/calling.e2e-spec.ts', when: calling },

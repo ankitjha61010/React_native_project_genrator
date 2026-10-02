@@ -2,10 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Send, Users, History, CheckCircle2, AlertCircle, RefreshCw, Radio } from 'lucide-react';
+import { Send, Users, History, CheckCircle2, AlertCircle, RefreshCw, Radio, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
-import { Sidebar } from '../../components/Sidebar';
 import { Header } from '../../components/Header';
 import type { Broadcast } from '../../types';
 
@@ -23,6 +22,42 @@ export default function BroadcastsPage() {
   const [audience, setAudience] = useState<'all' | 'users' | 'admins'>('all');
   const [extraData, setExtraData] = useState('');
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
+
+  /** Removes a broadcast from the history – and from every recipient's notification inbox. */
+  const handleDeleteBroadcast = async (broadcast: Broadcast) => {
+    if (!window.confirm(`Delete "${broadcast.title}"?\n\nIt is also removed from every recipient's notification inbox.`)) return;
+    setDeletingId(broadcast.id);
+    setStatusMessage(null);
+    try {
+      await api.delete(`/notifications/broadcasts/${encodeURIComponent(broadcast.id)}`);
+      setBroadcasts(prev => prev.filter(b => b.id !== broadcast.id));
+      setStatusMessage({ type: 'success', text: 'Broadcast deleted.' });
+    } catch (err: any) {
+      setStatusMessage({ type: 'error', text: err?.response?.data?.message || err?.message || 'Failed to delete the broadcast' });
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  /** Removes every broadcast (and their copies in the users' inboxes). */
+  const handleDeleteAllBroadcasts = async () => {
+    if (!window.confirm('Delete ALL broadcasts?\n\nThey are also removed from every recipient\'s notification inbox. This cannot be undone.')) return;
+    setClearing(true);
+    setStatusMessage(null);
+    try {
+      const res = await api.delete('/notifications/broadcasts');
+      const count = res.data?.data?.count ?? 0;
+      setBroadcasts([]);
+      setStatusMessage({ type: 'success', text: `${count} broadcast${count === 1 ? '' : 's'} deleted.` });
+    } catch (err: any) {
+      setStatusMessage({ type: 'error', text: err?.response?.data?.message || err?.message || 'Failed to delete the broadcasts' });
+    } finally {
+      setClearing(false);
+    }
+  };
 
   useEffect(() => {
     if (!authLoading && (!user || user.role !== 'ADMIN')) {
@@ -103,7 +138,6 @@ export default function BroadcastsPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex">
-      <Sidebar />
 
       <div className="flex-1 pl-64 flex flex-col min-h-screen">
         <Header title="Broadcast Notifications" subtitle="Send push messages across mobile endpoints" />
@@ -237,13 +271,26 @@ export default function BroadcastsPage() {
                   <History className="w-5 h-5 text-indigo-400" />
                   <h2 className="text-base font-bold text-white">Broadcast History</h2>
                 </div>
-                <button
-                  onClick={fetchBroadcasts}
-                  className="text-slate-400 hover:text-white p-1 rounded-lg"
-                  title="Refresh history"
-                >
-                  <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                </button>
+                <div className="flex items-center gap-2">
+                  {broadcasts.length > 0 && (
+                    <button
+                      onClick={handleDeleteAllBroadcasts}
+                      disabled={clearing}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 border border-rose-500/20 disabled:opacity-50 transition-colors"
+                      title="Delete every broadcast"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>{clearing ? 'Deleting…' : 'Delete all'}</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={fetchBroadcasts}
+                    className="text-slate-400 hover:text-white p-1 rounded-lg"
+                    title="Refresh history"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
               </div>
 
               {loading ? (
@@ -261,9 +308,19 @@ export default function BroadcastsPage() {
                     >
                       <div className="flex items-start justify-between gap-2 mb-1.5">
                         <h3 className="font-semibold text-white text-sm">{b.title}</h3>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                          {b.type}
-                        </span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                            {b.type}
+                          </span>
+                          <button
+                            onClick={() => handleDeleteBroadcast(b)}
+                            disabled={deletingId === b.id || clearing}
+                            className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 disabled:opacity-50 transition-colors"
+                            title="Delete broadcast"
+                          >
+                            <Trash2 className={`w-3.5 h-3.5 ${deletingId === b.id ? 'animate-pulse' : ''}`} />
+                          </button>
+                        </div>
                       </div>
                       <p className="text-xs text-slate-300 mb-3">{b.body}</p>
                       <div className="flex items-center justify-between text-[11px] text-slate-400">

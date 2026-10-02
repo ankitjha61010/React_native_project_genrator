@@ -50,6 +50,21 @@ export async function generateBackend(options: BackendOptions): Promise<BackendS
     }
   }
 
+  // In-app purchase keys entered while generating – the .env points at keys/ (git-ignored).
+  const keyFiles: Array<[string | undefined, string]> = [
+    [options.paymentCredentials?.appleIapPrivateKeyPath, 'apple-iap-key.p8'],
+    [options.paymentCredentials?.googlePlayServiceAccountPath, 'google-play-service-account.json'],
+  ];
+  for (const [source, name] of keyFiles) {
+    if (!source || (options.modules.inAppPurchase ?? 'none') !== 'iap') continue;
+    try {
+      await fs.copy(source, path.join(projectDir, 'keys', name));
+      summary.files += 1;
+    } catch (error) {
+      summary.warnings.push(`Could not copy ${name}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   if (options.installDependencies) {
     try {
       await step(

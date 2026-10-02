@@ -32,6 +32,10 @@ export const config = {
 export const ROUTES: Array<{ service: ServiceName; paths: string[]; ws?: boolean }> = [
   // Accounts + the legal pages (GET /api/v1/legal, /terms-and-conditions…).
   { service: 'identity', paths: ['/api/v1/auth', '/api/v1/users', '/api/v1/legal', '/uploads/avatars', '/terms-and-conditions', '/privacy-policy', '/delete-account'] },
+{{#if PAYMENTS}}
+  // In-app purchases / gateway checkout, webhooks and the admin payment screens (they need the users).
+  { service: 'identity', paths: ['/api/v1/payments'] },
+{{/if}}
 {{#if CHAT}}
   // Socket.IO (chat events, presence{{#if NOTIFICATIONS}}, live notifications{{/if}}) lives in the chat service.
   { service: 'chat', paths: ['/api/v1/chat', '/uploads/chat', '/socket.io'], ws: true },

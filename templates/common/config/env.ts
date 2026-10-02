@@ -19,6 +19,9 @@ import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from '@env';
 {{#if GOOGLE_LOCATION}}
 import { GOOGLE_MAPS_API_KEY } from '@env';
 {{/if}}
+{{#if IAP_ADAPTY}}
+import { ADAPTY_PLACEMENT_ID, ADAPTY_PUBLIC_SDK_KEY } from '@env';
+{{/if}}
 
 export type AppEnvironment = 'development' | 'staging' | 'production';
 
@@ -69,6 +72,13 @@ export const env = {
 {{#if GOOGLE_LOCATION}}
   /** Places search + reverse geocoding (Google Location SDK). */
   googleMapsApiKey: GOOGLE_MAPS_API_KEY ?? '',
+{{/if}}
+{{#if IAP_ADAPTY}}
+  /** Adapty (in-app purchases): the public SDK key and the placement whose paywall products are sold. */
+  adapty: {
+    publicSdkKey: ADAPTY_PUBLIC_SDK_KEY ?? '',
+    placementId: ADAPTY_PLACEMENT_ID || 'premium',
+  },
 {{/if}}
 } as const;
 

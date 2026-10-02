@@ -18,4 +18,8 @@ export interface NotificationsRepository {
 
   createBroadcast(data: Omit<Broadcast, 'id' | 'createdAt'>): Promise<Broadcast>;
   listBroadcasts(query: PageQuery): Promise<{ items: Broadcast[]; total: number }>;
+  /** Deletes a broadcast and the inbox entries it created. False when it doesn't exist. */
+  deleteBroadcast(id: string): Promise<boolean>;
+  /** Deletes every broadcast and the inbox entries they created. Returns how many broadcasts were removed. */
+  deleteAllBroadcasts(): Promise<number>;
 }

@@ -227,6 +227,8 @@ registers a device separately.
 | DELETE | `/notifications/:id` · `/notifications` | – | – |
 | POST | `/notifications/broadcast` | admin: `title, body, type?, audience?: all \| users \| admins, data?` | `{ id, recipientCount, … }` |
 | GET | `/notifications/broadcasts?page&limit` | admin | broadcasts + meta |
+| DELETE | `/notifications/broadcasts/:id` | admin – also removed from every recipient's inbox | – |
+| DELETE | `/notifications/broadcasts` | admin – every broadcast and its inbox entries | `{ count }` |
 
 Push payload (FCM) – `notification: { title, body }` and `data` (strings): `type`, `notificationId` or `broadcastId`,
 `sentAt`, your `data` keys (e.g. `url`){{#if CHAT}}; chat pushes add `conversationId`, `senderName`, `senderAvatar`{{/if}}.
@@ -258,6 +260,14 @@ io('http://<host>:3000', { transports: ['websocket'], auth: { token: accessToken
 {{#if NOTIFICATIONS}}
 | server → app | `notification:new` | Notification |
 {{/if}}
+{{/if}}
+{{#if PAYMENTS}}
+
+## Payments – `/payments`
+
+The store (`/products`, `/me`{{#if GATEWAY}}, `/checkout`, `/:id/confirm`, `/history`{{/if}}{{#if IAP_NATIVE}}, `/iap/verify`{{/if}}{{#if IAP_ADAPTY}}, `/adapty/sync`{{/if}}), provider webhooks
+(`/webhooks/…`, no token – signed) and the admin screens (`/admin/*`, permission `payments:manage`).
+Every endpoint and key: [PAYMENTS.md](PAYMENTS.md).
 {{/if}}
 {{#if LEGAL}}
 

@@ -162,7 +162,8 @@ describe('chat API + Socket.IO', () => {
     expect(created.body.data).toMatchObject({ title: 'Team', isGroup: true, myRole: 'admin' });
     expect(await updated).toMatchObject({ conversationId: groupId, change: 'created' });
 
-    await request(app.server).patch(`${api}/chat/groups/${groupId}`).set(bearer(bob.token)).send({ title: 'Mine' }).expect(403);
+    // Any member may rename the group; adding / removing / promoting stays admin-only.
+    await request(app.server).patch(`${api}/chat/groups/${groupId}`).set(bearer(bob.token)).send({ title: 'Mine' }).expect(200);
     const renamed = await request(app.server).patch(`${api}/chat/groups/${groupId}`).set(bearer(alice.token)).send({ title: 'Crew' }).expect(200);
     expect(renamed.body.data.title).toBe('Crew');
 

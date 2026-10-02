@@ -15,4 +15,8 @@ declare module '@env' {
 {{#if GOOGLE_LOCATION}}
   export const GOOGLE_MAPS_API_KEY: string | undefined;
 {{/if}}
+{{#if IAP_ADAPTY}}
+  export const ADAPTY_PUBLIC_SDK_KEY: string | undefined;
+  export const ADAPTY_PLACEMENT_ID: string | undefined;
+{{/if}}
 }

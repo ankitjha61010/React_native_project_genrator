@@ -16,6 +16,9 @@ export function notificationsRoutes(services: Services): Router {
   router.post('/read-all', notifications.markAllRead);
   router.post('/broadcast', requirePermission('notifications:broadcast'), notifications.broadcast);
   router.get('/broadcasts', requirePermission('notifications:broadcast'), notifications.listBroadcasts);
+  // Before `/:id`, which would otherwise take "broadcasts" as a notification id.
+  router.delete('/broadcasts/:id', requirePermission('notifications:broadcast'), notifications.deleteBroadcast);
+  router.delete('/broadcasts', requirePermission('notifications:broadcast'), notifications.deleteAllBroadcasts);
   router.patch('/:id/read', notifications.markRead);
   router.delete('/:id', notifications.delete);
   router.delete('/', notifications.clear);

@@ -7,6 +7,12 @@ import { EditProfileScreen } from '{{IMPORT:screens.EditProfile}}';
 import { ChangePasswordScreen } from '{{IMPORT:screens.ChangePassword}}';
 {{/if}}
 import { SettingsScreen } from '{{IMPORT:screens.Settings}}';
+{{#if PAYMENTS}}
+import { StoreScreen } from '{{IMPORT:payments.StoreScreen}}';
+{{/if}}
+{{#if GATEWAY_PAYPAL}}
+import { PayPalCheckoutScreen } from '{{IMPORT:payments.PayPalCheckoutScreen}}';
+{{/if}}
 {{#if NOTIFICATIONS}}
 import { NotificationsScreen } from '{{IMPORT:screens.Notifications}}';
 {{/if}}
@@ -53,6 +59,12 @@ export function MainNavigator(): React.JSX.Element {
       <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} options={{ title: translate('common', 'changePassword') }} />
 {{/if}}
       <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: translate('common', 'settings') }} />
+{{#if PAYMENTS}}
+      <Stack.Screen name="Store" component={StoreScreen} options={{ title: translate('payments', 'storeTitle') }} />
+{{/if}}
+{{#if GATEWAY_PAYPAL}}
+      <Stack.Screen name="PayPalCheckout" component={PayPalCheckoutScreen} options={{ title: translate('payments', 'paypalTitle'), presentation: 'modal' }} />
+{{/if}}
 {{#if NOTIFICATIONS}}
       <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: translate('common', 'notifications') }} />
 {{/if}}

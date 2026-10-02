@@ -1,3 +1,4 @@
+import { GATEWAY_LABELS, IAP_LABELS } from '../config/payments.js';
 import chalk from 'chalk';
 import { resolveDependencies, getProfile } from '../config/compatibility.js';
 import { STATE_MANAGEMENT_LABELS, STORAGE_LABELS } from '../config/constants.js';
@@ -63,6 +64,7 @@ export async function describeDryRun(options: ProjectOptions): Promise<string> {
     `Vector icons: ${options.vectorIcons ? 'yes (MaterialDesignIcons, iOS UIAppFonts configured)' : 'no'}`,
     `Drawer: ${options.drawer ? 'yes (side drawer around the bottom tabs)' : 'no (bottom tabs only)'}`,
     `Google Location SDK: ${options.googleLocation ? 'yes (current location + Google Places search, location permission)' : 'no'}`,
+    `Payments: in-app purchases ${IAP_LABELS[options.inAppPurchase ?? 'none']} · gateway ${GATEWAY_LABELS[options.paymentGateway ?? 'none']}`,
     `Social login: ${describeSocial(options.socialAuth)}`,
     '',
     chalk.bold('Project:'),

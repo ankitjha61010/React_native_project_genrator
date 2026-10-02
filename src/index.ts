@@ -202,6 +202,8 @@ export async function run(argv: string[]): Promise<void> {
         displayName: options.displayName,
         apiBaseUrl: options.apiBaseUrl ?? 'http://localhost:3000/api/v1',
         ota: options.ota,
+        inAppPurchase: options.inAppPurchase,
+        paymentGateway: options.paymentGateway,
         installDependencies: options.installDependencies,
       });
       const relAdmin = path.relative(process.cwd(), adminDir) || '.';

@@ -222,6 +222,15 @@ export function ProfileScreen(): React.JSX.Element {
         </FadeInView>
 
 {{/if}}
+{{#if PAYMENTS}}
+        <FadeInView delay={155} style={styles.section}>
+          <AppText fontFamily="semiBold" fontSize="size14" color="textSecondary" intlType="payments" value="yourAccess" style={styles.sectionTitle} />
+          <View style={styles.card}>
+            <Row {{#if VECTOR_ICONS}}icon="crown-outline" {{/if}}label={translate('payments', 'storeTitle')} onPress={() => navigation.navigate('Main', { screen: 'Store' })} />
+          </View>
+        </FadeInView>
+
+{{/if}}
 {{#if TERMS}}
         {/* Terms & Conditions / Privacy Policy – the links come from the backend (GET /legal). */}
         <FadeInView delay={160} style={styles.section}>

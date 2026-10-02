@@ -38,6 +38,9 @@ import { LegalModule } from '{{IMPORT:nest.legal.module}}';
 {{#if OTA}}
 import { OtaModule } from '{{IMPORT:nest.ota.module}}';
 {{/if}}
+{{#if PAYMENTS}}
+import { PaymentsModule } from '{{IMPORT:nest.payments.module}}';
+{{/if}}
 {{#if CALLING}}
 import { CallingModule } from '{{IMPORT:nest.calling.module}}';
 {{/if}}
@@ -63,6 +66,9 @@ import { LegalController } from '{{IMPORT:nest.legal.controller}}';
 {{/if}}
 {{#if OTA}}
 import { OTAController } from '{{IMPORT:nest.ota.controller}}';
+{{/if}}
+{{#if PAYMENTS}}
+import { PaymentsController } from '{{IMPORT:nest.payments.controller}}';
 {{/if}}
 {{#if CALLING}}
 import { CallingController } from '{{IMPORT:nest.calling.controller}}';
@@ -126,13 +132,16 @@ import { UsersController } from '{{IMPORT:nest.users.controller}}';
 {{#if OTA}}
     OtaModule,
 {{/if}}
+{{#if PAYMENTS}}
+    PaymentsModule,
+{{/if}}
 {{#if CALLING}}
     CallingModule,
 {{/if}}
 {{/if}}
   ],
 {{#if !FEATURE_MODULES}}
-  controllers: [HealthController{{#if AUTH_API}}, AuthController{{/if}}{{#if USERS_API}}, UsersController{{/if}}{{#if CHAT}}, ChatController{{/if}}{{#if DEVICES}}, DevicesController{{/if}}{{#if NOTIFICATIONS}}, NotificationsController{{/if}}{{#if LEGAL}}, LegalController{{/if}}{{#if OTA}}, OTAController{{/if}}{{#if CALLING}}, CallingController{{/if}}],
+  controllers: [HealthController{{#if AUTH_API}}, AuthController{{/if}}{{#if USERS_API}}, UsersController{{/if}}{{#if CHAT}}, ChatController{{/if}}{{#if DEVICES}}, DevicesController{{/if}}{{#if NOTIFICATIONS}}, NotificationsController{{/if}}{{#if LEGAL}}, LegalController{{/if}}{{#if OTA}}, OTAController{{/if}}{{#if PAYMENTS}}, PaymentsController{{/if}}{{#if CALLING}}, CallingController{{/if}}],
 {{/if}}
   providers: [
     // Global guards run in this order.

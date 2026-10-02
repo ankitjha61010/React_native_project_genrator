@@ -23,13 +23,20 @@ import { toAppNotification } from '{{IMPORT:notification.types}}';
 {{/if}}
 {{/if}}
 
+{{#if PAYMENTS}}
+import { accessStore } from '{{IMPORT:payments.accessStore}}';
+{{/if}}
+{{#if IAP}}
+import { inAppPurchases } from '{{IMPORT:payments.iap}}';
+{{/if}}
+
 /**
  * Services that only run while the user is signed in (mounted by MainNavigator):
  * - refreshes the access token on a 401 and signs the user out when that fails,
  * - starts push notifications (permission, FCM token) and decides where taps go.
  */
 export function useSessionServices(): void {
-  const { signOut } = useAuthSession();
+  const { signOut{{#if PAYMENTS}}, user{{/if}} } = useAuthSession();
 
   useEffect(() => {
     configureApiAuth({
@@ -97,5 +104,23 @@ export function useSessionServices(): void {
       cleanup?.();
     };
   }, []);
+{{/if}}
+{{#if PAYMENTS}}
+
+  // Payments: the user's access levels{{#if IAP}} + the store connection (open purchases are verified and finished){{/if}}.
+  const userId = user?.id;
+  useEffect(() => {
+    if (!userId) return;
+    accessStore.refresh();
+{{#if IAP}}
+    inAppPurchases.start(userId);
+{{/if}}
+    return () => {
+{{#if IAP}}
+      inAppPurchases.stop();
+{{/if}}
+      accessStore.clear();
+    };
+  }, [userId]);
 {{/if}}
 }

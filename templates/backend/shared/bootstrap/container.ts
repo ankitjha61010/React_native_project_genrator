@@ -89,6 +89,29 @@ import { LegalService } from '{{IMPORT:app.legalService}}';
 {{#if OTA}}
 import { OTAService } from '{{IMPORT:app.otaService}}';
 {{/if}}
+{{#if PAYMENTS}}
+import { PaymentsService } from '{{IMPORT:app.paymentsService}}';
+{{/if}}
+{{#if GATEWAY}}
+import type { PaymentGateway } from '{{IMPORT:port.paymentGateway}}';
+{{/if}}
+{{#if GATEWAY_STRIPE}}
+import { StripePaymentGateway } from '{{IMPORT:impl.paymentGateway}}';
+{{/if}}
+{{#if GATEWAY_RAZORPAY}}
+import { RazorpayPaymentGateway } from '{{IMPORT:impl.paymentGateway}}';
+{{/if}}
+{{#if GATEWAY_PAYPAL}}
+import { PayPalPaymentGateway } from '{{IMPORT:impl.paymentGateway}}';
+{{/if}}
+{{#if IAP_NATIVE}}
+import type { StorePurchaseVerifier } from '{{IMPORT:port.inAppPurchases}}';
+import { StoreApiPurchaseVerifier } from '{{IMPORT:impl.inAppPurchases}}';
+{{/if}}
+{{#if IAP_ADAPTY}}
+import type { AdaptyClient } from '{{IMPORT:port.inAppPurchases}}';
+import { AdaptyServerClient } from '{{IMPORT:impl.inAppPurchases}}';
+{{/if}}
 
 /*
  * container.ts – where the app is put together. Nothing else creates services.
@@ -131,6 +154,18 @@ export interface Infrastructure {
 {{#if EVENTS}}
   /** Events between the services (Redis). */
   eventBus: EventBus;
+{{/if}}
+{{#if GATEWAY}}
+  /** {{GATEWAY_NAME}} (tests use a fake). */
+  paymentGateway: PaymentGateway;
+{{/if}}
+{{#if IAP_NATIVE}}
+  /** App Store / Google Play purchase verification (tests use a fake). */
+  storeVerifier: StorePurchaseVerifier;
+{{/if}}
+{{#if IAP_ADAPTY}}
+  /** Adapty server-side API (tests use a fake). */
+  adapty: AdaptyClient;
 {{/if}}
 }
 
@@ -184,6 +219,21 @@ export function createInfrastructure(database: Database): Infrastructure {
 {{/if}}
 {{#if EVENTS}}
     eventBus,
+{{/if}}
+{{#if GATEWAY_STRIPE}}
+    paymentGateway: new StripePaymentGateway(config.payments.stripe, logger),
+{{/if}}
+{{#if GATEWAY_RAZORPAY}}
+    paymentGateway: new RazorpayPaymentGateway({ ...config.payments.razorpay, appName: config.payments.appName }, logger),
+{{/if}}
+{{#if GATEWAY_PAYPAL}}
+    paymentGateway: new PayPalPaymentGateway({ ...config.payments.paypal, appName: config.payments.appName }, logger),
+{{/if}}
+{{#if IAP_NATIVE}}
+    storeVerifier: new StoreApiPurchaseVerifier(config.payments, logger),
+{{/if}}
+{{#if IAP_ADAPTY}}
+    adapty: new AdaptyServerClient(config.payments.adapty, logger),
 {{/if}}
   };
 }
@@ -316,6 +366,22 @@ export function createServices(infra: Infrastructure) {
 {{/if}}
 {{#if OTA}}
     ota: new OTAService(repos.ota),
+{{/if}}
+{{#if PAYMENTS}}
+    payments: new PaymentsService({
+      payments: repos.payments,
+      users: repos.users,
+{{#if GATEWAY}}
+      gateway: infra.paymentGateway,
+{{/if}}
+{{#if IAP_NATIVE}}
+      storeVerifier: infra.storeVerifier,
+{{/if}}
+{{#if IAP_ADAPTY}}
+      adapty: infra.adapty,
+{{/if}}
+      logger,
+    }),
 {{/if}}
   };
 }

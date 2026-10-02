@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { ExternalLink, Save, CheckCircle2, AlertCircle, X, Globe } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api, API_BASE_URL } from '../../services/api';
-import { Sidebar } from '../../components/Sidebar';
 import { Header } from '../../components/Header';
 import type { LegalLinks } from '../../types';
 
@@ -134,7 +133,6 @@ export default function LegalPage() {
     <div className="min-h-screen bg-slate-950 text-slate-100 flex">
       {/* Load Syncfusion CSS via CDN */}
       <link href="https://cdn.syncfusion.com/ej2/material-dark.css" rel="stylesheet" />
-      <Sidebar />
       <div className="flex-1 pl-64 flex flex-col min-h-screen">
         <Header title="Legal & Privacy CMS" subtitle="Terms of service, privacy policy and deletion compliance" />
 

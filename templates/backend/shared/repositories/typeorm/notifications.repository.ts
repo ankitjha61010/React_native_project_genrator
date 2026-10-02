@@ -1,4 +1,4 @@
-import { IsNull, type DataSource, type Repository } from 'typeorm';
+import { IsNull, Not, type DataSource, type Repository } from 'typeorm';
 import { pageOffset, type PageQuery } from '{{IMPORT:core.pagination}}';
 import type { Broadcast, BroadcastAudience, Notification, NotificationType } from '{{IMPORT:domain.notification}}';
 import type { CreateNotificationData, NotificationsRepository } from '{{IMPORT:contract.notifications}}';
@@ -31,7 +31,7 @@ export class TypeOrmNotificationsRepository implements NotificationsRepository {
   private readonly notifications: Repository<NotificationOrmEntity>;
   private readonly broadcasts: Repository<BroadcastOrmEntity>;
 
-  constructor(dataSource: DataSource) {
+  constructor(private readonly dataSource: DataSource) {
     this.notifications = dataSource.getRepository(NotificationOrmEntity);
     this.broadcasts = dataSource.getRepository(BroadcastOrmEntity);
   }
@@ -80,5 +80,20 @@ export class TypeOrmNotificationsRepository implements NotificationsRepository {
   async listBroadcasts(query: PageQuery): Promise<{ items: Broadcast[]; total: number }> {
     const [entities, total] = await this.broadcasts.findAndCount({ order: { createdAt: 'DESC' }, skip: pageOffset(query), take: query.limit });
     return { items: entities.map(toBroadcast), total };
+  }
+
+  async deleteBroadcast(id: string): Promise<boolean> {
+    return this.dataSource.transaction(async manager => {
+      await manager.delete(NotificationOrmEntity, { broadcastId: id });
+      return ((await manager.delete(BroadcastOrmEntity, { id })).affected ?? 0) > 0;
+    });
+  }
+
+  async deleteAllBroadcasts(): Promise<number> {
+    return this.dataSource.transaction(async manager => {
+      await manager.delete(NotificationOrmEntity, { broadcastId: Not(IsNull()) });
+      // delete({}) is refused by TypeORM ("empty criteria") – a query builder deletes every row.
+      return (await manager.createQueryBuilder().delete().from(BroadcastOrmEntity).execute()).affected ?? 0;
+    });
   }
 }

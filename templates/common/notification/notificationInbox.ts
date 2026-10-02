@@ -90,6 +90,15 @@ export const notificationInbox = {
     if (!id.startsWith('local-')) inBackground(notificationsApi.remove(id), 'Deleting the notification');
   },
 
+  /**
+   * Deletes the whole inbox, on the server too. Waits for the server (unlike the single actions)
+   * so a failure can be shown – otherwise the next reload would bring everything back.
+   */
+  async removeAll(): Promise<void> {
+    await notificationsApi.removeAll();
+    await write([]);
+  },
+
   /** Called on sign out – clears this device's copy only (the history stays on the server). */
   async clear(): Promise<void> {
     await write([]);

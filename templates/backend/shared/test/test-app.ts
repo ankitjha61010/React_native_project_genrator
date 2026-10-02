@@ -77,7 +77,7 @@ export async function createTestApp() {
     .overrideProvider(INFRASTRUCTURE)
     .useValue(test.infra)
     .compile();
-  const app = moduleRef.createNestApplication<NestExpressApplication>({ bodyParser: false, logger: false });
+  const app = moduleRef.createNestApplication<NestExpressApplication>({ bodyParser: false, {{#if PAYMENTS}}rawBody: true, {{/if}}logger: false });
   configureApp(app);
   await app.init();
   await app.listen(0);

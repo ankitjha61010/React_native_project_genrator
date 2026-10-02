@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { getBackendArchitecture, type BackendArchitecture } from './architectures.js';
 import type { BackendContext } from './manifest.js';
+import { GATEWAY_LABELS, IAP_LABELS, paymentValues } from '../config/payments.js';
 import type { BackendOptions } from './types.js';
 
 export const FRAMEWORK_LABELS = { nestjs: 'NestJS', express: 'Express.js + Node.js' } as const;
@@ -86,6 +87,10 @@ export function prepareBackendContext(options: BackendOptions): BackendRenderCon
   const role = options.service;
   const replica = role === 'chat' || role === 'notifications';
   const slug = options.appName.toLowerCase().replace(/[^a-z0-9-]+/g, '-');
+  // Payments live where the users and their sessions are (monolith / identity service).
+  const iap = hasAuth && !replica ? (options.modules.inAppPurchase ?? 'none') : 'none';
+  const gateway = hasAuth && !replica ? (options.modules.paymentGateway ?? 'none') : 'none';
+  const pay = paymentValues(options.paymentCredentials);
 
   const flags: Record<string, boolean> = {
     NEST: options.framework === 'nestjs',
@@ -143,6 +148,23 @@ export function prepareBackendContext(options: BackendOptions): BackendRenderCon
     DELETE_ACCOUNT: hasAuth && options.modules.deleteAccount && !replica,
     /** Over-The-Air updates module (bundle checks, downloads, release management). */
     OTA: hasAuth && Boolean(options.modules.ota) && !replica,
+    /** Payments module: product catalog, entitlements, admin screens (+ IAP and / or a gateway). */
+    PAYMENTS: iap !== 'none' || gateway !== 'none',
+    /** In-app purchases of any kind. */
+    IAP: iap !== 'none',
+    /** react-native-iap: the backend verifies purchases with the App Store / Google Play. */
+    IAP_NATIVE: iap === 'iap',
+    /** Adapty: access levels synced from Adapty (webhook + server API). */
+    IAP_ADAPTY: iap === 'adapty',
+    /** A payment gateway (checkout, confirmation, webhooks, refunds). */
+    GATEWAY: gateway !== 'none',
+    GATEWAY_STRIPE: gateway === 'stripe',
+    GATEWAY_RAZORPAY: gateway === 'razorpay',
+    GATEWAY_PAYPAL: gateway === 'paypal',
+    /** Provider webhooks are received (gateway or Adapty) – they need the raw request body. */
+    PAYMENT_WEBHOOKS: gateway !== 'none' || iap === 'adapty',
+    /** Payments are verified in-process (gateway or the App Store / Google Play APIs) – durations, fakes with errors. */
+    PAYMENT_VERIFIERS: gateway !== 'none' || iap === 'iap',
     /** The Realtime port exists (chat events, live notifications, calling signaling). */
     REALTIME: chat || notifications || (hasAuth && (options.modules.audioCall || options.modules.videoCall)),
     /** This process hosts the Socket.IO server. */
@@ -209,6 +231,7 @@ export function prepareBackendContext(options: BackendOptions): BackendRenderCon
     MODULE_CALLING: false,
     MODULE_LEGAL: false,
     MODULE_OTA: false,
+    MODULE_PAYMENTS: false,
   };
   for (const a of ['feature-based', 'layered', 'clean', 'mvc', 'modular', 'enterprise']) {
     flags[`ARCH_${a.replace(/-/g, '_').toUpperCase()}`] = arch.id === a;
@@ -262,6 +285,28 @@ export function prepareBackendContext(options: BackendOptions): BackendRenderCon
     FIREBASE_SERVICE_ACCOUNT_VALUE: options.firebaseServiceAccountPath ? './firebase-service-account.json' : '',
     AGORA_APP_ID_VALUE: options.agoraAppId ?? '',
     AGORA_APP_CERTIFICATE_VALUE: options.agoraAppCertificate ?? '',
+    // Payments – the keys entered while generating, or REPLACE_ME dummies (the API answers "not configured" for those).
+    IAP_PROVIDER_NAME: IAP_LABELS[iap],
+    GATEWAY_NAME: GATEWAY_LABELS[gateway],
+    /** stripe | razorpay | paypal – the webhook path segment. */
+    GATEWAY_ID: gateway,
+    STRIPE_SECRET_KEY_VALUE: pay.stripeSecretKey,
+    STRIPE_PUBLISHABLE_KEY_VALUE: pay.stripePublishableKey,
+    STRIPE_WEBHOOK_SECRET_VALUE: pay.stripeWebhookSecret,
+    RAZORPAY_KEY_ID_VALUE: pay.razorpayKeyId,
+    RAZORPAY_KEY_SECRET_VALUE: pay.razorpayKeySecret,
+    RAZORPAY_WEBHOOK_SECRET_VALUE: pay.razorpayWebhookSecret,
+    PAYPAL_CLIENT_ID_VALUE: pay.paypalClientId,
+    PAYPAL_CLIENT_SECRET_VALUE: pay.paypalClientSecret,
+    PAYPAL_WEBHOOK_ID_VALUE: pay.paypalWebhookId,
+    ADAPTY_SECRET_KEY_VALUE: pay.adaptySecretKey,
+    /** Sent by Adapty in the Authorization header of every webhook (set the same value in the Adapty dashboard). */
+    ADAPTY_WEBHOOK_TOKEN_VALUE: secret(),
+    APPLE_IAP_ISSUER_ID_VALUE: pay.appleIapIssuerId,
+    APPLE_IAP_KEY_ID_VALUE: pay.appleIapKeyId,
+    // Key files entered while generating are copied into keys/ (git-ignored).
+    APPLE_IAP_PRIVATE_KEY_PATH_VALUE: options.paymentCredentials?.appleIapPrivateKeyPath ? './keys/apple-iap-key.p8' : pay.appleIapPrivateKeyPath,
+    GOOGLE_PLAY_SERVICE_ACCOUNT_VALUE: options.paymentCredentials?.googlePlayServiceAccountPath ? './keys/google-play-service-account.json' : pay.googlePlayServiceAccountPath,
   };
 
   Object.assign(variables, examplePaths(options, arch));

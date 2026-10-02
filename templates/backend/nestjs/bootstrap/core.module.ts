@@ -31,6 +31,9 @@ import { LegalService } from '{{IMPORT:app.legalService}}';
 {{#if OTA}}
 import { OTAService } from '{{IMPORT:app.otaService}}';
 {{/if}}
+{{#if PAYMENTS}}
+import { PaymentsService } from '{{IMPORT:app.paymentsService}}';
+{{/if}}
 {{#if CALLING}}
 import { CallingService } from '{{IMPORT:app.callingService}}';
 {{/if}}
@@ -92,6 +95,9 @@ const SERVICE_PROVIDERS: Provider[] = [
 {{/if}}
 {{#if OTA}}
   service(OTAService, 'ota'),
+{{/if}}
+{{#if PAYMENTS}}
+  service(PaymentsService, 'payments'),
 {{/if}}
 {{#if CALLING}}
   service(CallingService, 'calling'),

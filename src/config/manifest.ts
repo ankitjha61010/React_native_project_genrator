@@ -61,6 +61,9 @@ const audioCall = (ctx: RenderContext) => ctx.options.audioCall;
 const videoCall = (ctx: RenderContext) => ctx.options.videoCall;
 const device = (ctx: RenderContext) => ctx.options.notifications || ctx.options.audioCall || ctx.options.videoCall;
 const ota = (ctx: RenderContext) => ctx.options.ota;
+const iap = (ctx: RenderContext) => (ctx.options.inAppPurchase ?? 'none') !== 'none';
+const gateway = (ctx: RenderContext) => (ctx.options.paymentGateway ?? 'none') !== 'none';
+const payments = (ctx: RenderContext) => iap(ctx) || gateway(ctx);
 
 export const COMMON_MANIFEST: ManifestEntry[] = [
   // Project root. Dot-files are stored without the dot so `npm publish` keeps them.
@@ -265,6 +268,7 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
   // Social Auth Service + setup guide
   { ...entries('auth', [['auth.socialAuth', 'services/socialAuthService.ts']])[0]!, when: hasSocialAuth },
   { ...entries('root', [['root.socialLoginDoc', 'docs/SOCIAL_LOGIN.md']])[0]!, when: hasSocialAuth },
+  { ...entries('root', [['root.paymentsDoc', 'docs/PAYMENTS.md']])[0]!, when: payments },
 
   ...entries('auth', [
     ['auth.types', 'types/auth.ts'],
@@ -343,6 +347,26 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
   ...entries('calling', [
     ['calling.VideoCallScreen', 'screens/VideoCallScreen.tsx'],
   ]).map(e => ({ ...e, when: videoCall })),
+
+  // Payments: Store screen + access levels; in-app purchases and / or a payment gateway.
+  ...entries('payments', [
+    ['payments.types', 'types/payments.types.ts'],
+    ['payments.api', 'paymentsApi.ts'],
+    ['payments.accessStore', 'services/accessStore.ts'],
+    ['payments.useAccess', 'hooks/useAccess.ts'],
+    ['payments.useStore', 'hooks/useStore.ts'],
+    ['payments.StoreScreen', 'screens/StoreScreen/StoreScreen.tsx'],
+  ]).map(e => ({ ...e, when: payments })),
+  ...entries('payments', [['payments.gateway', 'services/gatewayCheckout.ts']]).map(e => ({ ...e, when: gateway })),
+  ...entries('payments', [['payments.iap', 'services/inAppPurchases.ts']]).map(e => ({ ...e, when: iap })),
+  ...entries('payments', [['payments.razorpayTypes', 'types/react-native-razorpay.d.ts']]).map(e => ({ ...e, when: (ctx: RenderContext) => ctx.options.paymentGateway === 'razorpay' })),
+  ...entries('payments', [['payments.PayPalCheckoutScreen', 'screens/PayPalCheckoutScreen/PayPalCheckoutScreen.tsx']]).map(e => ({
+    ...e,
+    when: (ctx: RenderContext) => ctx.options.paymentGateway === 'paypal',
+  })),
+  // The Store screen's texts – a translation file of its own, only with payments.
+  ...entries('i18n', (['en', 'hi'] as const).map(lang => [`i18n.locale.${lang}.payments`, `locales/${lang}/payments.json`] as [string, string])).map(e => ({ ...e, when: payments })),
+  ...entries('i18n', [['i18n.locale.ar.payments', 'locales/ar/payments.json']]).map(e => ({ ...e, when: (ctx: RenderContext) => payments(ctx) && ctx.options.rtl })),
 
   // Over-The-Air (OTA) updates module
   ...entries('ota', [

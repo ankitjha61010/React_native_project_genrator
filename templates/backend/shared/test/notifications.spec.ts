@@ -65,6 +65,24 @@ describe('notifications', () => {
     expect((await h.notifications.listBroadcasts({ page: 1, limit: 10 })).meta.total).toBe(2);
   });
 
+  it("deleting a broadcast removes it from the history and every recipient's inbox", async () => {
+    const admin = await h.repositories.users.create({ email: 'admin@example.com', name: 'Admin', role: UserRole.ADMIN });
+    const first = await h.notifications.broadcast(admin.id, { title: 'First', body: '…' });
+    await h.notifications.broadcast(admin.id, { title: 'Second', body: '…' });
+    const own = await h.notifications.notify(userId, { title: 'Personal', body: '…' });
+
+    await h.notifications.deleteBroadcast(first.id);
+    await expect(h.notifications.deleteBroadcast(first.id)).rejects.toMatchObject({ statusCode: 404 });
+    let { page } = await h.notifications.list(userId, { page: 1, limit: 10 });
+    expect(page.items.map(n => n.title).toSorted()).toEqual(['Personal', 'Second']);
+
+    expect(await h.notifications.deleteAllBroadcasts()).toBe(1);
+    expect((await h.notifications.listBroadcasts({ page: 1, limit: 10 })).meta.total).toBe(0);
+    ({ page } = await h.notifications.list(userId, { page: 1, limit: 10 }));
+    // Personal notifications are never touched by the broadcast deletes.
+    expect(page.items.map(n => n.id)).toEqual([own.id]);
+  });
+
   it('forgets devices FCM rejects', async () => {
     await h.devices.save(userId, { deviceId: 'install-1', fcmToken: 'stale-token', deviceType: DeviceType.ANDROID });
     h.pushSender.invalid = ['stale-token'];

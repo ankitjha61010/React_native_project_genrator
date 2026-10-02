@@ -1,5 +1,5 @@
-import React, { useLayoutEffect } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import React, { useCallback, useLayoutEffect } from 'react';
+import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 {{#if VECTOR_ICONS}}
 import { AppIcon, type AppIconName } from '{{IMPORT:components.AppIcon}}';
@@ -10,6 +10,8 @@ import type { MainRouteProp, RootNavigation } from '{{IMPORT:navigation.types}}'
 import { openNotification } from '{{IMPORT:notification.router}}';
 import { getNotificationConfig, type AppNotification } from '{{IMPORT:notification.types}}';
 import { useNotifications } from '{{IMPORT:notification.useNotifications}}';
+import { translate } from '{{IMPORT:i18n.index}}';
+import { flash } from '{{IMPORT:utils.flashMessage}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
 
 /** "just now", "5m", "3h", "2d", then the date. */
@@ -25,6 +27,7 @@ function timeAgo(iso: string): string {
 /**
  * Every received notification (see notificationInbox.ts). Push taps land here for all
  * types except `chat`; tapping a row opens its content (routing: notificationTypes.ts).
+ * The trash button (or a long press) deletes one; the header's trash icon deletes them all.
  */
 export function NotificationsScreen(): React.JSX.Element {
   const navigation = useNavigation<RootNavigation>();
@@ -32,27 +35,78 @@ export function NotificationsScreen(): React.JSX.Element {
   const highlightId = route.params?.highlightId;
   const styles = useStyles(createStyles);
   const { theme } = useTheme();
-  const { notifications, unreadCount, refreshing, refresh, markAllRead } = useNotifications();
+  const { notifications, unreadCount, refreshing, refresh, markAllRead, remove, removeAll } = useNotifications();
+  const hasNotifications = notifications.length > 0;
 
-  // "Read all" lives in the native header.
+  const confirmDelete = useCallback(
+    (item: AppNotification) => {
+      Alert.alert(translate('common', 'deleteNotification'), translate('common', 'deleteNotificationConfirm'), [
+        { text: translate('common', 'cancel'), style: 'cancel' },
+        {
+          text: translate('common', 'delete'),
+          style: 'destructive',
+          onPress: async () => {
+            await remove(item.id);
+            flash.success({ intlType: 'common', value: 'notificationDeleted' });
+          },
+        },
+      ]);
+    },
+    [remove],
+  );
+
+  const confirmDeleteAll = useCallback(() => {
+    Alert.alert(translate('common', 'deleteAllNotificationsTitle'), translate('common', 'deleteAllNotificationsConfirm'), [
+      { text: translate('common', 'cancel'), style: 'cancel' },
+      {
+        text: translate('common', 'deleteAllNotifications'),
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await removeAll();
+            flash.success({ intlType: 'common', value: 'allNotificationsDeleted' });
+          } catch {
+            flash.error({ intlType: 'common', value: 'deleteAllNotificationsFailed' });
+          }
+        },
+      },
+    ]);
+  }, [removeAll]);
+
+  // "Read all" and "Delete all" live in the native header.
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerRight:
-        unreadCount > 0
-          ? () => (
-              <Pressable onPress={markAllRead} hitSlop={10} accessibilityRole="button">
-                <AppText fontFamily="semiBold" color="primary" text="Read all" />
+      headerRight: hasNotifications
+        ? () => (
+            <View style={styles.headerActions}>
+              {unreadCount > 0 ? (
+                <Pressable onPress={markAllRead} hitSlop={10} accessibilityRole="button">
+                  <AppText fontFamily="semiBold" color="primary" text="Read all" />
+                </Pressable>
+              ) : null}
+              <Pressable
+                onPress={confirmDeleteAll}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={translate('common', 'deleteAllNotifications')}>
+{{#if VECTOR_ICONS}}
+                <AppIcon name="delete-sweep-outline" size={24} tintColor={theme.colors.error} />
+{{else}}
+                <AppText fontFamily="semiBold" color="error" text={translate('common', 'deleteAllNotifications')} />
+{{/if}}
               </Pressable>
-            )
-          : undefined,
+            </View>
+          )
+        : undefined,
     });
-  }, [navigation, unreadCount, markAllRead]);
+  }, [navigation, hasNotifications, unreadCount, markAllRead, confirmDeleteAll, styles, theme]);
 
   const renderItem = ({ item }: { item: AppNotification }) => {
     const config = getNotificationConfig(item.type);
     return (
       <Pressable
         onPress={() => openNotification(item)}
+        onLongPress={() => confirmDelete(item)}
         style={({ pressed }) => [
           styles.row,
           !item.read && styles.rowUnread,
@@ -76,7 +130,21 @@ export function NotificationsScreen(): React.JSX.Element {
           ) : null}
           {item.body ? <AppText fontSize="size13" color="textSecondary" numberOfLines={2} text={item.body} /> : null}
         </View>
-        {!item.read && <View style={styles.unreadDot} />}
+        <View style={styles.rowEnd}>
+          {!item.read && <View style={styles.unreadDot} />}
+          <Pressable
+            onPress={() => confirmDelete(item)}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={translate('common', 'deleteNotification')}
+            style={({ pressed }) => [styles.deleteButton, pressed && styles.rowPressed]}>
+{{#if VECTOR_ICONS}}
+            <AppIcon name="delete-outline" size={20} tintColor={theme.colors.textSecondary} />
+{{else}}
+            <AppText fontSize="size16" text="🗑️" />
+{{/if}}
+          </Pressable>
+        </View>
       </Pressable>
     );
   };
@@ -88,7 +156,7 @@ export function NotificationsScreen(): React.JSX.Element {
       keyExtractor={item => item.id}
       renderItem={renderItem}
       ItemSeparatorComponent={Separator}
-      contentContainerStyle={notifications.length === 0 ? styles.emptyContainer : undefined}
+      contentContainerStyle={hasNotifications ? undefined : styles.emptyContainer}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={theme.colors.primary} />}
       ListEmptyComponent={
         <View style={styles.empty}>
@@ -148,12 +216,25 @@ const createStyles = (theme: Theme) =>
       flexDirection: 'row',
       justifyContent: 'space-between',
     },
+    rowEnd: {
+      alignItems: 'center',
+      gap: theme.spacing.spacing8,
+    },
     unreadDot: {
       width: theme.spacing.spacing8,
       height: theme.spacing.spacing8,
       borderRadius: theme.spacing.spacing4,
       backgroundColor: theme.colors.primary,
       marginTop: theme.spacing.spacing6,
+    },
+    deleteButton: {
+      padding: theme.spacing.spacing4,
+      borderRadius: theme.spacing.spacing16,
+    },
+    headerActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.spacing16,
     },
     separator: {
       height: StyleSheet.hairlineWidth,

@@ -1,3 +1,4 @@
+import type { InAppPurchaseProvider, PaymentCredentials, PaymentGateway } from '../config/payments.js';
 import type { SocialCredentials, SocialProviders } from '../config/socialAuth.js';
 
 export type ArchitectureId =
@@ -83,6 +84,12 @@ export interface ProjectOptions {
   drawer: boolean;
   /** Over-The-Air (OTA) updates module. */
   ota: boolean;
+  /** In-app purchases (store products / subscriptions): none, react-native-iap or Adapty. */
+  inAppPurchase: InAppPurchaseProvider;
+  /** Payment gateway (cards / UPI / wallets): none, Stripe, Razorpay or PayPal. */
+  paymentGateway: PaymentGateway;
+  /** Keys entered while generating; missing ones get dummy values (docs/PAYMENTS.md). */
+  paymentCredentials: PaymentCredentials;
   /** Admin panel web application. */
   adminPanel: boolean;
   /** Admin panel tech stack choice (react or next). */
@@ -137,6 +144,7 @@ export type GroupId =
   | 'chat'
   | 'calling'
   | 'ota'
+  | 'payments'
   | 'components'
   | 'navigation'
   | 'screens'

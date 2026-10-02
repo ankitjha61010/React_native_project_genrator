@@ -108,6 +108,19 @@ export class NotificationsService {
     return Paginated.of(items, total, query);
   }
 
+  /** Admin: removes a broadcast from the history and from every recipient's inbox. */
+  async deleteBroadcast(id: string): Promise<void> {
+    if (!(await this.deps.notifications.deleteBroadcast(id))) throw new NotFoundError(NOTIFICATIONS_MESSAGES.broadcastNotFound);
+    this.deps.logger.info({ broadcastId: id }, 'Broadcast deleted');
+  }
+
+  /** Admin: removes every broadcast (and its inbox entries). Returns how many were removed. */
+  async deleteAllBroadcasts(): Promise<number> {
+    const deleted = await this.deps.notifications.deleteAllBroadcasts();
+    this.deps.logger.info({ deleted }, 'All broadcasts deleted');
+    return deleted;
+  }
+
   /** Pushes to every device of these users; tokens FCM rejects are removed. */
   async push(userIds: string[], message: PushMessage): Promise<void> {
     const tokens = await this.deps.devices.tokensOf(userIds);

@@ -73,3 +73,81 @@ export interface ApiResponse<T = unknown> {
   message: string;
   data: T;
 }
+{{#if PAYMENTS}}
+
+// ── Payments (backend /payments/admin/*) – amounts are in minor units (999 = 9.99) ──
+
+export interface PaymentProduct {
+  id: string;
+  name: string;
+  description: string | null;
+  kind: 'one_time' | 'subscription';
+  price: number;
+  currency: string;
+  displayPrice: string;
+  accessLevel: string;
+  durationDays: number | null;
+  appleProductId: string | null;
+  googleProductId: string | null;
+  active: boolean;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export interface Entitlement {
+  id: string;
+  userId: string;
+  accessLevel: string;
+  source: 'gateway' | 'app_store' | 'play_store' | 'adapty' | 'admin';
+  productId: string | null;
+  referenceId: string | null;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface PaymentStats {
+  activeEntitlements: number;
+  products: number;
+  paidPayments?: number;
+  revenue?: Array<{ currency: string; amount: number }>;
+  purchases?: number;
+}
+{{#if GATEWAY}}
+
+export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded' | 'partially_refunded';
+
+export interface Payment {
+  id: string;
+  userId: string;
+  productId: string;
+  provider: string;
+  providerOrderId: string;
+  providerPaymentId: string | null;
+  amount: number;
+  currency: string;
+  displayAmount: string;
+  status: PaymentStatus;
+  refundedAmount: number;
+  failureReason: string | null;
+  paidAt: string | null;
+  createdAt: string;
+}
+{{/if}}
+{{#if IAP}}
+
+export interface StorePurchase {
+  id: string;
+  userId: string;
+  productId: string | null;
+  store: 'app_store' | 'play_store';
+  storeProductId: string;
+  transactionId: string;
+  status: 'active' | 'expired' | 'refunded' | 'pending';
+  environment: string | null;
+  purchasedAt: string;
+  expiresAt: string | null;
+}
+{{/if}}
+{{/if}}

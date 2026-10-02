@@ -76,4 +76,15 @@ export class MongooseNotificationsRepository implements NotificationsRepository 
     const [docs, total] = await Promise.all([BroadcastModel.find().sort({ createdAt: -1 }).skip(pageOffset(query)).limit(query.limit).lean<BroadcastDocument[]>(), BroadcastModel.countDocuments()]);
     return { items: docs.map(toBroadcast), total };
   }
+
+  async deleteBroadcast(id: string): Promise<boolean> {
+    if (!isValidId(id)) return false;
+    await NotificationModel.deleteMany({ broadcastId: id });
+    return (await BroadcastModel.deleteOne({ _id: id })).deletedCount > 0;
+  }
+
+  async deleteAllBroadcasts(): Promise<number> {
+    await NotificationModel.deleteMany({ broadcastId: { $ne: null } });
+    return (await BroadcastModel.deleteMany({})).deletedCount;
+  }
 }

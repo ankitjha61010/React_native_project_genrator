@@ -30,6 +30,9 @@ import { sanitizeInput } from '{{IMPORT:nest.sanitize}}';
 {{/if}}
 import { AppValidationPipe } from '{{IMPORT:nest.validationPipe}}';
 import { COMMON_MESSAGES } from '{{IMPORT:core.messages}}';
+{{#if GATEWAY_PAYPAL}}
+import { PAYMENTS_MESSAGES } from '{{IMPORT:messages.payments}}';
+{{/if}}
 
 /** Body parser errors happen before Nest's router – answer them with the standard envelope. */
 function bodyParserErrors(error: { type?: string }, _req: Request, res: Response, next: NextFunction): void {
@@ -84,6 +87,14 @@ export function configureApp(app: NestExpressApplication): void {
 {{#if UPLOADS}}
   // Uploaded files (avatars{{#if CHAT}}, chat media{{/if}}). Never executed, never listed.
   app.useStaticAssets(config.uploads.dir, { prefix: config.uploads.publicPath, index: false, dotfiles: 'deny', maxAge: '7d' });
+{{/if}}
+{{#if GATEWAY_PAYPAL}}
+  // PayPal sends the buyer back here (PAYPAL return / cancel URL); the app's web view stops at it.
+  app.use('/payments/paypal', (req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== 'GET' || !['/return', '/cancel'].includes(req.path)) return next();
+    const text = req.path === '/return' ? PAYMENTS_MESSAGES.paypalApproved : PAYMENTS_MESSAGES.paypalCancelled;
+    res.type('html').send(`<!doctype html><meta name="viewport" content="width=device-width"><p style="font:16px system-ui;text-align:center;margin-top:40vh">${text}</p>`);
+  });
 {{/if}}
 {{#if LEGAL}}
   // Legal pages the app opens: /terms-and-conditions, /privacy-policy… – the HTML saved in the

@@ -4,6 +4,7 @@ import { log, step } from '../cli/logger.js';
 import { run } from '../utils/exec.js';
 import { TEMPLATES_DIR } from '../utils/paths.js';
 import { renderTemplate } from '../utils/templateEngine.js';
+import { GATEWAY_LABELS, IAP_LABELS, type InAppPurchaseProvider, type PaymentGateway } from '../config/payments.js';
 
 export interface AdminOptions {
   adminDir: string;
@@ -12,6 +13,11 @@ export interface AdminOptions {
   displayName: string;
   apiBaseUrl: string;
   ota: boolean;
+  /** Payments screens (products, transactions, purchases, entitlements) – match the backend's modules. */
+  inAppPurchase?: InAppPurchaseProvider;
+  paymentGateway?: PaymentGateway;
+  /** The backend's API_ENCRYPTION_KEY / IV – when set, the admin encrypts requests and decrypts responses. */
+  encryption?: { key: string; iv: string };
   installDependencies?: boolean;
 }
 
@@ -46,17 +52,27 @@ export async function generateAdminPanel(options: AdminOptions): Promise<AdminSu
     return summary;
   }
 
-  const templateFiles = await listFilesRecursive(templateRoot);
+  const payments = (options.inAppPurchase ?? 'none') !== 'none' || (options.paymentGateway ?? 'none') !== 'none';
+  // Payments screens only exist with payments.
+  const templateFiles = (await listFilesRecursive(templateRoot)).filter(file => payments || !/payments/i.test(file));
 
   const variables: Record<string, string> = {
     APP_NAME: options.appName,
     APP_SLUG: options.appName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
     DISPLAY_NAME: options.displayName,
     API_BASE_URL: options.apiBaseUrl,
+    IAP_PROVIDER_NAME: IAP_LABELS[options.inAppPurchase ?? 'none'],
+    GATEWAY_NAME: GATEWAY_LABELS[options.paymentGateway ?? 'none'],
+    API_ENCRYPTION_KEY: options.encryption?.key ?? '',
+    API_ENCRYPTION_IV: options.encryption?.iv ?? '',
   };
 
   const flags: Record<string, boolean> = {
     OTA: Boolean(options.ota),
+    API_ENCRYPTION: Boolean(options.encryption),
+    PAYMENTS: (options.inAppPurchase ?? 'none') !== 'none' || (options.paymentGateway ?? 'none') !== 'none',
+    IAP: (options.inAppPurchase ?? 'none') !== 'none',
+    GATEWAY: (options.paymentGateway ?? 'none') !== 'none',
     REACT: options.techStack === 'react',
     NEXT: options.techStack === 'next',
   };
@@ -87,7 +103,7 @@ export async function generateAdminPanel(options: AdminOptions): Promise<AdminSu
         summary.files += 1;
       }
     },
-    `${summary.files} admin panel files written to ${adminDir}`,
+    () => `${summary.files} admin panel files written to ${adminDir}`,
   );
 
   if (options.installDependencies) {

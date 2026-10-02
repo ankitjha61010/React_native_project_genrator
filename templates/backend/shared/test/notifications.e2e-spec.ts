@@ -63,4 +63,25 @@ describe('notifications API', () => {
     await request(app.server).post(`${api}/notifications/read-all`).set(bearer(user.token)).expect(200);
     await request(app.server).delete(`${api}/notifications`).set(bearer(user.token)).expect(200);
   });
+
+  it('admins delete one broadcast or all of them – also from the inboxes', async () => {
+    const send = (title: string) => request(app.server).post(`${api}/notifications/broadcast`).set(bearer(admin.token)).send({ title, body: '…' }).expect(201);
+    const first = (await send('Old news')).body.data.id;
+    await send('Newer news');
+
+    await request(app.server).delete(`${api}/notifications/broadcasts/${first}`).set(bearer(user.token)).expect(403);
+    await request(app.server).delete(`${api}/notifications/broadcasts`).set(bearer(user.token)).expect(403);
+
+    await request(app.server).delete(`${api}/notifications/broadcasts/${first}`).set(bearer(admin.token)).expect(200);
+    await request(app.server).delete(`${api}/notifications/broadcasts/${first}`).set(bearer(admin.token)).expect(404);
+    let inbox = await request(app.server).get(`${api}/notifications`).set(bearer(user.token)).expect(200);
+    expect(inbox.body.data.map((n: { title: string }) => n.title)).toEqual(['Newer news']);
+
+    const cleared = await request(app.server).delete(`${api}/notifications/broadcasts`).set(bearer(admin.token)).expect(200);
+    expect(cleared.body.data).toEqual({ count: 2 });
+    inbox = await request(app.server).get(`${api}/notifications`).set(bearer(user.token)).expect(200);
+    expect(inbox.body.data).toEqual([]);
+    const history = await request(app.server).get(`${api}/notifications/broadcasts`).set(bearer(admin.token)).expect(200);
+    expect(history.body.meta.total).toBe(0);
+  });
 });

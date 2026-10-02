@@ -1,7 +1,7 @@
 import type { BackendArchitectureId, BackendFramework } from './types.js';
 
 /** Business features every backend gets (auth only when authentication is enabled). */
-export type BackendFeature = 'auth' | 'users' | 'health' | 'chat' | 'devices' | 'notifications' | 'calling' | 'legal' | 'ota';
+export type BackendFeature = 'auth' | 'users' | 'health' | 'chat' | 'devices' | 'notifications' | 'calling' | 'legal' | 'ota' | 'payments';
 
 /**
  * Architectural layers. Every generated file belongs to exactly one layer; the

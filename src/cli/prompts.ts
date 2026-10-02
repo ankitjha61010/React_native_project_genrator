@@ -13,6 +13,7 @@ import { resolveUserPath } from '../utils/paths.js';
 import { defaultPackageName, toDisplayName, validateAppName, validatePackageName } from '../utils/validation.js';
 import type { CliFlags } from './args.js';
 import { log } from './logger.js';
+import { askPayments } from './paymentPrompts.js';
 import { chooseArchitecture } from './menu.js';
 
 function assertValid(result: true | string, flag: string): void {
@@ -210,6 +211,9 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     googleLocation: false,
     drawer: false,
     ota: false,
+    inAppPurchase: 'none',
+    paymentGateway: 'none',
+    paymentCredentials: {},
     adminPanel: false,
     initGit: flags.git,
     installDependencies: flags.install,
@@ -466,6 +470,9 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     false,
   );
 
+  // Payments: in-app purchases (react-native-iap / Adapty) and a payment gateway (Stripe / Razorpay / PayPal).
+  const { inAppPurchase, paymentGateway, paymentCredentials } = await askPayments(flags, interactive);
+
   // Admin Panel
   const adminPanel = await askYesNo(
     flags.adminPanel,
@@ -557,6 +564,9 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     googleLocation,
     drawer,
     ota,
+    inAppPurchase,
+    paymentGateway,
+    paymentCredentials,
     adminPanel,
     adminTechStack,
     firebase,

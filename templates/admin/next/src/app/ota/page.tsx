@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
-import { Sidebar } from '../../components/Sidebar';
 import { Header } from '../../components/Header';
 import type { OTARelease } from '../../types';
 
@@ -112,7 +111,6 @@ export default function OTAPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex">
-      <Sidebar />
 
       <div className="flex-1 pl-64 flex flex-col min-h-screen">
         <Header title="Over-The-Air (OTA) Updates" subtitle="Manage native React Native bundle deployments and rollbacks" />

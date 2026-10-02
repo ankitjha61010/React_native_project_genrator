@@ -65,7 +65,8 @@ export function resolveDependencies(
   options: Pick<
     ProjectOptions,
     'architecture' | 'stateManagement' | 'apiEncryption' | 'vectorIcons' | 'notifications' | 'analytics' | 'storage' | 'socket' | 'chat' | 'socialAuth' | 'googleLocation' | 'audioCall' | 'videoCall' | 'ota'
-  >,
+  > &
+    Partial<Pick<ProjectOptions, 'inAppPurchase' | 'paymentGateway'>>,
 ): ResolvedDependencies {
   assertCompatible(profile);
   const { featureDependencies } = DEPENDENCY_REGISTRY;
@@ -84,6 +85,10 @@ export function resolveDependencies(
     options.audioCall ? featureDependencies.audioCall : undefined,
     options.videoCall ? featureDependencies.videoCall : undefined,
     options.ota ? featureDependencies.ota : undefined,
+    options.inAppPurchase === 'iap' ? featureDependencies.iapNative : undefined,
+    options.inAppPurchase === 'adapty' ? featureDependencies.iapAdapty : undefined,
+    options.paymentGateway === 'stripe' ? featureDependencies.gatewayStripe : undefined,
+    options.paymentGateway === 'razorpay' ? featureDependencies.gatewayRazorpay : undefined,
   ].filter(f => f !== undefined);
   const runtime = new Set<string>([
     ...DEPENDENCY_REGISTRY.dependencies,

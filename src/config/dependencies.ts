@@ -103,6 +103,11 @@ export const DEPENDENCY_REGISTRY = {
       devDependencies: [],
     },
     // Over-The-Air (OTA) updates: file access, zip extraction, instant app reload, native app version.
+    // Payments: one in-app purchase SDK and / or one gateway SDK (PayPal needs none – it runs in the web view).
+    iapNative: { dependencies: ['react-native-iap', 'react-native-nitro-modules'], devDependencies: [] },
+    iapAdapty: { dependencies: ['react-native-adapty'], devDependencies: [] },
+    gatewayStripe: { dependencies: ['@stripe/stripe-react-native', 'react-native-webview'], devDependencies: [] },
+    gatewayRazorpay: { dependencies: ['react-native-razorpay'], devDependencies: [] },
     ota: {
       dependencies: [
         'react-native-fs',

@@ -22,6 +22,7 @@ export const BASE_GROUPS: Record<GroupId, string> = {
   chat: 'src/features/chat',
   calling: 'src/features/calling',
   ota: 'src/features/ota',
+  payments: 'src/features/payments',
   components: 'src/components',
   navigation: 'src/navigation',
   screens: 'src/screens',

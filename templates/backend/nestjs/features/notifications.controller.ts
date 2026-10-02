@@ -55,6 +55,21 @@ export class NotificationsController {
     return (await this.notifications.listBroadcasts(query)).map(broadcastView);
   }
 
+  // The broadcast deletes come before `:id` – Nest matches routes in declaration order.
+  @Delete('broadcasts/:id')
+  @RequirePermissions('notifications:broadcast')
+  @Endpoint({ summary: "Delete a broadcast – also from every recipient's inbox – permission notifications:broadcast", message: NOTIFICATIONS_MESSAGES.broadcastDeleted, errors: [401, 403, 404], bearer: true })
+  async deleteBroadcast(@Param('id') id: string) {
+    await this.notifications.deleteBroadcast(id);
+  }
+
+  @Delete('broadcasts')
+  @RequirePermissions('notifications:broadcast')
+  @Endpoint({ summary: 'Delete every broadcast (and their inbox entries) – permission notifications:broadcast', message: NOTIFICATIONS_MESSAGES.broadcastsCleared, response: CountDto, errors: [401, 403], bearer: true })
+  async deleteAllBroadcasts() {
+    return { count: await this.notifications.deleteAllBroadcasts() };
+  }
+
   @Patch(':id/read')
   @Endpoint({ summary: 'Mark one notification as read', message: NOTIFICATIONS_MESSAGES.read, errors: [401, 404], bearer: true })
   async read(@CurrentUser() user: User, @Param('id') id: string) {

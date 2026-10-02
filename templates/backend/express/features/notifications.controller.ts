@@ -44,6 +44,18 @@ export class NotificationsController {
     sendSuccess(res, NOTIFICATIONS_MESSAGES.broadcasts, broadcasts.map(broadcastView));
   };
 
+  /** DELETE /notifications/broadcasts/:id (admin) – also removes it from every recipient's inbox */
+  deleteBroadcast = async (req: Request, res: Response) => {
+    const { id } = parseParams(idParams, req);
+    await this.notifications.deleteBroadcast(id);
+    sendSuccess(res, NOTIFICATIONS_MESSAGES.broadcastDeleted);
+  };
+
+  /** DELETE /notifications/broadcasts (admin) – every broadcast and its inbox entries */
+  deleteAllBroadcasts = async (_req: Request, res: Response) => {
+    sendSuccess(res, NOTIFICATIONS_MESSAGES.broadcastsCleared, { count: await this.notifications.deleteAllBroadcasts() });
+  };
+
   /** PATCH /notifications/:id/read */
   markRead = async (req: Request, res: Response) => {
     const { id } = parseParams(idParams, req);

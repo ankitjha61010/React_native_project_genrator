@@ -29,10 +29,11 @@ export async function syncVoipTokenWithBackend(token?: string): Promise<void> {
   if (Platform.OS !== 'ios') return;
   try {
     const activeToken = token || voipToken;
-    if (!activeToken) {
-      VoipPushNotification.registerVoipToken();
-      return;
-    }
+    // No token yet (always on the Simulator, or without the VoIP push entitlement): wait for the
+    // 'register' event from registerVoipPush. Never call registerVoipToken() here – once registered,
+    // native answers it with a 'register' event carrying the (empty) last token, which calls this
+    // again: an endless JS ↔ native loop that floods the UI thread and blocks every touch on iOS.
+    if (!activeToken) return;
     const saved = await storageService.get<string>(StorageKeys.VOIP_TOKEN);
     if (saved === activeToken) return;
 
@@ -64,6 +65,8 @@ export function registerVoipPush(
   if (Platform.OS !== 'ios') return;
 
   VoipPushNotification.addEventListener('register', (token: string) => {
+    // Native re-sends its last token (empty until PushKit delivers one) – ignore empty ones.
+    if (!token) return;
     voipToken = token;
     syncVoipTokenWithBackend(token);
     onToken(token);

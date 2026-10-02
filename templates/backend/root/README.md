@@ -346,6 +346,15 @@ token is sent on its own (`PATCH /devices/:deviceId`). Use
 `notification:new` and pushes to the user's devices. Admins send broadcasts with `POST /notifications/broadcast`.
 Tokens FCM rejects are deleted automatically.
 {{/if}}
+{{#if PAYMENTS}}
+
+## Payments
+
+{{#if IAP}}In-app purchases ({{IAP_PROVIDER_NAME}}){{/if}}{{#if IAP}}{{#if GATEWAY}} and {{/if}}{{/if}}{{#if GATEWAY}}{{GATEWAY_NAME}} checkout{{/if}}: a product catalog managed in the
+admin panel, access levels per user (`GET /payments/me`){{#if GATEWAY}}, signed webhooks and refunds{{/if}}. Set the keys in `.env`
+(dummy `REPLACE_ME` values answer "not configured" until then) – every key, webhook URL and event is listed
+in [docs/PAYMENTS.md](docs/PAYMENTS.md).
+{{/if}}
 {{#if API_ENCRYPTION}}
 
 ## API encryption

@@ -182,9 +182,10 @@ describe('chat', () => {
       await expect(h.chat.sendMessage(bob, group.id, { type: 'text', text: 'hi', replyToId: added.id })).rejects.toMatchObject({ code: 'REPLY_NOT_FOUND' });
     });
 
-    it('lets only admins rename, add, remove and promote', async () => {
+    it('lets any member rename the group, but only admins add, remove and promote', async () => {
       const group = await h.chat.createGroup(alice, { title: 'Team', participantIds: [bob] });
-      await expect(h.chat.updateGroup(bob, group.id, { title: 'Mine' })).rejects.toMatchObject({ code: 'ADMIN_ONLY' });
+      // Name and image: any member (like the app's group info screen).
+      expect((await h.chat.updateGroup(bob, group.id, { title: 'Mine' })).title).toBe('Mine');
       await expect(h.chat.addMembers(bob, group.id, [carol])).rejects.toMatchObject({ statusCode: 403 });
 
       expect((await h.chat.updateGroup(alice, group.id, { title: 'Crew', avatarUrl: 'https://cdn.example.com/g.png' })).title).toBe('Crew');

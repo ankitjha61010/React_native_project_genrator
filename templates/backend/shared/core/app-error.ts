@@ -90,3 +90,27 @@ export class AccountLockedError extends AppError {
   }
 }
 {{/if}}
+{{#if PAYMENTS}}
+
+/** A provider the request needs isn't configured yet (e.g. dummy payment keys in .env) – the message is shown. */
+export class ServiceUnavailableError extends AppError {
+  constructor(error: ErrorMessage) {
+    super(error, 503);
+  }
+
+  override get expose(): boolean {
+    return true;
+  }
+}
+
+/** A payment provider / store answered with an error – the message is shown, the provider's details are logged. */
+export class BadGatewayError extends AppError {
+  constructor(error: ErrorMessage) {
+    super(error, 502);
+  }
+
+  override get expose(): boolean {
+    return true;
+  }
+}
+{{/if}}

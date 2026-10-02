@@ -1,0 +1,92 @@
+// ─── Payments (prisma.config.ts loads every .prisma file in this folder) ──────
+// No relations to User on purpose: payment records stay when an account is deleted (accounting).
+
+model PaymentProduct {
+  id              String   @id @default(uuid()) {{UUID}}
+  name            String   @db.VarChar(120)
+  description     String?  @db.VarChar(1000)
+  /// one_time | subscription
+  kind            String   @db.VarChar(16)
+  /// Minor units (999 = 9.99).
+  price           Int
+  currency        String   @db.Char(3)
+  accessLevel     String   @map("access_level") @db.VarChar(64)
+  durationDays    Int?     @map("duration_days")
+  appleProductId  String?  @unique @map("apple_product_id") @db.VarChar(200)
+  googleProductId String?  @unique @map("google_product_id") @db.VarChar(200)
+  active          Boolean  @default(true)
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("payment_products")
+}
+
+model Entitlement {
+  id          String    @id @default(uuid()) {{UUID}}
+  userId      String    @map("user_id") {{UUID}}
+  accessLevel String    @map("access_level") @db.VarChar(64)
+  /// gateway | app_store | play_store | adapty | admin
+  source      String    @db.VarChar(16)
+  productId   String?   @map("product_id") {{UUID}}
+  referenceId String?   @map("reference_id") @db.VarChar(255)
+  expiresAt   DateTime? @map("expires_at")
+  revokedAt   DateTime? @map("revoked_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([userId, source, referenceId])
+  @@map("entitlements")
+}
+{{#if GATEWAY}}
+
+model Payment {
+  id                String    @id @default(uuid()) {{UUID}}
+  userId            String    @map("user_id") {{UUID}}
+  productId         String    @map("product_id") {{UUID}}
+  /// stripe | razorpay | paypal
+  provider          String    @db.VarChar(16)
+  providerOrderId   String    @map("provider_order_id") @db.VarChar(255)
+  providerPaymentId String?   @map("provider_payment_id") @db.VarChar(255)
+  amount            Int
+  currency          String    @db.Char(3)
+  /// pending | paid | failed | refunded | partially_refunded
+  status            String    @db.VarChar(24)
+  refundedAmount    Int       @default(0) @map("refunded_amount")
+  failureReason     String?   @map("failure_reason") @db.VarChar(500)
+  paidAt            DateTime? @map("paid_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@unique([provider, providerOrderId])
+  @@index([provider, providerPaymentId])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("payments")
+}
+{{/if}}
+{{#if IAP}}
+
+model StorePurchase {
+  id                    String    @id @default(uuid()) {{UUID}}
+  userId                String    @map("user_id") {{UUID}}
+  productId             String?   @map("product_id") {{UUID}}
+  /// app_store | play_store
+  store                 String    @db.VarChar(16)
+  storeProductId        String    @map("store_product_id") @db.VarChar(200)
+  transactionId         String    @map("transaction_id") @db.VarChar(255)
+  /// Apple original transaction id / Google purchase token.
+  originalTransactionId String?   @map("original_transaction_id") @db.VarChar(1024)
+  /// active | expired | refunded | pending
+  status                String    @db.VarChar(16)
+  environment           String?   @db.VarChar(32)
+  purchasedAt           DateTime  @map("purchased_at")
+  expiresAt             DateTime? @map("expires_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  @@unique([store, transactionId])
+  @@index([userId, createdAt])
+  @@map("store_purchases")
+}
+{{/if}}

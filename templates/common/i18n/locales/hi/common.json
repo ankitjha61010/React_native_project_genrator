@@ -140,5 +140,13 @@
   "missedVoiceCall": "मिस्ड वॉइस कॉल",
   "missedVideoCall": "मिस्ड वीडियो कॉल",
   "noAnswer": "कोई जवाब नहीं",
-  "tapToCallBack": "वापस कॉल करने के लिए टैप करें"
+  "tapToCallBack": "वापस कॉल करने के लिए टैप करें",
+  "deleteNotification": "सूचना हटाएँ",
+  "deleteNotificationConfirm": "क्या यह सूचना हटानी है?",
+  "deleteAllNotifications": "सभी हटाएँ",
+  "deleteAllNotificationsTitle": "सभी सूचनाएँ हटाएँ?",
+  "deleteAllNotificationsConfirm": "सभी सूचनाएँ हटा दी जाएँगी। इसे पूर्ववत नहीं किया जा सकता।",
+  "notificationDeleted": "सूचना हटा दी गई",
+  "allNotificationsDeleted": "सभी सूचनाएँ हटा दी गईं",
+  "deleteAllNotificationsFailed": "सूचनाएँ हटाई नहीं जा सकीं। कृपया पुनः प्रयास करें।"
 }

@@ -19,6 +19,8 @@ export interface MicroservicesPlan {
   services: BackendOptions[];
   chat: boolean;
   notifications: boolean;
+  /** Payments (in-app purchases and / or a gateway) – served by the identity service. */
+  payments: boolean;
 }
 
 /** One backend options object per service – each is generated like a (smaller) monolith. */
@@ -43,9 +45,10 @@ export function planMicroservices(base: BackendOptions): MicroservicesPlan {
     rootDir: base.projectDir,
     chat,
     notifications,
+    payments: (base.modules.inAppPurchase ?? 'none') !== 'none' || (base.modules.paymentGateway ?? 'none') !== 'none',
     services: [
       // Accounts, sign-in, profiles.
-      service('identity', { modules: { ...off, legal: base.modules.legal, deleteAccount: base.modules.deleteAccount }, remoteDevices: notifications }),
+      service('identity', { modules: { ...off, legal: base.modules.legal, deleteAccount: base.modules.deleteAccount, inAppPurchase: base.modules.inAppPurchase, paymentGateway: base.modules.paymentGateway }, remoteDevices: notifications }),
       // Only verifies access tokens (no sign-in of its own) – plain JWT, no refresh tokens.
       ...(chat ? [service('chat', { auth: 'jwt', authMethods: none, hashing: 'none', modules: { ...off, chat: true, groupChat: base.modules.groupChat }, remotePush: notifications })] : []),
       ...(notifications ? [service('notifications', { auth: 'jwt', authMethods: none, hashing: 'none', modules: { ...off, notifications: true } })] : []),
@@ -64,7 +67,7 @@ async function renderGatewayFile(template: string, flags: Record<string, boolean
 
 async function writeGateway(plan: MicroservicesPlan, base: BackendOptions): Promise<void> {
   const dir = path.join(plan.rootDir, 'gateway');
-  const flags = { CHAT: plan.chat, NOTIFICATIONS: plan.notifications };
+  const flags = { CHAT: plan.chat, NOTIFICATIONS: plan.notifications, PAYMENTS: plan.payments };
   await fs.outputFile(path.join(dir, 'src/gateway.ts'), await renderGatewayFile('gateway.ts', flags));
   await fs.outputFile(path.join(dir, 'src/server.ts'), await renderGatewayFile('server.ts', flags));
   await fs.outputFile(path.join(dir, 'test/gateway.e2e-spec.ts'), await renderGatewayFile('gateway.e2e-spec.ts', flags));

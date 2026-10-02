@@ -8,6 +8,11 @@ coverage/
 *.log
 .DS_Store
 *service-account*.json
+{{#if IAP_NATIVE}}
+# App Store / Google Play API keys (in-app purchase verification)
+keys/
+*.p8
+{{/if}}
 {{#if UPLOADS}}
 # User uploads (UPLOAD_DIR)
 uploads/

@@ -24,7 +24,6 @@ export const USERS_MESSAGES = {
   invalidAvatar: { message: 'The avatar must be a JPEG, PNG, WebP or HEIC image', code: 'INVALID_FILE_TYPE' },
   selfModification: { message: 'You cannot change your own role or disable your own account', code: 'SELF_MODIFICATION' },
   selfDelete: { message: {{#if DELETE_ACCOUNT}}'Use DELETE /users/me to delete your own account'{{else}}'You cannot delete your own account'{{/if}}, code: 'SELF_MODIFICATION' },
-{{else}}
-  emailTaken: { message: 'Email is already registered', code: 'EMAIL_TAKEN' },
 {{/if}}
+  emailTaken: { message: 'Email is already registered', code: 'EMAIL_TAKEN' },
 } as const satisfies Record<string, string | ErrorMessage>;

@@ -3,7 +3,7 @@ import type { DevicesService } from '{{IMPORT:app.devicesService}}';
 import { currentUser } from '{{IMPORT:ex.mw.auth}}';
 import { sendSuccess } from '{{IMPORT:ex.respond}}';
 import { parseBody, parseParams } from '{{IMPORT:ex.validation}}';
-import { deviceParams, updateFcmTokenSchema } from '{{IMPORT:ex.devices.schemas}}';
+import { deviceParams, updateFcmTokenSchema, updateVoipTokenSchema } from '{{IMPORT:ex.devices.schemas}}';
 import { DEVICES_MESSAGES } from '{{IMPORT:messages.devices}}';
 
 /** Handles `/devices` requests. Devices are saved by the sign-in requests themselves (their `device`). */
@@ -19,5 +19,11 @@ export class DevicesController {
   updateFcmToken = async (req: Request, res: Response) => {
     const { fcmToken } = parseBody(updateFcmTokenSchema, req);
     sendSuccess(res, DEVICES_MESSAGES.tokenUpdated, await this.devices.updateFcmToken(currentUser(req).id, parseParams(deviceParams, req).deviceId, fcmToken));
+  };
+
+  /** PATCH /devices/:deviceId/voip-token – iOS VoIP push token updated */
+  updateVoipToken = async (req: Request, res: Response) => {
+    const { voipToken } = parseBody(updateVoipTokenSchema, req);
+    sendSuccess(res, DEVICES_MESSAGES.tokenUpdated, await this.devices.updateVoipToken(currentUser(req).id, parseParams(deviceParams, req).deviceId, voipToken));
   };
 }

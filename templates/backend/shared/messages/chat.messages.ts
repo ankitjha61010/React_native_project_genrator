@@ -11,6 +11,10 @@ export const CHAT_MESSAGES = {
   messageSent: 'Message sent',
   markedRead: 'Marked as read',
   messageDeleted: 'Message deleted',
+  messageEdited: 'Message edited',
+  userBlocked: 'User blocked',
+  userUnblocked: 'User unblocked',
+  blockedUsers: 'Blocked users',
   fileUploaded: 'File uploaded',
   voiceNoteUploaded: 'Voice note uploaded',
   /** Shown instead of a missing name. */
@@ -37,6 +41,8 @@ export const CHAT_MESSAGES = {
   notYourMessage: { message: 'You can only delete your own messages', code: 'NOT_YOUR_MESSAGE' },
   replyNotFound: { message: 'The message you reply to was not found', code: 'REPLY_NOT_FOUND' },
   systemMessage: { message: 'System messages cannot be changed', code: 'SYSTEM_MESSAGE' },
+  userBlockedError: { message: 'You cannot message this user', code: 'USER_BLOCKED' },
+  cannotCallBlocked: { message: 'Cannot call this user', code: 'USER_BLOCKED' },
   invalidFileType: (mimeType: string): ErrorMessage => ({ message: `Files of type ${mimeType} can't be sent`, code: 'INVALID_FILE_TYPE' }),
 {{#if GROUP_CHAT}}
   titleRequired: { message: 'A group needs a name', code: 'TITLE_REQUIRED' },
@@ -44,5 +50,7 @@ export const CHAT_MESSAGES = {
   adminOnly: { message: 'Only group admins can do this', code: 'ADMIN_ONLY' },
   notAMember: { message: 'This user is not a member of the group', code: 'NOT_A_MEMBER' },
   removeYourself: { message: 'Use "Leave group" to remove yourself', code: 'USE_LEAVE' },
+  onlyTextEditable: { message: 'Only text messages can be edited', code: 'NOT_EDITABLE' },
+  cannotBlockYourself: { message: 'You cannot block yourself', code: 'CANNOT_BLOCK_YOURSELF' },
 {{/if}}
 } as const satisfies Record<string, string | ErrorMessage | ((...args: never[]) => ErrorMessage)>;

@@ -12,6 +12,7 @@ export const startConversationSchema = z
 const userIds = z.array(z.string().min(1).max(64)).min(1).max(256);
 
 export const memberParams = conversationParams.extend({ userId: z.string().min(1).max(64) });
+export const userParams = z.object({ userId: z.string().min(1).max(64) });
 
 export const createGroupSchema = z
   .object({
@@ -128,6 +129,10 @@ export const conversationSchema = z
     updatedAt: z.iso.datetime(),
   })
   .meta({ id: 'Conversation' });
+
+export const blockedUserSchema = z
+  .object({ id: z.string(), name: z.string(), avatar: z.url().optional() })
+  .meta({ id: 'BlockedUser' });
 
 export const uploadedMediaSchema = z
   .object({ url: z.url(), type: z.enum(MESSAGE_TYPES), fileName: z.string(), fileSize: z.string(), mimeType: z.string() })

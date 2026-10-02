@@ -6,11 +6,15 @@ export const StorageKeys = {
   LANGUAGE: '@{{APP_SLUG}}/language',
   PENDING_NOTIFICATION_TAP: '@{{APP_SLUG}}/pending-notification-tap',
   NOTIFICATION_INBOX: '@{{APP_SLUG}}/notification-inbox',
-{{#if NOTIFICATIONS}}
   /** Identifies this app install (sent as `device.deviceId` with every sign-in). */
   DEVICE_ID: '@{{APP_SLUG}}/device-id',
+{{#if NOTIFICATIONS}}
   /** The FCM token the backend has for this install – a rotated one is sent once (PATCH /devices/:deviceId). */
   FCM_TOKEN: '@{{APP_SLUG}}/fcm-token',
+{{/if}}
+{{#if HAS_CALLING}}
+  /** VoIP push token for incoming calls on iOS (PushKit). */
+  VOIP_TOKEN: '@{{APP_SLUG}}/voip-token',
 {{/if}}
 {{#if THEME_CONTEXT}}
   THEME_MODE: '@{{APP_SLUG}}/theme-mode',

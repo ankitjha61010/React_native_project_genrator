@@ -12,6 +12,9 @@ export interface CliFlags {
   state?: string;
   firebaseAndroid?: string;
   firebaseIos?: string;
+  firebaseServiceAccount?: string;
+  agoraAppId?: string;
+  agoraAppCertificate?: string;
   /** undefined = ask (interactive) / off (--yes). */
   encryption?: boolean;
   rtl?: boolean;
@@ -34,6 +37,8 @@ export interface CliFlags {
   googleLocation?: boolean;
   socket?: boolean;
   chat?: boolean;
+  audioCall?: boolean;
+  videoCall?: boolean;
   drawer?: boolean;
   /** frontend | backend | fullstack */
   type?: string;
@@ -56,6 +61,12 @@ export interface CliFlags {
   redis?: boolean;
   /** Backend Dockerfile + docker-compose.yml. undefined = ask / off. */
   docker?: boolean;
+  /** Over-The-Air (OTA) updates module. */
+  ota?: boolean;
+  /** Admin panel web application. */
+  adminPanel?: boolean;
+  /** Admin panel tech stack choice (react or next). */
+  adminTechStack?: 'react' | 'next';
   storage?: string;
   install: boolean;
   pods: boolean;
@@ -78,6 +89,9 @@ export function parseArgs(argv: string[], version: string): CliFlags {
     .addOption(new Option('-s, --state <id>', 'state management').choices(STATE_MANAGEMENT_IDS))
     .option('--firebase-android <path>', 'google-services.json to install')
     .option('--firebase-ios <path>', 'GoogleService-Info.plist to install')
+    .option('--firebase-service-account <path>', 'firebase-service-account.json to copy into backend')
+    .option('--agora-app-id <id>', 'Agora App ID for calling')
+    .option('--agora-app-certificate <cert>', 'Agora App Certificate for backend token generation')
     .option('--encryption', 'encrypt API requests/responses with AES (crypto-js)')
     .option('--no-encryption', 'send API requests as plain JSON')
     .option('--rtl', 'add right-to-left (RTL) layout support + Arabic')
@@ -117,8 +131,17 @@ export function parseArgs(argv: string[], version: string): CliFlags {
     .option('--no-socket', 'no socket client')
     .option('--chat', 'implement real-time chat with media/audio/video/documents')
     .option('--no-chat', 'no chat module')
+    .option('--audio-call', 'implement audio calling (one-to-one + group, Agora, CallKeep, native background)')
+    .option('--no-audio-call', 'no audio calling')
+    .option('--video-call', 'implement video calling (one-to-one + group, Agora, camera, CallKeep, native background)')
+    .option('--no-video-call', 'no video calling')
     .option('--drawer', 'add a side drawer menu around the bottom tabs')
     .option('--no-drawer', 'bottom tabs only, no drawer')
+    .option('--ota', 'implement Over-The-Air (OTA) updates (Android & iOS native bundles + rollback)')
+    .option('--no-ota', 'no Over-The-Air (OTA) updates')
+    .option('--admin-panel', 'generate web Admin Panel')
+    .option('--no-admin-panel', 'no admin panel')
+    .addOption(new Option('--admin-tech-stack <stack>', 'admin panel framework').choices(['react', 'next']))
     .option('--analytics', 'add Firebase Analytics (screen tracking + analyticsService)')
     .option('--no-analytics', 'no Firebase Analytics')
     .addOption(new Option('--storage <engine>', 'key-value storage').choices(STORAGE_IDS))

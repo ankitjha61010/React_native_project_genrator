@@ -1,4 +1,5 @@
 import { api } from '{{IMPORT:api.client}}';
+import type { UserSummary } from '{{IMPORT:api.user}}';
 import { forDevice } from '{{IMPORT:config.env}}';
 import type { ChatMessage, Conversation, SendableMessageType } from '{{IMPORT:chat.types}}';
 import { CHAT_ENDPOINTS } from '../chatEndpoints';
@@ -56,7 +57,11 @@ function mimeOf(name: string, type: SendableMessageType, known?: string): string
 
 /** Uploads a local file (multipart) – the answer is the stored file's URL. */
 function upload(uri: string, type: SendableMessageType, fileName?: string, mimeType?: string): Promise<UploadedMedia> {
-  const name = fileName ?? uri.split('/').pop() ?? 'file';
+  let name = fileName ?? uri.split('/').pop() ?? 'file';
+  if (!/\.[a-z0-9]{2,6}$/i.test(name)) {
+    const ext = type === 'video' ? '.mp4' : type === 'image' ? '.jpg' : type === 'audio' ? '.mp3' : '';
+    name = `${name}${ext}`;
+  }
   const endpoint = type === 'audio' ? CHAT_ENDPOINTS.UPLOAD_VOICE_NOTE : CHAT_ENDPOINTS.UPLOAD_MEDIA;
   return api.upload<UploadedMedia>(endpoint, 'file', { uri, name, type: mimeOf(name, type, mimeType) });
 }
@@ -76,6 +81,16 @@ export function normalizeConversation(conversation: Conversation): Conversation 
     participants: conversation.participants.map(p => ({ ...p, avatar: url(p.avatar) })),
   };
 }
+
+/** GET /chat/blocked-users answer. */
+interface BlockedUser {
+  id: string;
+  name: string;
+  avatar?: string;
+}
+
+const fetchBlocked = async (): Promise<UserSummary[]> =>
+  (await api.get<BlockedUser[]>(CHAT_ENDPOINTS.BLOCKED_USERS)).map(u => ({ id: u.id, name: u.name, avatar: url(u.avatar) ?? null }));
 
 /** What the input bar sends: text, or a local / uploaded file with its details. */
 export type MessageDraft = { type: SendableMessageType } & Partial<Pick<ChatMessage, 'text' | 'mediaUrl' | 'thumbnailUrl' | 'fileName' | 'fileSize' | 'mimeType' | 'duration' | 'crop'>> & {
@@ -123,6 +138,19 @@ export const chatService = {
   markRead: (conversationId: string) => api.post<null>(CHAT_ENDPOINTS.MARK_READ(conversationId)),
 
   deleteMessage: (conversationId: string, messageId: string) => api.delete<null>(CHAT_ENDPOINTS.MESSAGE(conversationId, messageId)),
+
+  editMessage: async (conversationId: string, messageId: string, text: string) =>
+    normalizeMessage(await api.patch<ChatMessage>(CHAT_ENDPOINTS.MESSAGE(conversationId, messageId), { text })),
+
+  blockUser: (userId: string) => api.post<null>(CHAT_ENDPOINTS.BLOCK_USER(userId)),
+
+  unblockUser: (userId: string) => api.post<null>(CHAT_ENDPOINTS.UNBLOCK_USER(userId)),
+
+  /** Ids of the people you blocked. */
+  fetchBlockedUsers: async () => (await fetchBlocked()).map(u => u.id),
+
+  /** The people you blocked, with name and photo (Blocked users screen). */
+  fetchBlockedUserProfiles: fetchBlocked,
 {{#if GROUP_CHAT}}
 
   /** Uploads a picked group image; send the URL with createGroup / updateGroup. */

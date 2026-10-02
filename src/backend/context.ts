@@ -127,6 +127,10 @@ export function prepareBackendContext(options: BackendOptions): BackendRenderCon
     /** Direct chats only (no group columns, no member roles). */
     NO_GROUP_CHAT: chat && !groupChat,
     NOTIFICATIONS: notifications,
+    AUDIO_CALL: hasAuth && options.modules.audioCall,
+    VIDEO_CALL: hasAuth && options.modules.videoCall,
+    HAS_CALLING: hasAuth && (options.modules.audioCall || options.modules.videoCall),
+    CALLING: hasAuth && (options.modules.audioCall || options.modules.videoCall),
     /** User devices (FCM tokens) – part of push notifications. */
     DEVICES: notifications,
     /** Sign-in payloads carry the app's `device` (stored here, or forwarded to the notifications service). */
@@ -137,10 +141,12 @@ export function prepareBackendContext(options: BackendOptions): BackendRenderCon
     LEGAL: options.modules.legal && !replica,
     /** The user may delete their own account (DELETE /users/me). */
     DELETE_ACCOUNT: hasAuth && options.modules.deleteAccount && !replica,
-    /** The Realtime port exists (chat events, live notifications). */
-    REALTIME: chat || notifications,
-    /** This process hosts the Socket.IO server (not the notifications service – it publishes events). */
-    SOCKET_SERVER: (chat || notifications) && role !== 'notifications',
+    /** Over-The-Air updates module (bundle checks, downloads, release management). */
+    OTA: hasAuth && Boolean(options.modules.ota) && !replica,
+    /** The Realtime port exists (chat events, live notifications, calling signaling). */
+    REALTIME: chat || notifications || (hasAuth && (options.modules.audioCall || options.modules.videoCall)),
+    /** This process hosts the Socket.IO server. */
+    SOCKET_SERVER: (chat || notifications || (hasAuth && (options.modules.audioCall || options.modules.videoCall))) && role !== 'notifications',
     // ── microservices ──
     MICROSERVICE: role !== undefined,
     SVC_IDENTITY: role === 'identity',
@@ -200,7 +206,9 @@ export function prepareBackendContext(options: BackendOptions): BackendRenderCon
     MODULE_CHAT: false,
     MODULE_DEVICES: false,
     MODULE_NOTIFICATIONS: false,
+    MODULE_CALLING: false,
     MODULE_LEGAL: false,
+    MODULE_OTA: false,
   };
   for (const a of ['feature-based', 'layered', 'clean', 'mvc', 'modular', 'enterprise']) {
     flags[`ARCH_${a.replace(/-/g, '_').toUpperCase()}`] = arch.id === a;
@@ -250,6 +258,10 @@ export function prepareBackendContext(options: BackendOptions): BackendRenderCon
     // 32 / 16 characters, like the app's API_ENCRYPTION_KEY / API_ENCRYPTION_IV.
     API_ENCRYPTION_KEY: options.encryptionSecrets?.key ?? randomBytes(24).toString('base64url'),
     API_ENCRYPTION_IV: options.encryptionSecrets?.iv ?? randomBytes(12).toString('base64url'),
+    // Push notifications & Agora calling
+    FIREBASE_SERVICE_ACCOUNT_VALUE: options.firebaseServiceAccountPath ? './firebase-service-account.json' : '',
+    AGORA_APP_ID_VALUE: options.agoraAppId ?? '',
+    AGORA_APP_CERTIFICATE_VALUE: options.agoraAppCertificate ?? '',
   };
 
   Object.assign(variables, examplePaths(options, arch));

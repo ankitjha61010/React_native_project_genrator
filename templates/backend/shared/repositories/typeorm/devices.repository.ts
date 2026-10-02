@@ -8,6 +8,7 @@ const toDevice = (e: DeviceOrmEntity): Device => ({
   userId: e.userId,
   deviceId: e.deviceId,
   fcmToken: e.fcmToken,
+  voipToken: e.voipToken ?? null,
   deviceType: e.deviceType,
   deviceModel: e.deviceModel,
   osVersion: e.osVersion,
@@ -28,6 +29,7 @@ export class TypeOrmDevicesRepository implements DevicesRepository {
     const data = {
       userId,
       fcmToken: input.fcmToken ?? null,
+      voipToken: input.voipToken ?? null,
       deviceType: input.deviceType,
       deviceModel: input.deviceModel ?? null,
       osVersion: input.osVersion ?? null,
@@ -48,6 +50,15 @@ export class TypeOrmDevicesRepository implements DevicesRepository {
       if (!device) return null;
       await manager.update(DeviceOrmEntity, { fcmToken, deviceId: Not(deviceId) }, { fcmToken: null });
       await manager.update(DeviceOrmEntity, { deviceId }, { fcmToken, lastActiveAt: new Date() });
+      return toDevice(await manager.findOneByOrFail(DeviceOrmEntity, { deviceId }));
+    });
+  }
+
+  updateVoipToken(userId: string, deviceId: string, voipToken: string): Promise<Device | null> {
+    return this.dataSource.transaction(async manager => {
+      const device = await manager.findOneBy(DeviceOrmEntity, { userId, deviceId });
+      if (!device) return null;
+      await manager.update(DeviceOrmEntity, { deviceId }, { voipToken, lastActiveAt: new Date() });
       return toDevice(await manager.findOneByOrFail(DeviceOrmEntity, { deviceId }));
     });
   }

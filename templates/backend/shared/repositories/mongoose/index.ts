@@ -17,6 +17,15 @@ import type { DevicesRepository } from '{{IMPORT:contract.devices}}';
 {{#if NOTIFICATIONS}}
 import type { NotificationsRepository } from '{{IMPORT:contract.notifications}}';
 {{/if}}
+{{#if CALLING}}
+import type { ICallingRepository } from '{{IMPORT:contract.calling}}';
+{{/if}}
+{{#if LEGAL}}
+import type { LegalRepository } from '{{IMPORT:contract.legal}}';
+{{/if}}
+{{#if OTA}}
+import type { OTARepository } from '{{IMPORT:contract.ota}}';
+{{/if}}
 import type { UsersRepository } from '{{IMPORT:contract.users}}';
 {{#if AUTH_REFRESH}}
 import { MongooseRefreshTokensRepository } from '{{IMPORT:repo.auth}}';
@@ -35,6 +44,15 @@ import { MongooseDevicesRepository } from '{{IMPORT:repo.devices}}';
 {{/if}}
 {{#if NOTIFICATIONS}}
 import { MongooseNotificationsRepository } from '{{IMPORT:repo.notifications}}';
+{{/if}}
+{{#if CALLING}}
+import { MongooseCallingRepository } from '{{IMPORT:repo.calling}}';
+{{/if}}
+{{#if LEGAL}}
+import { MongooseLegalRepository } from '{{IMPORT:repo.legal}}';
+{{/if}}
+{{#if OTA}}
+import { MongooseOTARepository } from '{{IMPORT:repo.ota}}';
 {{/if}}
 import { MongooseUsersRepository } from '{{IMPORT:repo.users}}';
 {{#if REDIS_CODES}}
@@ -63,6 +81,15 @@ export interface Repositories {
 {{#if NOTIFICATIONS}}
   notifications: NotificationsRepository;
 {{/if}}
+{{#if CALLING}}
+  calling: ICallingRepository;
+{{/if}}
+{{#if LEGAL}}
+  legal: LegalRepository;
+{{/if}}
+{{#if OTA}}
+  ota: OTARepository;
+{{/if}}
 }
 
 /** Mongoose models use the default connection opened by `createDatabase()`. */
@@ -90,6 +117,15 @@ export function createRepositories(_database: Database): Repositories {
 {{/if}}
 {{#if NOTIFICATIONS}}
     notifications: new MongooseNotificationsRepository(),
+{{/if}}
+{{#if CALLING}}
+    calling: new MongooseCallingRepository(),
+{{/if}}
+{{#if LEGAL}}
+    legal: new MongooseLegalRepository(),
+{{/if}}
+{{#if OTA}}
+    ota: new MongooseOTARepository(),
 {{/if}}
   };
 }

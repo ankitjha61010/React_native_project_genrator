@@ -6,12 +6,18 @@ import { authRoutes } from '{{IMPORT:ex.auth.routes}}';
 {{#if CHAT}}
 import { chatRoutes } from '{{IMPORT:ex.chat.routes}}';
 {{/if}}
+{{#if CALLING}}
+import { callingRoutes } from '{{IMPORT:ex.calling.routes}}';
+{{/if}}
 {{#if DEVICES}}
 import { devicesRoutes } from '{{IMPORT:ex.devices.routes}}';
 {{/if}}
 import { healthRoutes } from '{{IMPORT:ex.health.routes}}';
 {{#if LEGAL}}
 import { legalRoutes } from '{{IMPORT:ex.legal.routes}}';
+{{/if}}
+{{#if OTA}}
+import { otaRoutes } from '{{IMPORT:ex.ota.routes}}';
 {{/if}}
 {{#if NOTIFICATIONS}}
 import { notificationsRoutes } from '{{IMPORT:ex.notifications.routes}}';
@@ -36,6 +42,9 @@ export function apiRoutes(services: Services): Router {
 {{#if CHAT}}
   api.use('/chat', chatRoutes(services));
 {{/if}}
+{{#if CALLING}}
+  api.use('/calls', callingRoutes(services));
+{{/if}}
 {{#if DEVICES}}
   api.use('/devices', devicesRoutes(services));
 {{/if}}
@@ -43,7 +52,10 @@ export function apiRoutes(services: Services): Router {
   api.use('/notifications', notificationsRoutes(services));
 {{/if}}
 {{#if LEGAL}}
-  api.use('/legal', legalRoutes());
+  api.use('/legal', legalRoutes(services));
+{{/if}}
+{{#if OTA}}
+  api.use('/ota', otaRoutes(services));
 {{/if}}
   return api;
 }

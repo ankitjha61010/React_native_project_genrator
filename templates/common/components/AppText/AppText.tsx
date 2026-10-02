@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { useDirection } from '{{IMPORT:hooks.useDirection}}';
 {{/if}}
 import { useTheme, type ColorName } from '{{IMPORT:hooks.useTheme}}';
-import { translate, type IntlProps } from '{{IMPORT:i18n.index}}';
+import { i18n, translate, type IntlProps } from '{{IMPORT:i18n.index}}';
 import type { Typography } from '{{IMPORT:theme.index}}';
 
 export type FontFamily = keyof Typography['fontFamily'];
@@ -130,13 +130,30 @@ export function AppText({
     return children;
   })();
 
+  const currentLng = i18n.language || 'en';
+  const hasNonLatin = currentLng === 'hi' || currentLng === 'ar' || (typeof resolvedContent === 'string' && /[\u0600-\u06FF\u0900-\u097F]/.test(resolvedContent));
+  const fontStyle = hasNonLatin
+    ? {
+      fontFamily: undefined,
+      fontWeight: fontFamily === 'bold' || fontFamily === 'black' || fontFamily === 'extraBold'
+        ? ('700' as const)
+        : fontFamily === 'semiBold'
+          ? ('600' as const)
+          : fontFamily === 'medium'
+            ? ('500' as const)
+            : ('400' as const),
+    }
+    : {
+      fontFamily: theme.typography.fontFamily[fontFamily],
+    };
+
   return (
     <Text
       allowFontScaling={false}
       style={[
         {{#if RTL}}TEXT_DIRECTION[direction]{{else}}TEXT_DIRECTION{{/if}},
         {
-          fontFamily: theme.typography.fontFamily[fontFamily],
+          ...fontStyle,
           fontSize: theme.typography.fontSize[fontSize],
           color: theme.colors[color],
           ...(align ? { textAlign: align } : null),

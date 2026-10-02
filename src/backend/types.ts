@@ -54,12 +54,18 @@ export interface BackendModules {
   chat: boolean;
   /** Group conversations (needs chat): admins / members, name, image, add / remove members, leave. */
   groupChat: boolean;
+  /** Calling module: Agora token gen, call lifecycle, signaling, call history. */
+  audioCall: boolean;
+  /** Video calling support (requires audioCall to be true as well). */
+  videoCall: boolean;
   /** Push notifications: user devices (FCM tokens), notification inbox, admin broadcasts. */
   notifications: boolean;
   /** GET /legal + editable Terms & Conditions / Privacy Policy pages served by the backend. */
   legal: boolean;
   /** DELETE /users/me (the user deletes their account) + a public "delete your account" page. */
   deleteAccount: boolean;
+  /** Over-The-Air (OTA) updates module (bundle checks, downloads, releases management). */
+  ota?: boolean;
 }
 
 /**
@@ -90,6 +96,12 @@ export interface BackendOptions {
   appPackage: string;
   /** Social sign-in keys entered while generating (written to .env; empty = set them later). */
   socialCredentials?: SocialCredentials;
+  /** Absolute path to a user-supplied firebase-service-account.json. */
+  firebaseServiceAccountPath?: string;
+  /** Agora App ID for calling. */
+  agoraAppId?: string;
+  /** Agora App Certificate for backend RTC token generation. */
+  agoraAppCertificate?: string;
   /** Full-stack: the AES key / IV written to both .env files (generated when missing). */
   encryptionSecrets?: { key: string; iv: string };
   /** Monolith (one API) or gateway + services. */
@@ -131,4 +143,4 @@ export const DEFAULT_SECURITY: BackendSecurity = {
 
 export const DEFAULT_AUTH_METHODS: BackendAuthMethods = { email: true, mobileOtp: false, google: false, facebook: false, apple: false };
 
-export const DEFAULT_MODULES: BackendModules = { chat: false, groupChat: false, notifications: false, legal: true, deleteAccount: true };
+export const DEFAULT_MODULES: BackendModules = { chat: false, groupChat: false, audioCall: false, videoCall: false, notifications: false, legal: true, deleteAccount: true, ota: false };

@@ -15,8 +15,13 @@ import { initGit } from './gitGenerator.js';
 import { generateNavigation, generateScreens } from './navigationGenerator.js';
 import { generateNotifications } from './notificationGenerator.js';
 import { generateSocialAuth } from './socialAuthGenerator.js';
-import { configureAndroidLayoutDirection, configureAndroidLocation, configureAndroidMicrophone, installAndroidFonts } from './native/android.js';
+import { configureAndroidCleartextTraffic, configureAndroidLayoutDirection, configureAndroidLocation, configureAndroidMicrophone, configureAndroidScreensRestoration, installAndroidFonts } from './native/android.js';
+import { configureAndroidCalling } from './native/androidCalling.js';
+import { configureAndroidOTA } from './native/androidOTA.js';
 import { configureIosLocation, configureIosMicrophone, configureXcodeEnv, linkIosFonts, VECTOR_ICON_FONTS } from './native/ios.js';
+import { configureIosCalling, configureIosCallingAppDelegate, configureIosCallingPodfile } from './native/iosCalling.js';
+import { configureIosOTA } from './native/iosOTA.js';
+import { generateOTAKeys, writeOTAPrivateKey } from './native/otaKeys.js';
 import { initReactNativeProject } from './reactNativeInit.js';
 
 /** Files of the React Native template that the generated project replaces. */
@@ -85,6 +90,8 @@ export async function generateProject(options: ProjectOptions, hooks: Generation
         await Promise.all(OBSOLETE_TEMPLATE_FILES.map(file => fs.remove(path.join(projectDir, file))));
         await configureXcodeEnv(projectDir, options.appName);
         await configureAndroidLayoutDirection(projectDir, options.rtl);
+        await configureAndroidCleartextTraffic(projectDir);
+        await configureAndroidScreensRestoration(projectDir, options.packageName);
       },
       `React Native ${profile.reactNative} project created`,
     );
@@ -131,6 +138,33 @@ export async function generateProject(options: ProjectOptions, hooks: Generation
           await configureIosMicrophone(projectDir, options.appName, options.displayName);
         },
         'Microphone permission added (Android & iOS)',
+      );
+    }
+
+    if (options.audioCall || options.videoCall) {
+      await step(
+        'Configuring calling permissions & background modes',
+        async () => {
+          await configureAndroidCalling(projectDir, options.videoCall, options.packageName, options.notifications);
+          await configureIosCalling(projectDir, options.appName, options.displayName, options.videoCall);
+          await configureIosCallingAppDelegate(projectDir, options.appName);
+          await configureIosCallingPodfile(projectDir, options.appName);
+        },
+        'Calling permissions and VoIP background modes added (Android & iOS)',
+      );
+    }
+
+    if (options.ota) {
+      await step(
+        'Configuring Over-The-Air (OTA) updates',
+        async () => {
+          // A key pair for this project only: the app accepts bundles signed with its private key.
+          const keys = generateOTAKeys();
+          await writeOTAPrivateKey(projectDir, keys);
+          await configureAndroidOTA(projectDir, options.packageName, keys.publicKeySpki);
+          await configureIosOTA(projectDir, options.appName, keys.publicKeyPkcs1);
+        },
+        'OTA configured (Android & iOS) – signing key in ota/, build updates with npm run ota:android / ota:ios',
       );
     }
 

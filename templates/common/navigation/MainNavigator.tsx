@@ -15,10 +15,14 @@ import { translate } from '{{IMPORT:i18n.index}}';
 import { ChatRoomScreen } from '{{IMPORT:chat.ChatRoomScreen}}';
 import { ChatDetailsScreen } from '{{IMPORT:chat.ChatDetailsScreen}}';
 import { NewChatScreen } from '{{IMPORT:chat.NewChatScreen}}';
+import { BlockedUsersScreen } from '{{IMPORT:chat.BlockedUsersScreen}}';
 {{#if GROUP_CHAT}}
 import { CreateGroupScreen } from '{{IMPORT:chat.CreateGroupScreen}}';
 import { GroupInfoScreen } from '{{IMPORT:chat.GroupInfoScreen}}';
 {{/if}}
+{{/if}}
+{{#if HAS_CALLING}}
+import { CallHistoryScreen } from '{{IMPORT:calling.CallHistoryScreen}}';
 {{/if}}
 {{#if DRAWER}}
 import { DrawerNavigator } from './DrawerNavigator';
@@ -60,10 +64,14 @@ export function MainNavigator(): React.JSX.Element {
       />
       <Stack.Screen name="ChatDetails" component={ChatDetailsScreen} options={{ title: translate('common', 'chatDetails') }} />
       <Stack.Screen name="NewChat" component={NewChatScreen} options={{ title: translate('common', 'newChat') }} />
+      <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} options={{ title: translate('common', 'blockedUsers') }} />
 {{#if GROUP_CHAT}}
       <Stack.Screen name="CreateGroup" component={CreateGroupScreen} options={{ title: translate('common', 'newGroup') }} />
       <Stack.Screen name="GroupInfo" component={GroupInfoScreen} options={{ title: translate('common', 'groupInfo') }} />
 {{/if}}
+{{/if}}
+{{#if HAS_CALLING}}
+      <Stack.Screen name="CallHistory" component={CallHistoryScreen} options={{ title: 'Call History' }} />
 {{/if}}
     </Stack.Navigator>
   );

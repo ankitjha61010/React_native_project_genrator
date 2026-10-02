@@ -43,6 +43,7 @@ export interface PublicUser {
   location: string | null;
   bio: string | null;
   role: UserRole;
+  isActive: boolean;
   emailVerified: boolean;
   phoneVerified: boolean;
   hasPassword: boolean;
@@ -68,6 +69,7 @@ export function toPublicUser(user: User): PublicUser {
     location: user.location,
     bio: user.bio,
     role: user.role,
+    isActive: user.isActive,
     emailVerified: user.emailVerifiedAt !== null,
     phoneVerified: user.phoneVerifiedAt !== null,
     hasPassword: user.passwordHash !== null,

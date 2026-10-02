@@ -203,10 +203,14 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     socket: false,
     chat: false,
     groupChat: false,
+    audioCall: false,
+    videoCall: false,
     termsAndConditions: true,
     deleteAccount: true,
     googleLocation: false,
     drawer: false,
+    ota: false,
+    adminPanel: false,
     initGit: flags.git,
     installDependencies: flags.install,
     installPods: flags.pods && process.platform === 'darwin',
@@ -355,8 +359,26 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     ? await askYesNo(flags.groupChat, interactive, 'Do you want Group Chat (create groups, admins / members, add / remove members, leave)?', 'Group chat', false)
     : false;
 
-  // Socket.io Real-time Client (chat always has it)
-  const socket = chat
+  // Audio Calling (Agora, CallKeep iOS, native Android, FCM/APNs VoIP)
+  const audioCall = await askYesNo(
+    flags.audioCall,
+    interactive,
+    'Do you want to implement Audio Calling (one-to-one + group, Agora, CallKeep/iOS, native Android)?',
+    'Audio calling',
+    false,
+  );
+
+  // Video Calling (Agora, camera, CallKeep iOS, native Android)
+  const videoCall = await askYesNo(
+    flags.videoCall,
+    interactive,
+    'Do you want to implement Video Calling (one-to-one + group, Agora, camera/mic, CallKeep/iOS, native Android)?',
+    'Video calling',
+    false,
+  );
+
+  // Socket.io Real-time Client (chat & calling always have it)
+  const socket = (chat || audioCall || videoCall)
     ? true
     : await askYesNo(flags.socket, interactive, 'Do you want to implement Socket.io client for real-time events & listeners?', 'Socket.io client', false);
 
@@ -435,6 +457,43 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     false,
   );
 
+  // Over-The-Air (OTA) updates module
+  const ota = await askYesNo(
+    flags.ota,
+    interactive,
+    'Do you want to implement Over-The-Air (OTA) updates?',
+    'OTA updates',
+    false,
+  );
+
+  // Admin Panel
+  const adminPanel = await askYesNo(
+    flags.adminPanel,
+    interactive,
+    'Do you want to create an Admin Panel?',
+    'Admin panel',
+    false,
+  );
+
+  let adminTechStack: 'react' | 'next' | undefined;
+  if (adminPanel) {
+    if (flags.adminTechStack === 'react' || flags.adminTechStack === 'next') {
+      adminTechStack = flags.adminTechStack;
+      log.success(`Admin panel tech stack: ${chalk.cyan(adminTechStack === 'next' ? 'Next.js' : 'React (Vite)')}`);
+    } else if (interactive) {
+      adminTechStack = await select<'react' | 'next'>({
+        message: 'Select Admin Panel tech stack:',
+        default: 'react',
+        choices: [
+          { name: 'React (Vite + Tailwind CSS)', value: 'react' },
+          { name: 'Next.js (App Router + Tailwind CSS)', value: 'next' },
+        ],
+      });
+    } else {
+      adminTechStack = 'react';
+    }
+  }
+
   // Install / pods / git
   let { installDependencies, installPods, initGit } = base;
   if (interactive) {
@@ -481,7 +540,8 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     apiEncryption,
     rtl,
     themeContext,
-    vectorIcons,
+    // Chat and calling screens use AppIcon, which only exists with vector icons.
+    vectorIcons: vectorIcons || chat || audioCall || videoCall,
     notifications,
     authEmail,
     authMobile,
@@ -490,10 +550,15 @@ export async function collectOptions(flags: CliFlags): Promise<ProjectOptions> {
     socket,
     chat,
     groupChat,
+    audioCall,
+    videoCall,
     termsAndConditions,
     deleteAccount,
     googleLocation,
     drawer,
+    ota,
+    adminPanel,
+    adminTechStack,
     firebase,
     analytics,
     installDependencies,

@@ -9,6 +9,14 @@ export class UpdateFcmTokenDto {
   fcmToken: string;
 }
 
+/** VoIP push token for incoming calls on iOS (PushKit). */
+export class UpdateVoipTokenDto {
+  @IsString()
+  @MinLength(10)
+  @MaxLength(512)
+  voipToken: string;
+}
+
 // ── responses (documentation) ────────────────────────────────────────────────
 
 export class DeviceDto {
@@ -18,6 +26,7 @@ export class DeviceDto {
   osVersion: string | null;
   appVersion: string | null;
   pushEnabled: boolean;
+  voipEnabled: boolean;
   lastActiveAt: string;
   createdAt: string;
 }

@@ -132,3 +132,16 @@ export class MessageOrmEntity {
   @Column({ name: 'deleted_at', type: TIMESTAMP, nullable: true })
   deletedAt: Date | null;
 }
+
+@Entity({ name: 'blocked_users' })
+export class BlockedUserOrmEntity {
+  @PrimaryColumn({ name: 'blocker_id', {{#if POSTGRES}}type: 'uuid'{{else}}type: 'char', length: 36{{/if}} })
+  blockerId: string;
+
+  @Index()
+  @PrimaryColumn({ name: 'blocked_id', {{#if POSTGRES}}type: 'uuid'{{else}}type: 'char', length: 36{{/if}} })
+  blockedId: string;
+
+  @CreateDateColumn({ name: 'created_at', type: TIMESTAMP })
+  createdAt: Date;
+}

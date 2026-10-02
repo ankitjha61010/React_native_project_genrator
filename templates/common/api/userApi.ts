@@ -1,4 +1,5 @@
 import type { User, UserRole } from '{{IMPORT:auth.types}}';
+import { forDevice } from '{{IMPORT:config.env}}';
 import { api{{#if CHAT}}, type Page{{/if}} } from './apiClient';
 
 /** The backend's user (see the backend's docs/API.md). */
@@ -22,7 +23,7 @@ export const toUser = (u: ServerUser): User => ({
   id: u.id,
   email: u.email ?? '',
   name: u.name,
-  avatar: u.avatar ?? undefined,
+  avatar: u.avatar ? forDevice(u.avatar) : undefined,
   countryCode: u.countryCode ?? undefined,
   phone: u.phone ?? undefined,
   location: u.location ?? undefined,
@@ -72,7 +73,9 @@ export const userApi = {
 {{#if CHAT}}
 
   /** Other users A → Z; `search` filters by name / email (empty: everybody). */
-  search: (params: { search?: string; page: number; limit?: number }): Promise<Page<UserSummary>> =>
-    api.page<UserSummary>('/users/search', { params: { limit: 20, ...params, search: params.search?.trim() || undefined } }),
+  search: async (params: { search?: string; page: number; limit?: number }): Promise<Page<UserSummary>> => {
+    const res = await api.page<UserSummary>('/users/search', { params: { limit: 20, ...params, search: params.search?.trim() || undefined } });
+    return { ...res, items: res.items.map(u => ({ ...u, avatar: u.avatar ? forDevice(u.avatar) : null })) };
+  },
 {{/if}}
 };

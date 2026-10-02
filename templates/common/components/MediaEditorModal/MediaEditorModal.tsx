@@ -354,7 +354,7 @@ export function MediaEditorModal({
   const handleClose = () => onClose();
 
   // ── live filter preview (Skia, same matrix as the output) ────────────────
-  const previewImage = useImage(media ? toFileUri(media.uri) : null);
+  const previewImage = useImage(media && media.type !== 'video' ? toFileUri(media.uri) : null);
 
   // ── PanResponder factory ──────────────────────────────────────────────────
   /**

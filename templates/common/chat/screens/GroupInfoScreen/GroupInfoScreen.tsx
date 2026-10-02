@@ -152,7 +152,7 @@ export function GroupInfoScreen(): React.JSX.Element {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View style={styles.header}>
-        <TouchableOpacity disabled={!isAdmin || info.busy === 'image'} onPress={() => setShowImagePicker(true)} accessibilityRole="button" accessibilityLabel={translate('common', 'changeGroupImage')}>
+        <TouchableOpacity disabled={info.busy === 'image'} onPress={() => setShowImagePicker(true)} accessibilityRole="button" accessibilityLabel={translate('common', 'changeGroupImage')}>
           {group.avatar ? (
             <Image source={{ uri: group.avatar }} style={styles.image} />
           ) : (
@@ -163,14 +163,10 @@ export function GroupInfoScreen(): React.JSX.Element {
           {info.busy === 'image' ? <ActivityIndicator style={StyleSheet.absoluteFill} color="#FFFFFF" /> : null}
         </TouchableOpacity>
 
-        {isAdmin ? (
-          <View style={styles.titleRow}>
-            <TextInput value={title} onChangeText={setTitle} maxLength={120} style={styles.titleInput} placeholder={translate('common', 'groupName')} placeholderTextColor={theme.colors.placeholder} />
-            {title.trim() && title.trim() !== group.title ? <AppButton intlType="common" value="save" loading={info.busy === 'title'} onPress={() => info.rename(title.trim())} /> : null}
-          </View>
-        ) : (
-          <AppText fontFamily="bold" fontSize="size20" align="center" text={group.title} />
-        )}
+        <View style={styles.titleRow}>
+          <TextInput value={title} onChangeText={setTitle} maxLength={120} style={styles.titleInput} placeholder={translate('common', 'groupName')} placeholderTextColor={theme.colors.placeholder} />
+          {title.trim() && title.trim() !== group.title ? <AppButton intlType="common" value="save" loading={info.busy === 'title'} onPress={() => info.rename(title.trim())} /> : null}
+        </View>
         <AppText color="textSecondary" text={translate('common', 'membersCount', { value1: group.participants.length + 1 })} />
       </View>
 

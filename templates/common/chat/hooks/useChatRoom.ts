@@ -4,6 +4,7 @@ import type { ChatMessage, Conversation, TypingUser } from '{{IMPORT:chat.types}
 import { useAuthSession } from '{{IMPORT:hooks.useAuthSession}}';
 import { SOCKET_EVENTS } from '{{IMPORT:socket.events}}';
 import { socketService } from '{{IMPORT:socket.service}}';
+import { translate } from '{{IMPORT:i18n.index}}';
 import { flash } from '{{IMPORT:utils.flashMessage}}';
 import { chatService, normalizeMessage, type MessageDraft } from '../services/chatService';
 
@@ -29,6 +30,7 @@ export function useChatRoom(conversationId: string) {
   const [hasMore, setHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [typing, setTyping] = useState<TypingUser[]>([]);
+  const [blockedUserIds, setBlockedUserIds] = useState<string[]>([]);
 {{#if GROUP_CHAT}}
   /** You left / were removed – the screen closes. */
   const [removed, setRemoved] = useState(false);
@@ -54,10 +56,18 @@ export function useChatRoom(conversationId: string) {
   /** Conversation + the latest messages (on open and after every reconnect). */
   const load = useCallback(async () => {
     try {
-      const [details, page] = await Promise.all([chatService.fetchConversation(conversationId), chatService.fetchMessages(conversationId)]);
+      const [details, page, blocked] = await Promise.all([
+        chatService.fetchConversation(conversationId),
+        chatService.fetchMessages(conversationId),
+        chatService.fetchBlockedUsers().catch(() => [] as string[]),
+      ]);
       setConversation(details);
+      setBlockedUserIds(blocked);
       // Keep messages that are still sending.
-      setMessages(previous => [...page.items, ...previous.filter(m => m.status === 'sending' || m.status === 'failed')].sort(byDate));
+      setMessages(previous => [
+        ...page.items.map(m => ({ ...m, isMe: m.senderId === myId })),
+        ...previous.filter(m => m.status === 'sending' || m.status === 'failed'),
+      ].sort(byDate));
       setHasMore(page.hasMore);
       await chatService.markRead(conversationId);
     } catch (error) {
@@ -65,7 +75,7 @@ export function useChatRoom(conversationId: string) {
     } finally {
       setLoading(false);
     }
-  }, [conversationId]);
+  }, [conversationId, myId]);
 
   useEffect(() => {
     load();
@@ -95,6 +105,16 @@ export function useChatRoom(conversationId: string) {
         setMessages(previous =>
           previous.filter(m => m.id !== event.messageId).map(m => (m.replyTo?.messageId === event.messageId ? { ...m, replyTo: { ...m.replyTo, text: undefined, deleted: true } } : m)),
         );
+      }),
+      socketService.on<{ conversationId: string; messageId: string; text: string }>(SOCKET_EVENTS.MESSAGE_EDIT, event => {
+        if (event.conversationId !== conversationId) return;
+        setMessages(previous => previous.map(m => (m.id === event.messageId ? { ...m, text: event.text } : m)));
+      }),
+      socketService.on<{ userId: string }>(SOCKET_EVENTS.USER_BLOCKED, event => {
+        setBlockedUserIds(prev => (prev.includes(event.userId) ? prev : [...prev, event.userId]));
+      }),
+      socketService.on<{ userId: string }>(SOCKET_EVENTS.USER_UNBLOCKED, event => {
+        setBlockedUserIds(prev => prev.filter(id => id !== event.userId));
       }),
       // You cleared this chat (or all chats) – maybe on another device.
       socketService.on<{ conversationId: string | null }>(SOCKET_EVENTS.CONVERSATION_CLEARED, event => {
@@ -145,14 +165,14 @@ export function useChatRoom(conversationId: string) {
     setLoadingOlder(true);
     try {
       const page = await chatService.fetchMessages(conversationId, oldest.id);
-      setMessages(previous => [...page.items, ...previous].sort(byDate));
+      setMessages(previous => [...page.items.map(m => ({ ...m, isMe: m.senderId === myId })), ...previous].sort(byDate));
       setHasMore(page.hasMore);
     } catch (error) {
       flash.error({ message: errorMessage(error) });
     } finally {
       setLoadingOlder(false);
     }
-  }, [conversationId, hasMore, loadingOlder, messages]);
+  }, [conversationId, hasMore, loadingOlder, messages, myId]);
 
   /**
    * Sends text or a local file: shown at once ("sending"), uploaded, then replaced by the
@@ -217,6 +237,43 @@ export function useChatRoom(conversationId: string) {
   /** Direct chat: the other person's presence. */
   const other = useMemo(() => ({{#if GROUP_CHAT}}conversation?.isGroup ? undefined : {{/if}}conversation?.participants[0]), [conversation]);
 
+  const editMessage = useCallback(
+    async (messageId: string, text: string) => {
+      setMessages(previous => previous.map(m => (m.id === messageId ? { ...m, text } : m)));
+      try {
+        await chatService.editMessage(conversationId, messageId, text);
+      } catch (error) {
+        load();
+        flash.error({ message: errorMessage(error) });
+      }
+    },
+    [conversationId, load],
+  );
+
+  const blockUser = useCallback(async () => {
+    if (!other) return;
+    try {
+      await chatService.blockUser(other.id);
+      setBlockedUserIds(prev => (prev.includes(other.id) ? prev : [...prev, other.id]));
+      flash.success({ message: translate('common', 'userBlocked') });
+    } catch (error) {
+      flash.error({ message: errorMessage(error) });
+    }
+  }, [other]);
+
+  const unblockUser = useCallback(async () => {
+    if (!other) return;
+    try {
+      await chatService.unblockUser(other.id);
+      setBlockedUserIds(prev => prev.filter(id => id !== other.id));
+      flash.success({ message: translate('common', 'userUnblocked') });
+    } catch (error) {
+      flash.error({ message: errorMessage(error) });
+    }
+  }, [other]);
+
+  const isBlocked = useMemo(() => (other ? blockedUserIds.includes(other.id) : false), [other, blockedUserIds]);
+
   return {
     myId,
     conversation,
@@ -229,10 +286,14 @@ export function useChatRoom(conversationId: string) {
 {{#if GROUP_CHAT}}
     removed,
 {{/if}}
+    isBlocked,
+    blockUser,
+    unblockUser,
     loadOlder,
     send,
     retry,
     deleteMessage,
+    editMessage,
     notifyTyping,
   };
 }

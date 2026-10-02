@@ -1,6 +1,10 @@
 {{#if AUTH}}
 import { config } from '{{IMPORT:config.env}}';
 import { logger } from '{{IMPORT:core.logger}}';
+{{else}}
+{{#if LEGAL}}
+import { config } from '{{IMPORT:config.env}}';
+{{/if}}
 {{/if}}
 import type { Database } from '{{IMPORT:db.connection}}';
 {{#if REDIS}}
@@ -75,6 +79,15 @@ import { NotificationsService } from '{{IMPORT:app.notificationsService}}';
 {{/if}}
 {{#if USERS_API}}
 import { UsersService } from '{{IMPORT:app.usersService}}';
+{{/if}}
+{{#if CALLING}}
+import { CallingService } from '{{IMPORT:app.callingService}}';
+{{/if}}
+{{#if LEGAL}}
+import { LegalService } from '{{IMPORT:app.legalService}}';
+{{/if}}
+{{#if OTA}}
+import { OTAService } from '{{IMPORT:app.otaService}}';
 {{/if}}
 
 /*
@@ -223,6 +236,21 @@ export function createServices(infra: Infrastructure) {
   });
 {{/if}}
 
+{{#if CALLING}}
+  const calling = new CallingService({
+    calling: repos.calling,
+    users: repos.users,
+    realtime: infra.realtime,
+{{#if NOTIFICATIONS}}
+    push: (userIds, message) => notifications.push(userIds, message),
+{{/if}}
+    logger,
+{{#if CHAT}}
+    recordCall: (input) => chat.recordCall(input),
+{{/if}}
+  });
+{{/if}}
+
   return {
 {{#if AUTH}}
     sessions,
@@ -278,6 +306,16 @@ export function createServices(infra: Infrastructure) {
 {{/if}}
 {{#if CHAT}}
     chat,
+{{/if}}
+{{#if CALLING}}
+    calling,
+{{/if}}
+{{#if LEGAL}}
+    // Links + pages edited in the admin panel; the .env links until then.
+    legal: new LegalService(repos.legal, config.legal),
+{{/if}}
+{{#if OTA}}
+    ota: new OTAService(repos.ota),
 {{/if}}
   };
 }

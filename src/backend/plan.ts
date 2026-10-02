@@ -32,6 +32,9 @@ export function createBackendPlan(ctx: BackendRenderContext): BackendPlannedFile
   for (const entry of BACKEND_MANIFEST) {
     if (entry.when && !entry.when(ctx)) continue;
     const file = typeof entry.file === 'function' ? entry.file(ctx) : entry.file;
+    if (!file) {
+      throw new Error(`Manifest entry "${entry.id}" has no file or returned undefined`);
+    }
     const dir = entry.layer ? arch.dir(entry.layer, options.framework, entry.feature) : '';
     const planned: BackendPlannedFile = { id: entry.id, template: entry.template.replace('{orm}', options.orm), path: posix.normalize(dir ? posix.join(dir, file) : file), flags: entry.flags };
     files.push(planned);

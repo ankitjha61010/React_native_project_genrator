@@ -55,6 +55,7 @@ export function registerNotificationHandlers(): void {
   const messaging = getMessaging();
 
   setBackgroundMessageHandler(messaging, async message => {
+    if (isCallMessage(message)) return;
     logger.info('Background message', message.messageId);
     await saveToInbox(message);
     if (!message.notification) {
@@ -63,10 +64,17 @@ export function registerNotificationHandlers(): void {
   });
 
   onMessage(messaging, async message => {
+    if (isCallMessage(message)) return;
     logger.info('Foreground message', message.messageId);
     await saveToInbox(message);
     await displayNotification(message);
   });
+}
+
+/** Call pushes ring through the native Android call screen and the socket – they are not inbox notifications. */
+function isCallMessage(message: RemoteMessage): boolean {
+  const type = message.data?.type;
+  return type === 'CALL_INCOMING' || type === 'CALL_ENDED';
 }
 
 /**

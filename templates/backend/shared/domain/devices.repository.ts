@@ -10,6 +10,8 @@ export interface DevicesRepository {
   save(userId: string, input: DeviceInput): Promise<Device>;
   /** FCM rotated the token of one of the user's devices. Null when the user has no such device. */
   updateFcmToken(userId: string, deviceId: string, fcmToken: string): Promise<Device | null>;
+  /** Updates the iOS VoIP push token for the user's device. */
+  updateVoipToken(userId: string, deviceId: string, voipToken: string): Promise<Device | null>;
   listByUser(userId: string): Promise<Device[]>;
   /** Devices of these users that can receive pushes (they have a token). */
   listWithToken(userIds: string[]): Promise<Device[]>;

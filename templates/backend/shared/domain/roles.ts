@@ -14,7 +14,7 @@ export const ROLES: readonly UserRole[] = Object.values(UserRole);
 
 export const DEFAULT_ROLE = UserRole.USER;
 
-export const PERMISSIONS = ['users:read', 'users:write', 'users:delete'{{#if NOTIFICATIONS}}, 'notifications:broadcast'{{/if}}] as const;
+export const PERMISSIONS = ['users:read', 'users:write', 'users:delete'{{#if NOTIFICATIONS}}, 'notifications:broadcast'{{/if}}{{#if LEGAL}}, 'legal:write'{{/if}}{{#if OTA}}, 'ota:read', 'ota:write'{{/if}}] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
 export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {

@@ -5,7 +5,7 @@ import { translate } from '{{IMPORT:i18n.index}}';
 import { flash } from '{{IMPORT:utils.flashMessage}}';
 import { chatService } from '../services/chatService';
 
-export type ChatAction = 'clear' | 'clearAll' | 'delete';
+export type ChatAction = 'clear' | 'clearAll' | 'delete' | 'block';
 
 /**
  * "Clear chat", "Clear all chats" and "Delete chat" – each asks first. Everything happens for

@@ -16,5 +16,6 @@ export function devicesRoutes(services: Services): Router {
 
   router.get('/', devices.list);
   router.patch('/:deviceId', devices.updateFcmToken);
+  router.patch('/:deviceId/voip-token', devices.updateVoipToken);
   return router;
 }

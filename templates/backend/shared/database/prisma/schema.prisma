@@ -189,6 +189,16 @@ model Message {
   @@index([senderId])
   @@map("messages")
 }
+
+model BlockedUser {
+  blockerId String   @map("blocker_id") {{UUID}}
+  blockedId String   @map("blocked_id") {{UUID}}
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
+  @@map("blocked_users")
+}
 {{/if}}
 {{#if DEVICES}}
 
@@ -200,6 +210,8 @@ model Device {
   deviceId     String   @unique @map("device_id") @db.VarChar(128)
   /// FCM registration token (null until the app has one).
   fcmToken     String?    @unique @map("fcm_token") @db.VarChar(512)
+  /// iOS VoIP push token for incoming calls (PushKit).
+  voipToken    String?    @map("voip_token") @db.VarChar(512)
   deviceType   DeviceType @map("device_type")
   deviceModel  String?    @map("device_model") @db.VarChar(120)
   osVersion    String?  @map("os_version") @db.VarChar(32)
@@ -251,5 +263,21 @@ model Broadcast {
   createdAt      DateTime @default(now()) @map("created_at")
 
   @@map("broadcasts")
+}
+{{/if}}
+{{#if LEGAL}}
+
+/// The legal links + pages edited in the admin panel – one row (id "default").
+model LegalSettings {
+  id                String   @id @db.VarChar(16)
+  termsUrl          String?  @map("terms_url") @db.VarChar(2048)
+  privacyPolicyUrl  String?  @map("privacy_policy_url") @db.VarChar(2048)
+  deleteAccountUrl  String?  @map("delete_account_url") @db.VarChar(2048)
+  termsHtml         String?  @map("terms_html") {{#if POSTGRES}}@db.Text{{else}}@db.LongText{{/if}}
+  privacyPolicyHtml String?  @map("privacy_policy_html") {{#if POSTGRES}}@db.Text{{else}}@db.LongText{{/if}}
+  deleteAccountHtml String?  @map("delete_account_html") {{#if POSTGRES}}@db.Text{{else}}@db.LongText{{/if}}
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("legal_settings")
 }
 {{/if}}

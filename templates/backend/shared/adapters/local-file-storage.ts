@@ -20,7 +20,27 @@ export class LocalFileStorage implements FileStorage {
 
   async save(file: UploadedFile, folder: string): Promise<StoredFile> {
     // Never use the client's file name on disk – only a safe extension.
-    const ext = path.extname(file.originalName).toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 10);
+    let ext = path.extname(file.originalName).toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 10);
+    if (!ext || ext === '.') {
+      const mimeMap: Record<string, string> = {
+        'video/mp4': '.mp4',
+        'video/quicktime': '.mov',
+        'video/webm': '.webm',
+        'video/3gpp': '.3gp',
+        'image/jpeg': '.jpg',
+        'image/png': '.png',
+        'image/gif': '.gif',
+        'image/webp': '.webp',
+        'image/heic': '.heic',
+        'audio/mp4': '.m4a',
+        'audio/mpeg': '.mp3',
+        'audio/aac': '.aac',
+        'audio/wav': '.wav',
+        'audio/ogg': '.ogg',
+        'application/pdf': '.pdf',
+      };
+      ext = mimeMap[file.mimeType] || (file.mimeType?.startsWith('video/') ? '.mp4' : file.mimeType?.startsWith('image/') ? '.jpg' : file.mimeType?.startsWith('audio/') ? '.mp3' : '');
+    }
     const key = `${folder}/${new Date().toISOString().slice(0, 7)}/${randomUUID()}${ext}`;
     const target = this.resolve(key);
     await mkdir(path.dirname(target), { recursive: true });

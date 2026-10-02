@@ -131,6 +131,17 @@ describe('chat API + Socket.IO', () => {
     expect(list.body.data.map((c: { id: string }) => c.id)).toContain(conversationId);
   });
 
+  it('blocks someone: listed with name, no direct messages until unblocked', async () => {
+    await request(app.server).post(`${api}/chat/users/${bob.id}/block`).set(bearer(alice.token)).expect(200);
+    const list = await request(app.server).get(`${api}/chat/blocked-users`).set(bearer(alice.token)).expect(200);
+    expect(list.body.data).toEqual([{ id: bob.id, name: 'Bob' }]);
+    await request(app.server).post(`${api}/chat/conversations/${conversationId}/messages`).set(bearer(alice.token)).send({ type: 'text', text: 'Hi' }).expect(403);
+
+    await request(app.server).post(`${api}/chat/users/${bob.id}/unblock`).set(bearer(alice.token)).expect(200);
+    const after = await request(app.server).get(`${api}/chat/blocked-users`).set(bearer(alice.token)).expect(200);
+    expect(after.body.data).toEqual([]);
+  });
+
   it('broadcasts presence: offline (with lastSeen) when the last socket disconnects', async () => {
     const eve = await app.signUp('Eve');
     const online = next<{ userId: string }>(bobSocket, 'presence:user_online');

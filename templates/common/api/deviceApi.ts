@@ -15,9 +15,12 @@ export interface DeviceInfo {
   appVersion: string | null;
   /** FCM registration token – null when push is unavailable (no permission, simulator…). */
   fcmToken: string | null;
+  /** iOS VoIP push token for incoming calls (PushKit) – null on Android or when unavailable. */
+  voipToken?: string | null;
 }
 
-/** The only device request outside sign-in: FCM rotated this install's token. */
+/** Device requests outside sign-in: FCM token rotation or VoIP token updates. */
 export const deviceApi = {
   updateFcmToken: (deviceId: string, fcmToken: string) => api.patch<null>(`/devices/${encodeURIComponent(deviceId)}`, { fcmToken }),
+  updateVoipToken: (deviceId: string, voipToken: string) => api.patch<null>(`/devices/${encodeURIComponent(deviceId)}/voip-token`, { voipToken }),
 };

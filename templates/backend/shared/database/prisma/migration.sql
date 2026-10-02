@@ -194,6 +194,22 @@ CREATE TABLE "broadcasts" (
     CONSTRAINT "broadcasts_pkey" PRIMARY KEY ("id")
 );
 {{/if}}
+{{#if LEGAL}}
+
+-- CreateTable
+CREATE TABLE "legal_settings" (
+    "id" VARCHAR(16) NOT NULL,
+    "terms_url" VARCHAR(2048),
+    "privacy_policy_url" VARCHAR(2048),
+    "delete_account_url" VARCHAR(2048),
+    "terms_html" TEXT,
+    "privacy_policy_html" TEXT,
+    "delete_account_html" TEXT,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "legal_settings_pkey" PRIMARY KEY ("id")
+);
+{{/if}}
 
 -- CreateIndex
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
@@ -489,6 +505,22 @@ CREATE TABLE `broadcasts` (
     `sent_by_id` CHAR(36) NOT NULL,
     `recipient_count` INTEGER NOT NULL DEFAULT 0,
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+{{/if}}
+{{#if LEGAL}}
+
+-- CreateTable
+CREATE TABLE `legal_settings` (
+    `id` VARCHAR(16) NOT NULL,
+    `terms_url` VARCHAR(2048) NULL,
+    `privacy_policy_url` VARCHAR(2048) NULL,
+    `delete_account_url` VARCHAR(2048) NULL,
+    `terms_html` LONGTEXT NULL,
+    `privacy_policy_html` LONGTEXT NULL,
+    `delete_account_html` LONGTEXT NULL,
+    `updated_at` DATETIME(3) NOT NULL,
 
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

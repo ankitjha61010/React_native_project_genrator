@@ -22,6 +22,10 @@ export function chatRoutes(services: Services): Router {
   router.post('/conversations/:conversationId/read', chat.markRead);
   router.post('/conversations/:conversationId/clear', chat.clearConversation);
   router.delete('/conversations/:conversationId/messages/:messageId', chat.deleteMessage);
+  router.patch('/conversations/:conversationId/messages/:messageId', chat.editMessage);
+  router.get('/blocked-users', chat.listBlockedUsers);
+  router.post('/users/:userId/block', chat.blockUser);
+  router.post('/users/:userId/unblock', chat.unblockUser);
 {{#if GROUP_CHAT}}
   // Groups (changes are for admins, see ChatService).
   router.post('/groups', chat.createGroup);

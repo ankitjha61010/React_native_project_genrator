@@ -160,6 +160,13 @@ ChatMessage  { id, conversationId, senderId, senderName, senderAvatar?, type: 't
 `{ type: 'system', event: 'MEMBER_ADDED', actor: { id, name: 'Abhishek' }, target: { id, name: 'Rahul' }, createdAt }`
 in the conversation ("Abhishek added Rahul"). They don't count as unread, can't be deleted or replied to, and are never pushed.
 {{/if}}
+{{#if CALLING}}
+
+**Calls in the chat**: every finished one-to-one call is stored in the two people's direct chat as a system message
+(the chat is created if needed): `{ type: 'system', event: 'CALL' | 'MISSED_CALL', text: 'audio' | 'video', duration?, actor: <caller>, target: <receiver> }`.
+`CALL` was answered (`duration` = seconds talked); `MISSED_CALL` was not (missed, declined or cancelled). The app shows it
+like WhatsApp ("Missed voice call", "Video call · 2:14") and calls back on tap.
+{{/if}}
 
 **Replies**: send `replyToId` with a message; the answer carries `replyTo` (the quote). When the original is deleted
 the quote becomes `{ …, deleted: true }` without its text.

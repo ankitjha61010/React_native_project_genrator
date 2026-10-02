@@ -6,6 +6,10 @@ export const updateFcmTokenSchema = z
   .object({ fcmToken: z.string().min(10).max(512).meta({ description: 'The new FCM registration token' }) })
   .meta({ id: 'UpdateFcmTokenRequest' });
 
+export const updateVoipTokenSchema = z
+  .object({ voipToken: z.string().min(10).max(512).meta({ description: 'The new iOS VoIP push token' }) })
+  .meta({ id: 'UpdateVoipTokenRequest' });
+
 export const deviceParams = z.object({ deviceId: z.string().min(1).max(128) });
 
 // ── responses (used by the OpenAPI document) ──────────────────────────────────
@@ -18,6 +22,7 @@ export const deviceSchema = z
     osVersion: z.string().nullable(),
     appVersion: z.string().nullable(),
     pushEnabled: z.boolean(),
+    voipEnabled: z.boolean(),
     lastActiveAt: z.iso.datetime(),
     createdAt: z.iso.datetime(),
   })

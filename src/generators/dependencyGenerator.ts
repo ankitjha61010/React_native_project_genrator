@@ -15,6 +15,12 @@ const SCRIPTS: Record<string, string> = {
   'pods': 'cd ios && bundle install && bundle exec pod install',
 };
 
+/** Signed OTA update archives (scripts/ota-bundle.mjs). */
+const OTA_SCRIPTS: Record<string, string> = {
+  'ota:android': 'node scripts/ota-bundle.mjs --platform android',
+  'ota:ios': 'node scripts/ota-bundle.mjs --platform ios',
+};
+
 function sortKeys(record: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)));
 }
@@ -44,7 +50,7 @@ export async function updatePackageJson(
   delete pkg.dependencies['@react-native/new-app-screen'];
 
   pkg.name = options.appName.toLowerCase();
-  pkg.scripts = { ...pkg.scripts, ...SCRIPTS };
+  pkg.scripts = { ...pkg.scripts, ...SCRIPTS, ...(options.ota ? OTA_SCRIPTS : {}) };
   pkg.dependencies = sortKeys({ ...pkg.dependencies, ...resolved.dependencies });
   pkg.devDependencies = sortKeys({ ...pkg.devDependencies, ...resolved.devDependencies });
 

@@ -33,7 +33,11 @@ export function createApp(services: Services): Express {
   app.use(config.uploads.publicPath, express.static(config.uploads.dir, { index: false, dotfiles: 'deny', maxAge: '7d' }));
 {{/if}}
 {{#if LEGAL}}
-  // Legal pages the app opens: /terms-and-conditions, /privacy-policy… (public/*.html – edit them).
+  // Legal pages the app opens: /terms-and-conditions, /privacy-policy… – the HTML saved in the
+  // admin panel (PUT /legal), else public/*.html (edit them).
+  app.get('/:page', (req, res, next) => {
+    services.legal.pageHtml(req.path).then(html => (html ? res.type('html').send(html) : next()), next);
+  });
   app.use(express.static('public', { index: false, extensions: ['html'], dotfiles: 'deny', maxAge: '1h' }));
 {{/if}}
 

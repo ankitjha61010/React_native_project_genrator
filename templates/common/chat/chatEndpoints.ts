@@ -17,6 +17,11 @@ export const CHAT_ENDPOINTS = {
   MESSAGE: (conversationId: string, messageId: string) => `/chat/conversations/${id(conversationId)}/messages/${id(messageId)}`,
   MARK_READ: (conversationId: string) => `/chat/conversations/${id(conversationId)}/read`,
 
+  // Blocking
+  BLOCKED_USERS: '/chat/blocked-users',
+  BLOCK_USER: (userId: string) => `/chat/users/${id(userId)}/block`,
+  UNBLOCK_USER: (userId: string) => `/chat/users/${id(userId)}/unblock`,
+
   // Media uploads (multipart field `file`)
   UPLOAD_MEDIA: '/chat/upload',
   UPLOAD_VOICE_NOTE: '/chat/upload-voice',

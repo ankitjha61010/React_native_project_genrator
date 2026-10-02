@@ -36,6 +36,8 @@ export const DEPENDENCY_REGISTRY = {
     '@shopify/react-native-skia',
     'react-native-file-access',
     'react-native-permissions',
+    // Pinch & double-tap zoom for image previews
+    '@likashefqet/react-native-image-zoom',
     // Forms
     'react-hook-form',
     'zod',
@@ -74,12 +76,42 @@ export const DEPENDENCY_REGISTRY = {
     socket: { dependencies: ['socket.io-client'], devDependencies: [] },
     // Voice messages need a recorder / player; "send a file" needs the system document picker.
     // react-native-nitro-sound runs on react-native-nitro-modules (already there for MMKV).
-    chat: { dependencies: ['react-native-nitro-sound', 'react-native-nitro-modules', '@react-native-documents/picker'], devDependencies: [] },
+    chat: { dependencies: ['react-native-nitro-sound', 'react-native-nitro-modules', '@react-native-documents/picker', '@likashefqet/react-native-image-zoom'], devDependencies: [] },
     socialGoogle: { dependencies: ['@react-native-google-signin/google-signin'], devDependencies: [] },
     socialFacebook: { dependencies: ['react-native-fbsdk-next'], devDependencies: [] },
     socialApple: { dependencies: ['@invertase/react-native-apple-authentication'], devDependencies: [] },
     // Google Location SDK: Fused Location Provider (Android) / CoreLocation (iOS). Places search is plain HTTPS.
     googleLocation: { dependencies: ['react-native-geolocation-service'], devDependencies: [] },
+    // Audio calling: Agora RTC + CallKeep (iOS CallKit) + VoIP push + InCallManager.
+    audioCall: {
+      dependencies: [
+        'react-native-agora',
+        'react-native-callkeep',
+        'react-native-voip-push-notification',
+        'react-native-incall-manager',
+      ],
+      devDependencies: [],
+    },
+    // Video calling: Agora RTC + CallKeep (iOS CallKit) + VoIP push + camera + InCallManager.
+    videoCall: {
+      dependencies: [
+        'react-native-agora',
+        'react-native-callkeep',
+        'react-native-voip-push-notification',
+        'react-native-incall-manager',
+      ],
+      devDependencies: [],
+    },
+    // Over-The-Air (OTA) updates: file access, zip extraction, instant app reload, native app version.
+    ota: {
+      dependencies: [
+        'react-native-fs',
+        'react-native-zip-archive',
+        'react-native-restart',
+        'react-native-device-info',
+      ],
+      devDependencies: [],
+    },
   },
   /** The selected key-value storage. MMKV v4 is a Nitro module. */
   storageDependencies: {

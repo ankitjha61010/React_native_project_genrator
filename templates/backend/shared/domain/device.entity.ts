@@ -16,6 +16,8 @@ export interface Device {
   deviceId: string;
   /** FCM registration token (null until the app has one, e.g. push permission denied). */
   fcmToken: string | null;
+  /** iOS VoIP push token for incoming calls (PushKit) – null on Android or when not provided. */
+  voipToken: string | null;
   deviceType: DeviceType;
   /** e.g. "Google Pixel 8" / "iPhone". */
   deviceModel: string | null;
@@ -38,6 +40,7 @@ export interface DeviceInput {
   osVersion?: string | null;
   appVersion?: string | null;
   fcmToken?: string | null;
+  voipToken?: string | null;
 }
 
 export interface DeviceView {
@@ -48,6 +51,8 @@ export interface DeviceView {
   appVersion: string | null;
   /** Push is possible on this device. */
   pushEnabled: boolean;
+  /** VoIP push is enabled (iOS CallKit wake). */
+  voipEnabled: boolean;
   lastActiveAt: string;
   createdAt: string;
 }
@@ -60,6 +65,7 @@ export function toDeviceView(d: Device): DeviceView {
     osVersion: d.osVersion,
     appVersion: d.appVersion,
     pushEnabled: d.fcmToken !== null,
+    voipEnabled: d.voipToken !== null,
     lastActiveAt: d.lastActiveAt.toISOString(),
     createdAt: d.createdAt.toISOString(),
   };

@@ -1,35 +1,38 @@
-import { Controller, Get } from '@nestjs/common';
+import { {{#if AUTH}}Body, {{/if}}Controller, Get{{#if AUTH}}, Put{{/if}} } from '@nestjs/common';
 {{#if SWAGGER}}
 import { ApiTags } from '@nestjs/swagger';
 {{/if}}
-import { config } from '{{IMPORT:config.env}}';
+import { LegalService } from '{{IMPORT:app.legalService}}';
 {{#if AUTH}}
-import { Public } from '{{IMPORT:nest.decorators}}';
+import { Public, RequirePermissions } from '{{IMPORT:nest.decorators}}';
 {{/if}}
 import { Endpoint } from '{{IMPORT:nest.endpoint}}';
+import { LegalDto{{#if AUTH}}, UpdateLegalDto{{/if}} } from '{{IMPORT:nest.legal.dto}}';
 import { LEGAL_MESSAGES } from '{{IMPORT:messages.legal}}';
 
-/** Response of GET /legal (documentation). */
-class LegalLinksDto {
-  termsUrl: string;
-  privacyPolicyUrl: string;
-{{#if DELETE_ACCOUNT}}
-  deleteAccountUrl: string;
-{{/if}}
-}
-
-/** `/legal` – the links come from .env, so they change without an app release. */
+/** `/legal` – the links the app opens + the pages edited in the admin panel. */
 {{#if SWAGGER}}
 @ApiTags('Legal')
 {{/if}}
-{{#if AUTH}}
-@Public()
-{{/if}}
 @Controller('legal')
 export class LegalController {
+  constructor(private readonly legal: LegalService) {}
+
+{{#if AUTH}}
+  @Public()
+{{/if}}
   @Get()
-  @Endpoint({ summary: 'Terms & Conditions / Privacy Policy links the app opens (TERMS_URL … in .env)', message: LEGAL_MESSAGES.links, response: LegalLinksDto })
-  links(): LegalLinksDto {
-    return config.legal;
+  @Endpoint({ summary: 'Terms & Conditions / Privacy Policy links the app opens (admin panel, else TERMS_URL … in .env)', message: LEGAL_MESSAGES.links, response: LegalDto })
+  get() {
+    return this.legal.get();
   }
+{{#if AUTH}}
+
+  @Put()
+  @RequirePermissions('legal:write')
+  @Endpoint({ summary: 'Save the legal links / pages (admin)', message: LEGAL_MESSAGES.updated, response: LegalDto, errors: [401, 403, 422], bearer: true })
+  update(@Body() dto: UpdateLegalDto) {
+    return this.legal.update(dto);
+  }
+{{/if}}
 }

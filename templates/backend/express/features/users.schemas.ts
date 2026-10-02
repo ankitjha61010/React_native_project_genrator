@@ -14,7 +14,15 @@ export const updateUserSchema = z.object({ name: name.optional() }).meta({ id: '
 {{else}}
 
 export const updateUserSchema = z
-  .object({ name: name.optional(), role: z.enum(UserRole).optional(), isActive: z.boolean().optional() })
+  .object({
+    name: name.optional(),
+    email: z.email().nullable().optional(),
+    role: z.enum(UserRole).optional(),
+    isActive: z.boolean().optional(),
+    avatarUrl: z.url().nullable().optional(),
+    countryCode: z.string().trim().regex(/^\+?\d{1,4}$/, 'must be a dial code like +91').nullable().optional(),
+    phone: z.string().trim().regex(/^[\d\s-]{4,20}$/, 'must be a valid mobile number').nullable().optional(),
+  })
   .refine(value => Object.keys(value).length > 0, 'Provide at least one field')
   .meta({ id: 'UpdateUserRequest' });
 

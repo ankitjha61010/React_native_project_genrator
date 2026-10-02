@@ -2,7 +2,7 @@ import { Types } from 'mongoose';
 import type { Conversation, ConversationMember, MediaCrop, Message, MessageType, SystemEvent } from '{{IMPORT:domain.chat}}';
 import type { ChatRepository, CreateConversationData, CreateMessageData } from '{{IMPORT:contract.chat}}';
 import { isValidId } from '{{IMPORT:db.connection}}';
-import { ConversationMemberModel, ConversationModel, MessageModel, type ConversationDocument, type MemberDocument, type MessageDocument } from '{{IMPORT:mongoose.chat}}';
+import { BlockedUserModel, ConversationMemberModel, ConversationModel, MessageModel, type ConversationDocument, type MemberDocument, type MessageDocument } from '{{IMPORT:mongoose.chat}}';
 
 const toConversation = (d: ConversationDocument): Conversation => ({
   id: d._id.toString(),
@@ -186,5 +186,33 @@ export class MongooseChatRepository implements ChatRepository {
 
   async softDeleteMessage(id: string): Promise<void> {
     await MessageModel.updateOne({ _id: id, deletedAt: null }, { $set: { deletedAt: new Date() } });
+  }
+
+  async updateMessageText(id: string, text: string): Promise<Message | null> {
+    const doc = await MessageModel.findOneAndUpdate({ _id: id, deletedAt: null }, { $set: { text } }, { new: true }).lean<MessageDocument>();
+    return doc ? toMessage(doc) : null;
+  }
+
+  async blockUser(blockerId: string, blockedId: string): Promise<void> {
+    await BlockedUserModel.updateOne({ blockerId, blockedId }, { $set: { blockerId, blockedId } }, { upsert: true });
+  }
+
+  async unblockUser(blockerId: string, blockedId: string): Promise<void> {
+    await BlockedUserModel.deleteOne({ blockerId, blockedId });
+  }
+
+  async isBlocked(userAId: string, userBId: string): Promise<boolean> {
+    const count = await BlockedUserModel.countDocuments({
+      $or: [
+        { blockerId: userAId, blockedId: userBId },
+        { blockerId: userBId, blockedId: userAId },
+      ],
+    });
+    return count > 0;
+  }
+
+  async getBlockedUserIds(userId: string): Promise<string[]> {
+    const docs = await BlockedUserModel.find({ blockerId: userId }).lean();
+    return docs.map(d => d.blockedId.toString());
   }
 }

@@ -33,8 +33,34 @@ export function withDateSeparators(newestFirst: ChatMessage[], now: Date = new D
   return items;
 }
 
-/** "You added Rahul", "Abhishek added you", "Abhishek added Rahul". */
+/** A call recorded in the chat (`CALL` / `MISSED_CALL` system message), or undefined for other messages. */
+export function callLog(message: ChatMessage): { callType: 'audio' | 'video'; answered: boolean } | undefined {
+  if (message.type !== 'system' || (message.event !== 'CALL' && message.event !== 'MISSED_CALL')) return undefined;
+  return { callType: message.text === 'video' ? 'video' : 'audio', answered: message.event === 'CALL' };
+}
+
+/** "2:14" / "1:02:05". */
+function talkTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = String(seconds % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
+}
+
+/** "Voice call · 2:14", "Video call · No answer" (you called), "Missed voice call" (they called). */
+function callLogText(message: ChatMessage, myId: string | undefined): string {
+  const log = callLog(message)!;
+  const video = log.callType === 'video';
+  const name = translate('common', video ? 'videoCall' : 'voiceCall');
+  if (log.answered) return `${name} · ${talkTime(message.duration ?? 0)}`;
+  const iCalled = message.actor?.id === myId;
+  if (iCalled) return `${name} · ${translate('common', 'noAnswer')}`;
+  return translate('common', video ? 'missedVideoCall' : 'missedVoiceCall');
+}
+
+/** "You added Rahul", "Abhishek added you", "Abhishek added Rahul"; calls: "Missed voice call"… */
 export function systemMessageText(message: ChatMessage, myId: string | undefined): string {
+  if (callLog(message)) return callLogText(message, myId);
   const actor = message.actor?.id === myId ? undefined : message.actor?.name;
   const target = message.target?.id === myId ? undefined : message.target?.name;
   switch (message.event) {

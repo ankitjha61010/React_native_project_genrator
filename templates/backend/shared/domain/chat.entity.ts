@@ -7,6 +7,10 @@ export type MessageType = SendableMessageType | 'system';
 /** What a `system` message says happened. The app renders its own text per event. */
 export enum SystemEvent {
   MEMBER_ADDED = 'MEMBER_ADDED',
+  /** A call between the two people of a direct chat: `text` = 'audio' | 'video', `duration` = seconds talked. */
+  CALL = 'CALL',
+  /** A call nobody answered (missed, declined or cancelled): `text` = 'audio' | 'video'. */
+  MISSED_CALL = 'MISSED_CALL',
 }
 
 /** How the app cropped / filtered an image before sending it (stored as-is). */

@@ -48,7 +48,7 @@ function entries(group: GroupId, list: Array<[id: string, file: string, template
   }));
 }
 
-const socket = (ctx: RenderContext) => ctx.options.socket;
+const socket = (ctx: RenderContext) => ctx.options.socket || ctx.options.chat || ctx.options.audioCall || ctx.options.videoCall;
 const chat = (ctx: RenderContext) => ctx.options.chat;
 const groupChat = (ctx: RenderContext) => ctx.options.chat && ctx.options.groupChat;
 const authEmail = (ctx: RenderContext) => ctx.options.authEmail;
@@ -56,6 +56,11 @@ const authMobile = (ctx: RenderContext) => ctx.options.authMobile;
 /** Phone number fields exist at sign-up (email auth) and on the mobile login screen. */
 const phoneInput = (ctx: RenderContext) => ctx.options.authEmail || ctx.options.authMobile;
 const hasSocialAuth = (ctx: RenderContext) => hasSocialLogin(ctx.options.socialAuth);
+const hasCalling = (ctx: RenderContext) => ctx.options.audioCall || ctx.options.videoCall;
+const audioCall = (ctx: RenderContext) => ctx.options.audioCall;
+const videoCall = (ctx: RenderContext) => ctx.options.videoCall;
+const device = (ctx: RenderContext) => ctx.options.notifications || ctx.options.audioCall || ctx.options.videoCall;
+const ota = (ctx: RenderContext) => ctx.options.ota;
 
 export const COMMON_MANIFEST: ManifestEntry[] = [
   // Project root. Dot-files are stored without the dot so `npm publish` keeps them.
@@ -82,6 +87,8 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['root.testTranslations', '__tests__/translations.test.ts'],
   ]),
   { ...entries('root', [['root.testApiEncryption', '__tests__/apiEncryption.test.ts']])[0]!, when: encrypted },
+  // OTA: builds the signed update archive (npm run ota:android / ota:ios). Copied as-is.
+  { ...entries('root', [['root.otaBundleScript', 'scripts/ota-bundle.mjs']])[0]!, binary: true, when: ota },
 
   ...entries('app', [['app.providers', 'AppProviders.tsx']]),
   { ...entries('app', [['app.themeContext', 'ThemeContext.tsx']])[0]!, when: themeContext },
@@ -155,7 +162,7 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['api.session', 'sessionService.ts'],
   ]),
   { ...entries('api', [['api.encryption', 'apiEncryption.ts']])[0]!, when: encrypted },
-  { ...entries('api', [['api.device', 'deviceApi.ts']])[0]!, when: notifications },
+  { ...entries('api', [['api.device', 'deviceApi.ts']])[0]!, when: device },
   { ...entries('api', [['api.legal', 'legalApi.ts']])[0]!, when: terms },
 
   ...entries('storage', [
@@ -283,6 +290,8 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['chat.ChatRoomScreen', 'screens/ChatRoomScreen/ChatRoomScreen.tsx'],
     ['chat.NewChatScreen', 'screens/NewChatScreen/NewChatScreen.tsx'],
     ['chat.ChatDetailsScreen', 'screens/ChatDetailsScreen/ChatDetailsScreen.tsx'],
+    // Profile → Blocked users: the people you blocked, with Unblock.
+    ['chat.BlockedUsersScreen', 'screens/BlockedUsersScreen/BlockedUsersScreen.tsx'],
     ['chat.ChatBubble', 'components/ChatBubble/ChatBubble.tsx'],
     ['chat.ChatInputBar', 'components/ChatInputBar/ChatInputBar.tsx'],
     ['chat.ChatMediaPreview', 'components/ChatMediaPreview/ChatMediaPreview.tsx'],
@@ -300,6 +309,7 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['chat.useChatRoom', 'hooks/useChatRoom.ts'],
     ['chat.useUserList', 'hooks/useUserList.ts'],
     ['chat.useChatActions', 'hooks/useChatActions.ts'],
+    ['chat.useBlockedUsers', 'hooks/useBlockedUsers.ts'],
     // Date separators, system message texts, previews.
     ['chat.format', 'utils/chatFormat.ts'],
   ]).map(e => ({ ...e, when: chat })),
@@ -310,6 +320,37 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['chat.CreateGroupScreen', 'screens/CreateGroupScreen/CreateGroupScreen.tsx'],
     ['chat.GroupInfoScreen', 'screens/GroupInfoScreen/GroupInfoScreen.tsx'],
   ]).map(e => ({ ...e, when: groupChat })),
+
+  // Calling module (Agora RTC, CallKeep, VoIP push, minimization bar, background)
+  ...entries('calling', [
+    ['calling.types', 'types/calling.types.ts'],
+    ['calling.endpoints', 'callingEndpoints.ts'],
+    ['calling.agoraService', 'services/agoraService.ts'],
+    ['calling.callKeepService', 'services/callKeepService.ts'],
+    ['calling.nativeCallService', 'services/nativeCallService.ts'],
+    ['calling.voipPushService', 'services/voipPushService.ts'],
+    ['calling.useCall', 'hooks/useCall.ts'],
+    ['calling.useCallSocket', 'hooks/useCallSocket.ts'],
+    ['calling.IncomingCallScreen', 'screens/IncomingCallScreen.tsx'],
+    ['calling.OutgoingCallScreen', 'screens/OutgoingCallScreen.tsx'],
+    ['calling.CallHistoryScreen', 'screens/CallHistoryScreen.tsx'],
+    ['calling.MinimizedCallBar', 'components/MinimizedCallBar.tsx'],
+    ['calling.CallContext', 'context/CallContext.tsx'],
+  ]).map(e => ({ ...e, when: hasCalling })),
+  ...entries('calling', [
+    ['calling.AudioCallScreen', 'screens/AudioCallScreen.tsx'],
+  ]).map(e => ({ ...e, when: audioCall })),
+  ...entries('calling', [
+    ['calling.VideoCallScreen', 'screens/VideoCallScreen.tsx'],
+  ]).map(e => ({ ...e, when: videoCall })),
+
+  // Over-The-Air (OTA) updates module
+  ...entries('ota', [
+    ['ota.types', 'types/ota.types.ts'],
+    ['ota.service', 'services/OTAService.ts'],
+    ['ota.hook', 'hooks/useOTA.ts'],
+    ['ota.modal', 'components/OTAUpdateModal.tsx'],
+  ]).map(e => ({ ...e, when: ota })),
 
   // Session access is the only thing screens know about state; its implementation
   // depends on the selected state management.

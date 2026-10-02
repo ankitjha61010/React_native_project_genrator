@@ -35,6 +35,12 @@ import { HealthModule } from '{{IMPORT:nest.health.module}}';
 {{#if LEGAL}}
 import { LegalModule } from '{{IMPORT:nest.legal.module}}';
 {{/if}}
+{{#if OTA}}
+import { OtaModule } from '{{IMPORT:nest.ota.module}}';
+{{/if}}
+{{#if CALLING}}
+import { CallingModule } from '{{IMPORT:nest.calling.module}}';
+{{/if}}
 {{#if NOTIFICATIONS}}
 import { NotificationsModule } from '{{IMPORT:nest.notifications.module}}';
 {{/if}}
@@ -54,6 +60,12 @@ import { DevicesController } from '{{IMPORT:nest.devices.controller}}';
 import { HealthController } from '{{IMPORT:nest.health.controller}}';
 {{#if LEGAL}}
 import { LegalController } from '{{IMPORT:nest.legal.controller}}';
+{{/if}}
+{{#if OTA}}
+import { OTAController } from '{{IMPORT:nest.ota.controller}}';
+{{/if}}
+{{#if CALLING}}
+import { CallingController } from '{{IMPORT:nest.calling.controller}}';
 {{/if}}
 {{#if NOTIFICATIONS}}
 import { NotificationsController } from '{{IMPORT:nest.notifications.controller}}';
@@ -111,10 +123,16 @@ import { UsersController } from '{{IMPORT:nest.users.controller}}';
 {{#if LEGAL}}
     LegalModule,
 {{/if}}
+{{#if OTA}}
+    OtaModule,
+{{/if}}
+{{#if CALLING}}
+    CallingModule,
+{{/if}}
 {{/if}}
   ],
 {{#if !FEATURE_MODULES}}
-  controllers: [HealthController{{#if AUTH_API}}, AuthController{{/if}}{{#if USERS_API}}, UsersController{{/if}}{{#if CHAT}}, ChatController{{/if}}{{#if DEVICES}}, DevicesController{{/if}}{{#if NOTIFICATIONS}}, NotificationsController{{/if}}{{#if LEGAL}}, LegalController{{/if}}],
+  controllers: [HealthController{{#if AUTH_API}}, AuthController{{/if}}{{#if USERS_API}}, UsersController{{/if}}{{#if CHAT}}, ChatController{{/if}}{{#if DEVICES}}, DevicesController{{/if}}{{#if NOTIFICATIONS}}, NotificationsController{{/if}}{{#if LEGAL}}, LegalController{{/if}}{{#if OTA}}, OTAController{{/if}}{{#if CALLING}}, CallingController{{/if}}],
 {{/if}}
   providers: [
     // Global guards run in this order.

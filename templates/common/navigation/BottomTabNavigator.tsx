@@ -10,6 +10,9 @@ import { ProfileScreen } from '{{IMPORT:screens.Profile}}';
 {{#if CHAT}}
 import { ChatListScreen } from '{{IMPORT:chat.ChatListScreen}}';
 {{/if}}
+{{#if HAS_CALLING}}
+import { CallHistoryScreen } from '{{IMPORT:calling.CallHistoryScreen}}';
+{{/if}}
 {{#if DRAWER}}
 import { renderDrawerButton } from './HeaderButtons';
 {{/if}}
@@ -30,6 +33,14 @@ function ProfileIcon({ color, size }: { color: string; size: number }) {
 {{#if VECTOR_ICONS}}
 function ChatIcon({ color, size }: { color: string; size: number }) {
   return <AppIcon name="chat-outline" size={size} tintColor={color} />;
+}
+{{/if}}
+{{/if}}
+
+{{#if HAS_CALLING}}
+{{#if VECTOR_ICONS}}
+function PhoneIcon({ color, size }: { color: string; size: number }) {
+  return <AppIcon name="phone-outline" size={size} tintColor={color} />;
 }
 {{/if}}
 {{/if}}
@@ -76,6 +87,18 @@ export function BottomTabNavigator(): React.JSX.Element {
           title: 'Chats',
 {{#if VECTOR_ICONS}}
           tabBarIcon: ChatIcon,
+{{/if}}
+        }}
+      />
+{{/if}}
+{{#if HAS_CALLING}}
+      <Tab.Screen
+        name="CallsTab"
+        component={CallHistoryScreen}
+        options={{
+          title: 'Calls',
+{{#if VECTOR_ICONS}}
+          tabBarIcon: PhoneIcon,
 {{/if}}
         }}
       />

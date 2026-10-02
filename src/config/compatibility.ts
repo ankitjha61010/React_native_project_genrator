@@ -64,7 +64,7 @@ export function resolveDependencies(
   profile: ReactNativeProfile,
   options: Pick<
     ProjectOptions,
-    'architecture' | 'stateManagement' | 'apiEncryption' | 'vectorIcons' | 'notifications' | 'analytics' | 'storage' | 'socket' | 'chat' | 'socialAuth' | 'googleLocation'
+    'architecture' | 'stateManagement' | 'apiEncryption' | 'vectorIcons' | 'notifications' | 'analytics' | 'storage' | 'socket' | 'chat' | 'socialAuth' | 'googleLocation' | 'audioCall' | 'videoCall' | 'ota'
   >,
 ): ResolvedDependencies {
   assertCompatible(profile);
@@ -75,12 +75,15 @@ export function resolveDependencies(
     options.vectorIcons ? featureDependencies.vectorIcons : undefined,
     options.notifications ? featureDependencies.notifications : undefined,
     options.analytics ? featureDependencies.analytics : undefined,
-    options.socket ? featureDependencies.socket : undefined,
+    options.socket || options.chat || options.audioCall || options.videoCall ? featureDependencies.socket : undefined,
     options.googleLocation ? featureDependencies.googleLocation : undefined,
     options.chat ? featureDependencies.chat : undefined,
     social.google ? featureDependencies.socialGoogle : undefined,
     social.facebook ? featureDependencies.socialFacebook : undefined,
     social.apple ? featureDependencies.socialApple : undefined,
+    options.audioCall ? featureDependencies.audioCall : undefined,
+    options.videoCall ? featureDependencies.videoCall : undefined,
+    options.ota ? featureDependencies.ota : undefined,
   ].filter(f => f !== undefined);
   const runtime = new Set<string>([
     ...DEPENDENCY_REGISTRY.dependencies,

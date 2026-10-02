@@ -195,6 +195,13 @@ export class ChatMessageDto {
   isMe?: boolean;
 }
 
+/** One entry of GET /chat/blocked-users. */
+export class BlockedUserDto {
+  id: string;
+  name: string;
+  avatar?: string;
+}
+
 export class ChatParticipantDto {
   id: string;
   name: string;

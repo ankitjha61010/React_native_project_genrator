@@ -49,6 +49,7 @@ const ECOSYSTEM_2026_08: Record<string, string> = {
   'react-native-file-access': '4.0.4',
   'react-native-permissions': '5.6.2',
   'react-native-webview': '14.0.1',
+  '@likashefqet/react-native-image-zoom': '4.3.0',
   '@react-native-vector-icons/material-design-icons': '13.1.4',
   'react-hook-form': '7.88.0',
   zod: '4.6.5',
@@ -73,6 +74,16 @@ const ECOSYSTEM_2026_08: Record<string, string> = {
   '@react-native-documents/picker': '12.0.2',
   // Google Location SDK (optional).
   'react-native-geolocation-service': '5.3.1',
+  // Calling: Agora RTC + iOS CallKit + VoIP push + helpers.
+  'react-native-agora': '4.5.2',
+  'react-native-callkeep': '4.3.12',
+  'react-native-voip-push-notification': '3.3.2',
+  'react-native-incall-manager': '4.2.0',
+  // OTA Updates
+  'react-native-fs': '2.20.0',
+  'react-native-zip-archive': '9.5.2',
+  'react-native-restart': '0.0.27',
+  'react-native-device-info': '15.0.2',
 };
 
 const SUPPORTED_2026_08: Record<string, string> = {

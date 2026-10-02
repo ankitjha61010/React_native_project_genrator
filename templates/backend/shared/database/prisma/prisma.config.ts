@@ -5,7 +5,8 @@ import { defineConfig, env } from 'prisma/config';
 if (existsSync('.env')) process.loadEnvFile('.env');
 
 export default defineConfig({
-  schema: 'prisma/schema.prisma',
+  // The whole folder: schema.prisma plus feature schemas such as calling.prisma.
+  schema: 'prisma',
   migrations: {
     path: 'prisma/migrations',
 {{#if USERS_API}}

@@ -23,6 +23,13 @@ import { logger } from '{{IMPORT:utils.logger}}';
 {{#if THEME_CONTEXT}}
 import { ThemeProvider } from './ThemeContext';
 {{/if}}
+{{#if HAS_CALLING}}
+import { CallProvider } from '{{IMPORT:calling.CallContext}}';
+{{/if}}
+{{#if OTA}}
+import { markLaunchSuccessful } from '{{IMPORT:ota.service}}';
+import { OTAUpdateModal } from '{{IMPORT:ota.modal}}';
+{{/if}}
 
 {{#if THEME_CONTEXT}}
 // Light / dark / system theme – read it anywhere with useTheme().
@@ -80,6 +87,10 @@ export function AppProviders({ children }: { children: React.ReactNode }): React
         if (!unmounted) setI18nReady(true);
       });
 
+{{#if OTA}}
+    markLaunchSuccessful();
+{{/if}}
+
     return () => {
       unmounted = true;
       clearTimeout(timeout);
@@ -96,8 +107,21 @@ export function AppProviders({ children }: { children: React.ReactNode }): React
         <I18nextProvider i18n={i18n}>
           <ThemeRoot>
             <StateProvider>
-              {children}
-              <FlashMessage position="top" />
+{{#if HAS_CALLING}}
+              <CallProvider>
+                {children}
+                <FlashMessage position="top" />
+{{#if OTA}}
+                <OTAUpdateModal />
+{{/if}}
+              </CallProvider>
+{{else}}
+                {children}
+                <FlashMessage position="top" />
+{{#if OTA}}
+                <OTAUpdateModal />
+{{/if}}
+{{/if}}
             </StateProvider>
           </ThemeRoot>
         </I18nextProvider>

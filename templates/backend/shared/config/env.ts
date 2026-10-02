@@ -94,6 +94,19 @@ const schema = z.object({
 {{#if NOTIFICATIONS}}
   /** Path to (or JSON of) a Firebase service account – when empty, pushes are only logged. */
   FIREBASE_SERVICE_ACCOUNT: z.string().default(''),
+{{else}}
+{{#if HAS_CALLING}}
+  /** Path to (or JSON of) a Firebase service account for VoIP/push wakeups – when empty, pushes are only logged. */
+  FIREBASE_SERVICE_ACCOUNT: z.string().default(''),
+{{/if}}
+{{/if}}
+{{#if HAS_CALLING}}
+  /** Agora App ID for audio/video calling. */
+  AGORA_APP_ID: z.string().default(''),
+  /** Agora App Certificate (keep secret, never expose to client). */
+  AGORA_APP_CERTIFICATE: z.string().default(''),
+  /** Ringing timeout in seconds before call is marked missed. */
+  CALL_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(60),
 {{/if}}
 {{#if HASH_CONFIGURABLE}}
   PASSWORD_HASH_ALGORITHM: z.enum(['argon2', 'bcrypt']).default('argon2'),
@@ -264,6 +277,17 @@ export const config = {
 {{/if}}
 {{#if NOTIFICATIONS}}
   firebase: { serviceAccount: env.FIREBASE_SERVICE_ACCOUNT },
+{{else}}
+{{#if HAS_CALLING}}
+  firebase: { serviceAccount: env.FIREBASE_SERVICE_ACCOUNT },
+{{/if}}
+{{/if}}
+{{#if HAS_CALLING}}
+  calling: {
+    agoraAppId: env.AGORA_APP_ID,
+    agoraAppCertificate: env.AGORA_APP_CERTIFICATE,
+    callTimeoutSeconds: env.CALL_TIMEOUT_SECONDS,
+  },
 {{/if}}
 {{#if LEGAL}}
   /** Links the app opens (GET /legal) – change them here, not in the app. */

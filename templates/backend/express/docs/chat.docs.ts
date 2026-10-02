@@ -8,6 +8,7 @@ import {
   memberRoleSchema,
   updateGroupSchema,
 {{/if}}
+  blockedUserSchema,
   chatMessageSchema,
   conversationParams,
   conversationSchema,
@@ -16,6 +17,7 @@ import {
   sendMessageSchema,
   startConversationSchema,
   uploadedMediaSchema,
+  userParams,
 } from '{{IMPORT:ex.chat.schemas}}';
 
 /** Swagger docs of chat.routes.ts. Live events: see the Socket.IO server. */
@@ -40,6 +42,9 @@ export const chatDocs: ApiDocGroup = {
     { method: 'patch', path: '/chat/groups/:conversationId/members/:userId', summary: 'Make a member admin, or an admin member – admins', auth: true, params: memberParams, body: memberRoleSchema, response: conversationSchema, errors: [400, 401, 403, 404, 422] },
     { method: 'post', path: '/chat/groups/:conversationId/leave', summary: 'Leave the group (the last admin hands over to the longest-standing member)', auth: true, params: conversationParams, errors: [400, 401, 404] },
 {{/if}}
+    { method: 'get', path: '/chat/blocked-users', summary: 'The people you blocked', auth: true, response: z.array(blockedUserSchema), errors: [401] },
+    { method: 'post', path: '/chat/users/:userId/block', summary: 'Block someone: no direct messages or calls between you', auth: true, params: userParams, errors: [400, 401, 404] },
+    { method: 'post', path: '/chat/users/:userId/unblock', summary: 'Unblock someone', auth: true, params: userParams, errors: [400, 401, 404] },
     { method: 'post', path: '/chat/upload', summary: 'Upload a photo, video, audio or document (multipart field `file`) – then send its url', status: 201, auth: true, upload: 'file', response: uploadedMediaSchema, errors: [400, 401, 413, 422] },
     { method: 'post', path: '/chat/upload-voice', summary: 'Upload a voice note (multipart field `file`, audio only)', status: 201, auth: true, upload: 'file', response: uploadedMediaSchema, errors: [400, 401, 413, 422] },
   ],

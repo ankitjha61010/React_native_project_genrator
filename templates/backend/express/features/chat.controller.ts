@@ -17,6 +17,7 @@ import {
   messageParams,
   sendMessageSchema,
   startConversationSchema,
+  userParams,
 } from '{{IMPORT:ex.chat.schemas}}';
 import { CHAT_MESSAGES } from '{{IMPORT:messages.chat}}';
 
@@ -86,6 +87,33 @@ export class ChatController {
     const { conversationId, messageId } = parseParams(messageParams, req);
     await this.chat.deleteMessage(currentUser(req).id, conversationId, messageId);
     sendSuccess(res, CHAT_MESSAGES.messageDeleted);
+  };
+
+  /** PATCH /chat/conversations/:conversationId/messages/:messageId – edits message text */
+  editMessage = async (req: Request, res: Response) => {
+    const { conversationId, messageId } = parseParams(messageParams, req);
+    const text = String(req.body?.text ?? '');
+    sendSuccess(res, CHAT_MESSAGES.messageEdited, await this.chat.editMessage(currentUser(req).id, conversationId, messageId, text));
+  };
+
+  /** POST /chat/users/:userId/block */
+  blockUser = async (req: Request, res: Response) => {
+    const { userId: targetUserId } = parseParams(userParams, req);
+    await this.chat.blockUser(currentUser(req).id, targetUserId);
+    sendSuccess(res, CHAT_MESSAGES.userBlocked);
+  };
+
+  /** POST /chat/users/:userId/unblock */
+  unblockUser = async (req: Request, res: Response) => {
+    const { userId: targetUserId } = parseParams(userParams, req);
+    await this.chat.unblockUser(currentUser(req).id, targetUserId);
+    sendSuccess(res, CHAT_MESSAGES.userUnblocked);
+  };
+
+  /** GET /chat/blocked-users */
+  listBlockedUsers = async (req: Request, res: Response) => {
+    const list = await this.chat.listBlockedUsers(currentUser(req).id);
+    sendSuccess(res, CHAT_MESSAGES.blockedUsers, list);
   };
 
 {{#if GROUP_CHAT}}

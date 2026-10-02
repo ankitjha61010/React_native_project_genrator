@@ -13,6 +13,7 @@ import { log } from './cli/logger.js';
 import { collectOptions } from './cli/prompts.js';
 import { describeDryRun } from './generators/dryRun.js';
 import { generateProject } from './generators/projectGenerator.js';
+import { generateAdminPanel } from './generators/adminGenerator.js';
 import { GeneratorError } from './utils/errors.js';
 import { PACKAGE_ROOT } from './utils/paths.js';
 
@@ -191,6 +192,21 @@ export async function run(argv: string[]): Promise<void> {
 
     const summary = await generateProject(options);
     const relative = path.relative(process.cwd(), summary.projectDir) || '.';
+
+    if (options.adminPanel) {
+      const adminDir = path.join(options.parentDir, `${options.appName.toLowerCase()}-admin`);
+      await generateAdminPanel({
+        adminDir,
+        techStack: options.adminTechStack ?? 'react',
+        appName: options.appName,
+        displayName: options.displayName,
+        apiBaseUrl: options.apiBaseUrl ?? 'http://localhost:3000/api/v1',
+        ota: options.ota,
+        installDependencies: options.installDependencies,
+      });
+      const relAdmin = path.relative(process.cwd(), adminDir) || '.';
+      log.success(chalk.bold(`Admin panel (${options.adminTechStack === 'next' ? 'Next.js' : 'React + Vite'}) ready at ${relAdmin}`));
+    }
 
     log.newline();
     log.success(chalk.bold('Project generated successfully!'));

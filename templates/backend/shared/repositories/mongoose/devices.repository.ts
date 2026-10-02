@@ -8,6 +8,7 @@ const toDevice = (d: DeviceDocument): Device => ({
   userId: d.userId.toString(),
   deviceId: d.deviceId,
   fcmToken: d.fcmToken ?? null,
+  voipToken: (d as any).voipToken ?? null,
   deviceType: d.deviceType,
   deviceModel: d.deviceModel ?? null,
   osVersion: d.osVersion ?? null,
@@ -22,6 +23,7 @@ export class MongooseDevicesRepository implements DevicesRepository {
     const data = {
       userId,
       fcmToken: input.fcmToken ?? null,
+      voipToken: input.voipToken ?? null,
       deviceType: input.deviceType,
       deviceModel: input.deviceModel ?? null,
       osVersion: input.osVersion ?? null,
@@ -38,6 +40,12 @@ export class MongooseDevicesRepository implements DevicesRepository {
     if (!isValidId(userId) || !(await DeviceModel.exists({ userId, deviceId }))) return null;
     await DeviceModel.updateMany({ fcmToken, deviceId: { $ne: deviceId } }, { $set: { fcmToken: null } });
     const doc = await DeviceModel.findOneAndUpdate({ userId, deviceId }, { $set: { fcmToken, lastActiveAt: new Date() } }, { returnDocument: 'after' }).lean<DeviceDocument>();
+    return doc && toDevice(doc);
+  }
+
+  async updateVoipToken(userId: string, deviceId: string, voipToken: string): Promise<Device | null> {
+    if (!isValidId(userId) || !(await DeviceModel.exists({ userId, deviceId }))) return null;
+    const doc = await DeviceModel.findOneAndUpdate({ userId, deviceId }, { $set: { voipToken, lastActiveAt: new Date() } }, { returnDocument: 'after' }).lean<DeviceDocument>();
     return doc && toDevice(doc);
   }
 

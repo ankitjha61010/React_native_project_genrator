@@ -15,13 +15,16 @@ import { VerificationCodeOrmEntity } from '{{IMPORT:typeorm.auth}}';
 import { SocialAccountOrmEntity } from '{{IMPORT:typeorm.auth}}';
 {{/if}}
 {{#if CHAT}}
-import { ConversationMemberOrmEntity, ConversationOrmEntity, MessageOrmEntity } from '{{IMPORT:typeorm.chat}}';
+import { BlockedUserOrmEntity, ConversationMemberOrmEntity, ConversationOrmEntity, MessageOrmEntity } from '{{IMPORT:typeorm.chat}}';
 {{/if}}
 {{#if DEVICES}}
 import { DeviceOrmEntity } from '{{IMPORT:typeorm.device}}';
 {{/if}}
 {{#if NOTIFICATIONS}}
 import { BroadcastOrmEntity, NotificationOrmEntity } from '{{IMPORT:typeorm.notifications}}';
+{{/if}}
+{{#if LEGAL}}
+import { LegalSettingsOrmEntity } from '{{IMPORT:typeorm.legal}}';
 {{/if}}
 import { UserOrmEntity } from '{{IMPORT:typeorm.user}}';
 
@@ -53,6 +56,7 @@ export function createDataSource(url: string): DataSource {
       ConversationOrmEntity,
       ConversationMemberOrmEntity,
       MessageOrmEntity,
+      BlockedUserOrmEntity,
 {{/if}}
 {{#if DEVICES}}
       DeviceOrmEntity,
@@ -60,6 +64,9 @@ export function createDataSource(url: string): DataSource {
 {{#if NOTIFICATIONS}}
       NotificationOrmEntity,
       BroadcastOrmEntity,
+{{/if}}
+{{#if LEGAL}}
+      LegalSettingsOrmEntity,
 {{/if}}
     ],
     // Schema changes only through migrations – never `synchronize` in a real database.

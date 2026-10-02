@@ -3,12 +3,13 @@ import {
   Modal,
   StyleSheet,
   View,
-  Image,
   TouchableOpacity,
   SafeAreaView,
   Linking,
   ActivityIndicator,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { ImageZoom } from '@likashefqet/react-native-image-zoom';
 import { WebView } from 'react-native-webview';
 import { AppText } from '{{IMPORT:components.AppText}}';
 {{#if VECTOR_ICONS}}
@@ -75,8 +76,15 @@ export function ChatMediaPreview({ visible, message, onClose }: ChatMediaPreview
       case 'image':
         return (
           <View style={styles.imagePreviewWrapper}>
-            <Image
-              source={{ uri: message.mediaUrl }}
+            <ImageZoom
+              uri={message.mediaUrl}
+              minScale={0.8}
+              maxScale={5}
+              doubleTapScale={3}
+              isSingleTapEnabled
+              isDoubleTapEnabled
+              isPinchEnabled
+              isPanEnabled
               style={[
                 styles.fullImage,
                 {
@@ -104,6 +112,10 @@ export function ChatMediaPreview({ visible, message, onClose }: ChatMediaPreview
               mediaPlaybackRequiresUserAction={false}
               javaScriptEnabled
               domStorageEnabled
+              allowFileAccess
+              allowFileAccessFromFileURLs
+              allowUniversalAccessFromFileURLs
+              mixedContentMode="always"
               source={{
                 html: `
                   <!DOCTYPE html>
@@ -126,10 +138,37 @@ export function ChatMediaPreview({ visible, message, onClose }: ChatMediaPreview
                           max-height: 100vh;
                           outline: none;
                         }
+                        .error-card {
+                          display: none;
+                          color: #FFFFFF;
+                          text-align: center;
+                          padding: 24px;
+                          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                        }
+                        .error-title {
+                          font-size: 16px;
+                          font-weight: 600;
+                          margin-bottom: 8px;
+                        }
+                        .error-sub {
+                          font-size: 13px;
+                          color: #AAAAAA;
+                        }
                       </style>
                     </head>
                     <body>
-                      <video src="${message.mediaUrl}" controls autoplay playsinline controlsList="nodownload"></video>
+                      <video
+                        src="${message.mediaUrl}"
+                        controls
+                        autoplay
+                        playsinline
+                        controlsList="nodownload"
+                        onerror="document.getElementById('video-error').style.display='block';">
+                      </video>
+                      <div id="video-error" class="error-card">
+                        <div class="error-title">Unable to play video directly</div>
+                        <div class="error-sub">Tap 'Open' at the top right to view this video in your device player.</div>
+                      </div>
                     </body>
                   </html>
                 `,
@@ -258,57 +297,62 @@ export function ChatMediaPreview({ visible, message, onClose }: ChatMediaPreview
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <SafeAreaView style={ {{#if RTL}}[styles.backdrop, directionStyle]{{else}}styles.backdrop{{/if}} }>
-        {/* Header Bar */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} style={styles.headerButton}>
+      <GestureHandlerRootView style={styles.gestureRoot}>
+        <SafeAreaView style={ {{#if RTL}}[styles.backdrop, directionStyle]{{else}}styles.backdrop{{/if}} }>
+          {/* Header Bar */}
+          <View style={styles.header}>
+            <TouchableOpacity onPress={onClose} style={styles.headerButton}>
 {{#if VECTOR_ICONS}}
-            <AppIcon name="close" size={24} tintColor="#FFFFFF" />
+              <AppIcon name="close" size={24} tintColor="#FFFFFF" />
 {{else}}
-            <AppText style={styles.btnText}>✕</AppText>
+              <AppText style={styles.btnText}>✕</AppText>
 {{/if}}
-          </TouchableOpacity>
+            </TouchableOpacity>
 
-          <View style={styles.titleBox}>
-            <AppText style={styles.senderText} numberOfLines={1}>
-              {message.type === 'video'
-                ? 'Video Player'
-                : message.type === 'audio'
-                ? 'Audio Player'
-                : message.type === 'document'
-                ? 'Document Viewer'
-                : message.senderName}
-            </AppText>
-            <AppText style={styles.timeText}>
-              {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </AppText>
+            <View style={styles.titleBox}>
+              <AppText style={styles.senderText} numberOfLines={1}>
+                {message.type === 'video'
+                  ? 'Video Player'
+                  : message.type === 'audio'
+                  ? 'Audio Player'
+                  : message.type === 'document'
+                  ? 'Document Viewer'
+                  : message.senderName}
+              </AppText>
+              <AppText style={styles.timeText}>
+                {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </AppText>
+            </View>
+
+            <TouchableOpacity onPress={handleOpenExternal} style={styles.headerButton}>
+{{#if VECTOR_ICONS}}
+              <AppIcon name="open-in-new" size={22} tintColor="#FFFFFF" />
+{{else}}
+              <AppText style={styles.btnText}>Open</AppText>
+{{/if}}
+            </TouchableOpacity>
           </View>
 
-          <TouchableOpacity onPress={handleOpenExternal} style={styles.headerButton}>
-{{#if VECTOR_ICONS}}
-            <AppIcon name="open-in-new" size={22} tintColor="#FFFFFF" />
-{{else}}
-            <AppText style={styles.btnText}>Open</AppText>
-{{/if}}
-          </TouchableOpacity>
-        </View>
-
-        {/* Media Viewer Area */}
-        <View style={styles.content}>
-          {renderMediaContent()}
-          {loading && (
-            <View style={styles.loadingOverlay} pointerEvents="none">
-              <ActivityIndicator size="large" color="#FFFFFF" />
-            </View>
-          )}
-        </View>
-      </SafeAreaView>
+          {/* Media Viewer Area */}
+          <View style={styles.content}>
+            {renderMediaContent()}
+            {loading && (
+              <View style={styles.loadingOverlay} pointerEvents="none">
+                <ActivityIndicator size="large" color="#FFFFFF" />
+              </View>
+            )}
+          </View>
+        </SafeAreaView>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
 
 const createStyles = (theme: Theme) =>
   StyleSheet.create({
+    gestureRoot: {
+      flex: 1,
+    },
     backdrop: {
       flex: 1,
       backgroundColor: '#000000FA',

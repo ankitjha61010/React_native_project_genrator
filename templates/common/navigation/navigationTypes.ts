@@ -27,6 +27,9 @@ export type BottomTabParamList = {
 {{#if CHAT}}
   ChatTab: undefined;
 {{/if}}
+{{#if HAS_CALLING}}
+  CallsTab: undefined;
+{{/if}}
   ProfileTab: undefined;
 };
 
@@ -64,10 +67,15 @@ export type MainStackParamList = {
   /** A direct chat's details: clear / delete the chat. */
   ChatDetails: { conversationId: string };
   NewChat: undefined;
+  /** Profile → Blocked users: unblock people. */
+  BlockedUsers: undefined;
 {{#if GROUP_CHAT}}
   CreateGroup: undefined;
   GroupInfo: { conversationId: string };
 {{/if}}
+{{/if}}
+{{#if HAS_CALLING}}
+  CallHistory: undefined;
 {{/if}}
 };
 

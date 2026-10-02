@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, {{#if GROUP_CHAT}}Patch, {{/if}}Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 {{#if SWAGGER}}
 import { ApiTags } from '@nestjs/swagger';
 {{/if}}
@@ -9,7 +9,7 @@ import { CurrentUser } from '{{IMPORT:nest.decorators}}';
 import { Endpoint } from '{{IMPORT:nest.endpoint}}';
 import { WithMeta } from '{{IMPORT:nest.interceptor}}';
 import { Upload, UploadedFileOf } from '{{IMPORT:nest.upload}}';
-import { {{#if GROUP_CHAT}}AddMembersDto, CreateGroupDto, MemberRoleDto, UpdateGroupDto, {{/if}}ChatMessageDto, ConversationDto, ListMessagesQueryDto, SendMessageDto, StartConversationDto, UploadedMediaDto } from '{{IMPORT:nest.chat.dto}}';
+import { {{#if GROUP_CHAT}}AddMembersDto, CreateGroupDto, MemberRoleDto, UpdateGroupDto, {{/if}}BlockedUserDto, ChatMessageDto, ConversationDto, ListMessagesQueryDto, SendMessageDto, StartConversationDto, UploadedMediaDto } from '{{IMPORT:nest.chat.dto}}';
 import { CHAT_MESSAGES } from '{{IMPORT:messages.chat}}';
 
 /** `/chat` – the endpoints of the app's chatEndpoints.ts. Live events: see the Socket.IO server. */
@@ -80,6 +80,30 @@ export class ChatController {
   @Endpoint({ summary: 'Delete one of your messages for everyone', message: CHAT_MESSAGES.messageDeleted, errors: [401, 403, 404], bearer: true })
   async deleteMessage(@CurrentUser() user: User, @Param('conversationId') conversationId: string, @Param('messageId') messageId: string) {
     await this.chat.deleteMessage(user.id, conversationId, messageId);
+  }
+
+  @Patch('conversations/:conversationId/messages/:messageId')
+  @Endpoint({ summary: 'Edit one of your text messages for everyone', message: CHAT_MESSAGES.messageEdited, response: ChatMessageDto, errors: [400, 401, 403, 404], bearer: true })
+  async editMessage(@CurrentUser() user: User, @Param('conversationId') conversationId: string, @Param('messageId') messageId: string, @Body('text') text: string) {
+    return this.chat.editMessage(user.id, conversationId, messageId, text);
+  }
+
+  @Post('users/:userId/block')
+  @Endpoint({ summary: 'Block a user', message: CHAT_MESSAGES.userBlocked, status: 200, errors: [400, 401, 404], bearer: true })
+  async blockUser(@CurrentUser() user: User, @Param('userId') targetUserId: string) {
+    await this.chat.blockUser(user.id, targetUserId);
+  }
+
+  @Post('users/:userId/unblock')
+  @Endpoint({ summary: 'Unblock a user', message: CHAT_MESSAGES.userUnblocked, status: 200, errors: [400, 401, 404], bearer: true })
+  async unblockUser(@CurrentUser() user: User, @Param('userId') targetUserId: string) {
+    await this.chat.unblockUser(user.id, targetUserId);
+  }
+
+  @Get('blocked-users')
+  @Endpoint({ summary: 'The people you blocked', message: CHAT_MESSAGES.blockedUsers, response: BlockedUserDto, array: true, errors: [401], bearer: true })
+  async listBlockedUsers(@CurrentUser() user: User) {
+    return this.chat.listBlockedUsers(user.id);
   }
 
 {{#if GROUP_CHAT}}

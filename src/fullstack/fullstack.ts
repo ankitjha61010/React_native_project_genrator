@@ -12,6 +12,7 @@ import type { CliFlags } from '../cli/args.js';
 import { log } from '../cli/logger.js';
 import { collectOptions } from '../cli/prompts.js';
 import type { ProjectOptions } from '../core/types.js';
+import { generateAdminPanel } from '../generators/adminGenerator.js';
 import { initGit } from '../generators/gitGenerator.js';
 import { generateProject } from '../generators/projectGenerator.js';
 
@@ -37,7 +38,7 @@ function presetFor(frontend: ProjectOptions, rootDir: string): BackendPreset {
     projectDir: path.join(rootDir, 'backend'),
     // The app's login screen always has email + password.
     authMethods: { email: true, mobileOtp: frontend.authMobile, google: social.google, facebook: social.facebook, apple: social.apple },
-    modules: { chat: frontend.chat, groupChat: frontend.chat && frontend.groupChat, notifications: frontend.notifications, legal: frontend.termsAndConditions, deleteAccount: frontend.deleteAccount },
+    modules: { chat: frontend.chat, groupChat: frontend.chat && frontend.groupChat, audioCall: frontend.audioCall, videoCall: frontend.videoCall, notifications: frontend.notifications, legal: frontend.termsAndConditions, deleteAccount: frontend.deleteAccount, ota: frontend.ota },
     apiEncryption: frontend.apiEncryption,
     // The keys entered for the app – the backend verifies the same client ids.
     socialCredentials: frontend.socialCredentials,
@@ -136,13 +137,13 @@ npm run android            # or: npm run ios
 | --- | --- |
 | \`mobile/\` | React Native app – see [mobile/README.md](mobile/README.md) |
 | \`backend/\` | ${b.deployment === 'microservices' ? `${FRAMEWORK_LABELS[b.framework]} microservices behind an API gateway (${db}, Redis) – see [backend/README.md](backend/README.md)` : `${FRAMEWORK_LABELS[b.framework]} API (${db}) – see [backend/README.md](backend/README.md) and the API contract [backend/docs/API.md](backend/docs/API.md)`} |
-
+${o.frontend.adminPanel ? `| \`admin/\` | ${o.frontend.adminTechStack === 'next' ? 'Next.js' : 'React + Vite'} Admin Console – see [admin/README.md](admin/README.md) |\n` : ''}
 The app already points at the backend (\`mobile/.env\` → \`API_BASE_URL=${DEV_API_URL}\`)${b.apiEncryption ? ' and both use the same API encryption key' : ''}.
 
 ## Run it
 
 ${b.deployment === 'microservices' ? microRun(b) : monolithRun}
-From the root: \`npm run backend\`, \`npm run mobile\`, \`npm run android\`, \`npm run ios\`.
+From the root: \`npm run backend\`, \`npm run mobile\`, \`npm run android\`, \`npm run ios\`${o.frontend.adminPanel ? ', `npm run admin`' : ''}.
 
 - **Android emulator:** \`localhost\` is rewritten to \`10.0.2.2\` automatically.
 - **Real device:** set \`API_BASE_URL\` in \`mobile/.env\` to your computer's LAN IP (e.g. \`http://192.168.1.20:3000/api/v1\`),
@@ -166,6 +167,7 @@ export async function writeRootFiles(o: FullstackOptions): Promise<void> {
         mobile: 'npm --prefix mobile start',
         android: 'npm --prefix mobile run android',
         ios: 'npm --prefix mobile run ios',
+        ...(o.frontend.adminPanel ? { admin: 'npm --prefix admin run dev' } : {}),
         ...(o.backend.docker ? { db: `docker compose -f backend/docker-compose.yml up -d db${o.backend.redis ? ' redis' : ''}` } : {}),
         test: o.backend.deployment === 'microservices' ? 'npm --prefix backend test && npm --prefix mobile test' : 'npm --prefix backend run test:all && npm --prefix mobile test',
       },
@@ -182,6 +184,20 @@ export async function generateFullstack(o: FullstackOptions): Promise<{ warnings
   else warnings.push(...(await generateBackend(o.backend)).warnings);
   const app = await generateProject(o.frontend);
   warnings.push(...app.warnings);
+
+  if (o.frontend.adminPanel) {
+    const admin = await generateAdminPanel({
+      adminDir: path.join(o.rootDir, 'admin'),
+      techStack: o.frontend.adminTechStack ?? 'react',
+      appName: o.frontend.appName,
+      displayName: o.frontend.displayName,
+      apiBaseUrl: DEV_API_URL,
+      ota: o.frontend.ota,
+      installDependencies: o.frontend.installDependencies,
+    });
+    warnings.push(...admin.warnings);
+  }
+
   if (o.initGit) {
     const result = await initGit(o.rootDir).catch(() => 'unavailable' as const);
     if (result === 'unavailable') warnings.push('git was not found, the repository was not initialized.');

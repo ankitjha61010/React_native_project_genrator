@@ -6,7 +6,7 @@ import { DevicesService } from '{{IMPORT:app.devicesService}}';
 import type { User } from '{{IMPORT:domain.user}}';
 import { CurrentUser } from '{{IMPORT:nest.decorators}}';
 import { Endpoint } from '{{IMPORT:nest.endpoint}}';
-import { DeviceDto, UpdateFcmTokenDto } from '{{IMPORT:nest.devices.dto}}';
+import { DeviceDto, UpdateFcmTokenDto, UpdateVoipTokenDto } from '{{IMPORT:nest.devices.dto}}';
 import { DEVICES_MESSAGES } from '{{IMPORT:messages.devices}}';
 
 /**
@@ -30,5 +30,11 @@ export class DevicesController {
   @Endpoint({ summary: 'FCM rotated the token of this install', message: DEVICES_MESSAGES.tokenUpdated, response: DeviceDto, errors: [401, 404, 422], bearer: true })
   updateFcmToken(@CurrentUser() user: User, @Param('deviceId') deviceId: string, @Body() dto: UpdateFcmTokenDto) {
     return this.devices.updateFcmToken(user.id, deviceId, dto.fcmToken);
+  }
+
+  @Patch(':deviceId/voip-token')
+  @Endpoint({ summary: 'Update the iOS VoIP push token for incoming calls', message: DEVICES_MESSAGES.tokenUpdated, response: DeviceDto, errors: [401, 404, 422], bearer: true })
+  updateVoipToken(@CurrentUser() user: User, @Param('deviceId') deviceId: string, @Body() dto: UpdateVoipTokenDto) {
+    return this.devices.updateVoipToken(user.id, deviceId, dto.voipToken);
   }
 }

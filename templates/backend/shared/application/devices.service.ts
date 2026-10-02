@@ -24,6 +24,13 @@ export class DevicesService implements DeviceRegistry {
     return toDeviceView(device);
   }
 
+  /** Update iOS VoIP push token for CallKit incoming calls. */
+  async updateVoipToken(userId: string, deviceId: string, voipToken: string): Promise<DeviceView> {
+    const device = await this.devices.updateVoipToken(userId, deviceId, voipToken);
+    if (!device) throw new NotFoundError(DEVICES_MESSAGES.notFound);
+    return toDeviceView(device);
+  }
+
   async list(userId: string): Promise<DeviceView[]> {
     return (await this.devices.listByUser(userId)).map(toDeviceView);
   }

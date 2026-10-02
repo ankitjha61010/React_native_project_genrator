@@ -138,7 +138,24 @@ UPLOAD_MAX_MB=25
 # ── Push notifications (Firebase Cloud Messaging) ────────────────────────────
 # Path to the service account JSON (Firebase console → Project settings → Service accounts),
 # or the JSON itself. Empty: pushes are only logged.
-FIREBASE_SERVICE_ACCOUNT=
+FIREBASE_SERVICE_ACCOUNT={{#if !ENV_EXAMPLE}}{{FIREBASE_SERVICE_ACCOUNT_VALUE}}{{/if}}
+{{else}}
+{{#if HAS_CALLING}}
+
+# ── Push notifications / VoIP (Firebase Cloud Messaging) ────────────────────
+# Path to the service account JSON (for background incoming call wakeups).
+FIREBASE_SERVICE_ACCOUNT={{#if !ENV_EXAMPLE}}{{FIREBASE_SERVICE_ACCOUNT_VALUE}}{{/if}}
+{{/if}}
+{{/if}}
+{{#if HAS_CALLING}}
+
+# ── Calling (Agora Audio & Video) ───────────────────────────────────────────
+# Agora App ID & App Certificate from Agora Console (https://console.agora.io).
+# Required to generate Agora RTC tokens for audio/video calling.
+AGORA_APP_ID={{#if !ENV_EXAMPLE}}{{AGORA_APP_ID_VALUE}}{{/if}}
+AGORA_APP_CERTIFICATE={{#if !ENV_EXAMPLE}}{{AGORA_APP_CERTIFICATE_VALUE}}{{/if}}
+# Ringing timeout in seconds before call is marked missed.
+CALL_TIMEOUT_SECONDS=60
 {{/if}}
 {{#if LEGAL}}
 

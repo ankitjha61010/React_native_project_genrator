@@ -6,6 +6,9 @@ import type { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 {{/if}}
 import { config } from '{{IMPORT:config.env}}';
+{{#if LEGAL}}
+import { LegalService } from '{{IMPORT:app.legalService}}';
+{{/if}}
 import { errorResponse } from '{{IMPORT:core.response}}';
 {{#if SOCKET_SERVER}}
 import { logger } from '{{IMPORT:core.logger}}';
@@ -83,7 +86,13 @@ export function configureApp(app: NestExpressApplication): void {
   app.useStaticAssets(config.uploads.dir, { prefix: config.uploads.publicPath, index: false, dotfiles: 'deny', maxAge: '7d' });
 {{/if}}
 {{#if LEGAL}}
-  // Legal pages the app opens: /terms-and-conditions, /privacy-policy… (public/*.html – edit them).
+  // Legal pages the app opens: /terms-and-conditions, /privacy-policy… – the HTML saved in the
+  // admin panel (PUT /legal), else public/*.html (edit them).
+  const legal = app.get(LegalService);
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== 'GET') return next();
+    legal.pageHtml(req.path).then(html => (html ? res.type('html').send(html) : next()), next);
+  });
   app.useStaticAssets('public', { index: false, extensions: ['html'], dotfiles: 'deny', maxAge: '1h' });
 {{/if}}
 

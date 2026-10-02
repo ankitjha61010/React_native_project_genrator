@@ -3,7 +3,11 @@ import type { Logger } from '{{IMPORT:core.logger}}';
 {{#if GROUP_CHAT}}
 import { SystemEvent, type ChatMessageView, type Conversation, type ConversationMember, type ConversationView, type MediaCrop, type MemberRole, type Message, type ReplyToView, type SendableMessageType } from '{{IMPORT:domain.chat}}';
 {{else}}
+{{#if CALLING}}
+import { SystemEvent, type ChatMessageView, type Conversation, type ConversationMember, type ConversationView, type MediaCrop, type Message, type ReplyToView, type SendableMessageType } from '{{IMPORT:domain.chat}}';
+{{else}}
 import type { ChatMessageView, Conversation, ConversationMember, ConversationView, MediaCrop, Message, ReplyToView, SendableMessageType } from '{{IMPORT:domain.chat}}';
+{{/if}}
 {{/if}}
 import type { User } from '{{IMPORT:domain.user}}';
 import type { ChatRepository } from '{{IMPORT:contract.chat}}';
@@ -16,6 +20,18 @@ import type { Realtime } from '{{IMPORT:port.realtime}}';
 import { CHAT_MESSAGES } from '{{IMPORT:messages.chat}}';
 import { humanSize, {{#if CHAT_PUSH}}messagePreview, {{/if}}messageTypeOf } from '{{IMPORT:app.chatUtils}}';
 
+{{#if CALLING}}
+/** A finished one-to-one call (CallingService), recorded in the two people's direct chat. */
+export interface RecordCallInput {
+  callerId: string;
+  receiverId: string;
+  callType: 'audio' | 'video';
+  answered: boolean;
+  /** Seconds talked (0 when not answered). */
+  duration: number;
+}
+
+{{/if}}
 export interface StartConversationInput {
   /** The other person (a direct chat has exactly one). */
   participantIds: string[];
@@ -34,6 +50,13 @@ export interface UpdateGroupInput {
   avatarUrl?: string | null;
 }
 {{/if}}
+
+/** One entry of GET /chat/blocked-users. */
+export interface BlockedUserView {
+  id: string;
+  name: string;
+  avatar?: string;
+}
 
 export interface SendMessageInput {
   type: SendableMessageType;
@@ -74,6 +97,9 @@ export const CHAT_EVENTS = {
   receiveMessage: 'chat:receive_message',
   messageRead: 'chat:message_read',
   messageDeleted: 'chat:message_deleted',
+  messageEdited: 'chat:message_edited',
+  userBlocked: 'chat:user_blocked',
+  userUnblocked: 'chat:user_unblocked',
   /** You cleared a conversation (or all of them) on another device – the app empties it. */
   conversationCleared: 'chat:conversation_cleared',
 {{#if GROUP_CHAT}}
@@ -169,9 +195,10 @@ export class ChatService {
     return this.getConversation(userId, conversation.id);
   }
 
-  /** Group name / image (admins only). */
+  /** Group name / image (any group member can update). */
   async updateGroup(userId: string, conversationId: string, input: UpdateGroupInput): Promise<ConversationView> {
-    const { conversation } = await this.requireAdmin(userId, conversationId);
+    const { conversation } = await this.requireMember(userId, conversationId);
+    if (!conversation.isGroup) throw new BadRequestError(CHAT_MESSAGES.notAGroup);
     const title = input.title?.trim();
     if (input.title !== undefined && !title) throw new BadRequestError(CHAT_MESSAGES.titleRequired);
     await this.deps.chat.updateConversation(conversationId, { ...(title ? { title } : {}), ...(input.avatarUrl !== undefined ? { avatarUrl: input.avatarUrl } : {}) });
@@ -253,7 +280,22 @@ export class ChatService {
   }
 
   async sendMessage(userId: string, conversationId: string, input: SendMessageInput): Promise<ChatMessageView> {
-    const { member } = await this.requireMember(userId, conversationId);
+    const { conversation, member } = await this.requireMember(userId, conversationId);
+{{#if GROUP_CHAT}}
+    if (!conversation.isGroup) {
+      const members = await this.deps.chat.listMembers([conversationId]);
+      const other = members.find(m => m.userId !== userId);
+      if (other && (await this.deps.chat.isBlocked(userId, other.userId))) {
+        throw new ForbiddenError(CHAT_MESSAGES.userBlockedError);
+      }
+    }
+{{else}}
+    const members = await this.deps.chat.listMembers([conversationId]);
+    const other = members.find(m => m.userId !== userId);
+    if (other && (await this.deps.chat.isBlocked(userId, other.userId))) {
+      throw new ForbiddenError(CHAT_MESSAGES.userBlockedError);
+    }
+{{/if}}
     const text = input.text?.trim() || null;
     if (input.type === 'text' && !text) throw new BadRequestError(CHAT_MESSAGES.emptyMessage);
     if (input.type !== 'text' && !input.mediaUrl) throw new BadRequestError(CHAT_MESSAGES.mediaRequired);
@@ -315,6 +357,53 @@ export class ChatService {
     }
     const members = await this.deps.chat.listMembers([conversationId]);
     for (const member of members) this.deps.realtime.toUser(member.userId, CHAT_EVENTS.messageDeleted, { conversationId, messageId });
+  }
+
+  /** Edits text of one of your own messages for everyone. */
+  async editMessage(userId: string, conversationId: string, messageId: string, text: string): Promise<ChatMessageView> {
+    await this.requireMember(userId, conversationId);
+    const message = await this.deps.chat.findMessage(messageId);
+    if (!message || message.conversationId !== conversationId || message.deletedAt) throw new NotFoundError(CHAT_MESSAGES.messageNotFound);
+    if (message.type !== 'text') throw new BadRequestError(CHAT_MESSAGES.onlyTextEditable);
+    if (message.senderId !== userId) throw new ForbiddenError(CHAT_MESSAGES.notYourMessage);
+    const trimmed = text.trim();
+    if (!trimmed) throw new BadRequestError(CHAT_MESSAGES.emptyMessage);
+
+    const updated = await this.deps.chat.updateMessageText(messageId, trimmed);
+    const members = await this.deps.chat.listMembers([conversationId]);
+    for (const member of members) {
+      this.deps.realtime.toUser(member.userId, CHAT_EVENTS.messageEdited, { conversationId, messageId, text: trimmed });
+    }
+    const people = await this.usersById([userId]);
+    return this.messageView(updated ?? { ...message, text: trimmed }, people, members, userId, new Map());
+  }
+
+  /** Blocks a user: prevents 1-to-1 messages and direct calls. */
+  async blockUser(userId: string, targetUserId: string): Promise<void> {
+    if (userId === targetUserId) throw new BadRequestError(CHAT_MESSAGES.cannotBlockYourself);
+    const target = await this.deps.users.findById(targetUserId);
+    if (!target) throw new NotFoundError(CHAT_MESSAGES.participantsNotFound);
+    await this.deps.chat.blockUser(userId, targetUserId);
+    this.deps.realtime.toUser(userId, CHAT_EVENTS.userBlocked, { userId: targetUserId });
+    this.deps.realtime.toUser(targetUserId, 'chat:user_blocked_by', { userId });
+  }
+
+  /** Unblocks a user. */
+  async unblockUser(userId: string, targetUserId: string): Promise<void> {
+    await this.deps.chat.unblockUser(userId, targetUserId);
+    this.deps.realtime.toUser(userId, CHAT_EVENTS.userUnblocked, { userId: targetUserId });
+    this.deps.realtime.toUser(targetUserId, 'chat:user_unblocked_by', { userId });
+  }
+
+  /** Checks if either user has blocked the other. */
+  async isBlocked(userA: string, userB: string): Promise<boolean> {
+    return this.deps.chat.isBlocked(userA, userB);
+  }
+
+  /** The people this user blocked (deleted accounts are left out). */
+  async listBlockedUsers(userId: string): Promise<BlockedUserView[]> {
+    const users = await this.usersById(await this.deps.chat.getBlockedUserIds(userId));
+    return [...users.values()].map(u => ({ id: u.id, name: u.name, ...(u.avatarUrl ? { avatar: u.avatarUrl } : {}) }));
   }
 
   /** Stores an attachment; send its `url` as the message's `mediaUrl`. */
@@ -381,6 +470,29 @@ export class ChatService {
     const message = await this.deps.chat.createMessage({ conversationId, senderId: actorId, type: 'system', event, targetUserId });
     const members = await this.deps.chat.listMembers([conversationId]);
     this.broadcast(this.messageView(message, await this.usersById([actorId, targetUserId]), members, actorId), members);
+  }
+{{/if}}
+{{#if CALLING}}
+
+  /**
+   * A finished one-to-one call in the two people's direct chat, like WhatsApp: `CALL` with the talk time, or
+   * `MISSED_CALL`. The caller is the sender. The chat is created if they never chatted; a deleted chat comes back.
+   */
+  async recordCall(input: RecordCallInput): Promise<void> {
+    const conversation =
+      (await this.deps.chat.findDirectConversation(input.callerId, input.receiverId)) ??
+      (await this.deps.chat.createConversation({ createdById: input.callerId, memberIds: [input.callerId, input.receiverId]{{#if GROUP_CHAT}}, isGroup: false, title: null, avatarUrl: null{{/if}} }));
+    const message = await this.deps.chat.createMessage({
+      conversationId: conversation.id,
+      senderId: input.callerId,
+      type: 'system',
+      event: input.answered ? SystemEvent.CALL : SystemEvent.MISSED_CALL,
+      text: input.callType,
+      duration: input.answered ? input.duration : null,
+      targetUserId: input.receiverId,
+    });
+    const members = await this.deps.chat.listMembers([conversation.id]);
+    this.broadcast(this.messageView(message, await this.usersById([input.callerId, input.receiverId]), members, input.callerId), members);
   }
 {{/if}}
 

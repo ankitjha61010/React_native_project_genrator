@@ -1,0 +1,86 @@
+// ─── Calling Models (prisma.config.ts loads every .prisma file in this folder) ──
+
+enum CallType {
+  audio
+  video
+}
+
+enum CallStatus {
+  initiating
+  ringing
+  connecting
+  connected
+  reconnecting
+  busy
+  declined
+  missed
+  cancelled
+  ended
+  failed
+}
+
+enum CallEndReason {
+  normal
+  declined
+  missed
+  cancelled
+  busy
+  failed
+  timeout
+}
+
+enum CallParticipantStatus {
+  invited
+  ringing
+  joined
+  left
+  declined
+  missed
+}
+
+enum CallParticipantRole {
+  host
+  participant
+}
+
+model Call {
+  id          String         @id @default(cuid())
+  callerId    String
+  receiverId  String?
+  callType    CallType
+  isGroupCall Boolean        @default(false)
+  channelName String         @unique
+  status      CallStatus     @default(initiating)
+  startedAt   DateTime?
+  answeredAt  DateTime?
+  endedAt     DateTime?
+  duration    Int?
+  endReason   CallEndReason?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  participants CallParticipant[]
+
+  @@index([callerId])
+  @@index([receiverId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model CallParticipant {
+  id       String                @id @default(cuid())
+  callId   String
+  userId   String
+  joinedAt DateTime?
+  leftAt   DateTime?
+  status   CallParticipantStatus @default(invited)
+  role     CallParticipantRole   @default(participant)
+  /// Deleted from this user's call history.
+  hiddenAt DateTime?
+
+  call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@unique([callId, userId])
+  @@index([userId])
+  @@index([callId])
+}

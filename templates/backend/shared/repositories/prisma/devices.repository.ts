@@ -4,7 +4,11 @@ import type { PrismaClient } from '{{IMPORT:db.connection}}';
 
 type DeviceRecord = NonNullable<Awaited<ReturnType<PrismaClient['device']['findUnique']>>>;
 
-const toDevice = (r: DeviceRecord): Device => ({ ...r, deviceType: r.deviceType as DeviceType });
+const toDevice = (r: DeviceRecord): Device => ({
+  ...r,
+  deviceType: r.deviceType as DeviceType,
+  voipToken: (r as any).voipToken ?? null,
+});
 
 export class PrismaDevicesRepository implements DevicesRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -13,6 +17,7 @@ export class PrismaDevicesRepository implements DevicesRepository {
     const data = {
       userId,
       fcmToken: input.fcmToken ?? null,
+      voipToken: input.voipToken ?? null,
       deviceType: input.deviceType,
       deviceModel: input.deviceModel ?? null,
       osVersion: input.osVersion ?? null,
@@ -32,6 +37,14 @@ export class PrismaDevicesRepository implements DevicesRepository {
       if (!(await tx.device.findFirst({ where: { userId, deviceId } }))) return null;
       await tx.device.updateMany({ where: { fcmToken, deviceId: { not: deviceId } }, data: { fcmToken: null } });
       return tx.device.update({ where: { deviceId }, data: { fcmToken, lastActiveAt: new Date() } });
+    });
+    return record && toDevice(record);
+  }
+
+  async updateVoipToken(userId: string, deviceId: string, voipToken: string): Promise<Device | null> {
+    const record = await this.prisma.$transaction(async tx => {
+      if (!(await tx.device.findFirst({ where: { userId, deviceId } }))) return null;
+      return tx.device.update({ where: { deviceId }, data: { voipToken, lastActiveAt: new Date() } });
     });
     return record && toDevice(record);
   }

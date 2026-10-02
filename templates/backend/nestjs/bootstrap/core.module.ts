@@ -25,6 +25,15 @@ import { NotificationsService } from '{{IMPORT:app.notificationsService}}';
 {{#if USERS_API}}
 import { UsersService } from '{{IMPORT:app.usersService}}';
 {{/if}}
+{{#if LEGAL}}
+import { LegalService } from '{{IMPORT:app.legalService}}';
+{{/if}}
+{{#if OTA}}
+import { OTAService } from '{{IMPORT:app.otaService}}';
+{{/if}}
+{{#if CALLING}}
+import { CallingService } from '{{IMPORT:app.callingService}}';
+{{/if}}
 import { DATABASE, INFRASTRUCTURE, SERVICES } from '{{IMPORT:nest.tokens}}';
 
 /** Closes {{#if SOCKET_SERVER}}Socket.IO, {{/if}}{{#if EVENTS}}the event bus, {{/if}}the database{{#if REDIS}}, Redis{{/if}} when the app shuts down (SIGTERM / app.close()). */
@@ -77,6 +86,15 @@ const SERVICE_PROVIDERS: Provider[] = [
 {{/if}}
 {{#if NOTIFICATIONS}}
   service(NotificationsService, 'notifications'),
+{{/if}}
+{{#if LEGAL}}
+  service(LegalService, 'legal'),
+{{/if}}
+{{#if OTA}}
+  service(OTAService, 'ota'),
+{{/if}}
+{{#if CALLING}}
+  service(CallingService, 'calling'),
 {{/if}}
 ];
 

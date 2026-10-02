@@ -213,6 +213,15 @@ export function ProfileScreen(): React.JSX.Element {
         </FadeInView>
 
 {{/if}}
+{{#if CHAT}}
+        <FadeInView delay={150} style={styles.section}>
+          <AppText fontFamily="semiBold" fontSize="size14" color="textSecondary" intlType="common" value="privacy" style={styles.sectionTitle} />
+          <View style={styles.card}>
+            <Row {{#if VECTOR_ICONS}}icon="account-cancel-outline" {{/if}}label={translate('common', 'blockedUsers')} onPress={() => navigation.navigate('Main', { screen: 'BlockedUsers' })} />
+          </View>
+        </FadeInView>
+
+{{/if}}
 {{#if TERMS}}
         {/* Terms & Conditions / Privacy Policy – the links come from the backend (GET /legal). */}
         <FadeInView delay={160} style={styles.section}>

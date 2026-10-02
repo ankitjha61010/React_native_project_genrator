@@ -47,6 +47,9 @@ export class Init1767225600000 implements MigrationInterface {
     await queryRunner.query(`CREATE INDEX "IDX_310667f935698fcd8cb319113a" ON "notifications"  ("user_id", "created_at") `);
     await queryRunner.query(`CREATE TABLE "broadcasts" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "title" character varying(200) NOT NULL, "body" character varying(1000) NOT NULL, "type" character varying(20) NOT NULL, "data" jsonb NOT NULL, "audience" character varying(16) NOT NULL, "sent_by_id" uuid NOT NULL, "recipient_count" integer NOT NULL DEFAULT '0', "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_b0586900034d0726bbdcb1b21b2" PRIMARY KEY ("id"))`);
 {{/if}}
+{{#if LEGAL}}
+    await queryRunner.query(`CREATE TABLE "legal_settings" ("id" character varying(16) NOT NULL, "terms_url" character varying(2048), "privacy_policy_url" character varying(2048), "delete_account_url" character varying(2048), "terms_html" text, "privacy_policy_html" text, "delete_account_html" text, "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_legal_settings" PRIMARY KEY ("id"))`);
+{{/if}}
 {{#if AUTH_REFRESH}}
     await queryRunner.query(`ALTER TABLE "refresh_tokens" ADD CONSTRAINT "FK_3ddc983c5f7bcf132fd8732c3f4" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
 {{/if}}
@@ -85,6 +88,9 @@ export class Init1767225600000 implements MigrationInterface {
     await queryRunner.query(`CREATE TABLE \`notifications\` (\`id\` varchar(36) NOT NULL, \`user_id\` varchar(36) NOT NULL, \`type\` varchar(20) NOT NULL, \`title\` varchar(200) NOT NULL, \`body\` varchar(1000) NOT NULL, \`data\` json NOT NULL, \`read_at\` datetime NULL, \`broadcast_id\` char(36) NULL, \`created_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), INDEX \`IDX_5323ccd23482802bd9759e88ee\` (\`user_id\`, \`read_at\`), INDEX \`IDX_310667f935698fcd8cb319113a\` (\`user_id\`, \`created_at\`), PRIMARY KEY (\`id\`)) ENGINE=InnoDB`);
     await queryRunner.query(`CREATE TABLE \`broadcasts\` (\`id\` varchar(36) NOT NULL, \`title\` varchar(200) NOT NULL, \`body\` varchar(1000) NOT NULL, \`type\` varchar(20) NOT NULL, \`data\` json NOT NULL, \`audience\` varchar(16) NOT NULL, \`sent_by_id\` char(36) NOT NULL, \`recipient_count\` int NOT NULL DEFAULT '0', \`created_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), PRIMARY KEY (\`id\`)) ENGINE=InnoDB`);
 {{/if}}
+{{#if LEGAL}}
+    await queryRunner.query(`CREATE TABLE \`legal_settings\` (\`id\` varchar(16) NOT NULL, \`terms_url\` varchar(2048) NULL, \`privacy_policy_url\` varchar(2048) NULL, \`delete_account_url\` varchar(2048) NULL, \`terms_html\` longtext NULL, \`privacy_policy_html\` longtext NULL, \`delete_account_html\` longtext NULL, \`updated_at\` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6), PRIMARY KEY (\`id\`)) ENGINE=InnoDB`);
+{{/if}}
 {{#if AUTH_REFRESH}}
     await queryRunner.query(`ALTER TABLE \`refresh_tokens\` ADD CONSTRAINT \`FK_3ddc983c5f7bcf132fd8732c3f4\` FOREIGN KEY (\`user_id\`) REFERENCES \`users\`(\`id\`) ON DELETE CASCADE ON UPDATE NO ACTION`);
 {{/if}}
@@ -106,6 +112,9 @@ export class Init1767225600000 implements MigrationInterface {
 
   public async down(queryRunner: QueryRunner): Promise<void> {
 {{#if POSTGRES}}
+{{#if LEGAL}}
+    await queryRunner.query(`DROP TABLE "legal_settings"`);
+{{/if}}
 {{#if NOTIFICATIONS}}
     await queryRunner.query(`ALTER TABLE "notifications" DROP CONSTRAINT "FK_9a8a82462cab47c73d25f49261f"`);
     await queryRunner.query(`ALTER TABLE "devices" DROP CONSTRAINT "FK_5e9bee993b4ce35c3606cda194c"`);
@@ -162,6 +171,9 @@ export class Init1767225600000 implements MigrationInterface {
 {{/if}}
 {{/if}}
 {{#if MYSQL}}
+{{#if LEGAL}}
+    await queryRunner.query(`DROP TABLE \`legal_settings\``);
+{{/if}}
 {{#if NOTIFICATIONS}}
     await queryRunner.query(`ALTER TABLE \`notifications\` DROP FOREIGN KEY \`FK_9a8a82462cab47c73d25f49261f\``);
     await queryRunner.query(`ALTER TABLE \`devices\` DROP FOREIGN KEY \`FK_5e9bee993b4ce35c3606cda194c\``);

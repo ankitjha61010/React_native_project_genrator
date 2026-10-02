@@ -24,7 +24,10 @@ import { ChatNotice } from '../../components/ChatNotice/ChatNotice';
 import { ChatMediaPreview } from '../../components/ChatMediaPreview/ChatMediaPreview';
 import { TypingIndicator } from '../../components/TypingIndicator/TypingIndicator';
 import { useChatRoom } from '../../hooks/useChatRoom';
-import { withDateSeparators, type ChatListItem } from '../../utils/chatFormat';
+import { {{#if HAS_CALLING}}callLog, {{/if}}withDateSeparators, type ChatListItem } from '../../utils/chatFormat';
+{{#if HAS_CALLING}}
+import { useCallContext } from '{{IMPORT:calling.CallContext}}';
+{{/if}}
 
 /** How long the original of a reply stays tinted after jumping to it. */
 const HIGHLIGHT_MS = 1500;
@@ -53,9 +56,13 @@ export function ChatRoomScreen(): React.JSX.Element {
 {{/if}}
   const { conversationId } = route.params;
   const room = useChatRoom(conversationId);
+{{#if HAS_CALLING}}
+  const callContext = useCallContext();
+{{/if}}
   const [previewMedia, setPreviewMedia] = useState<ChatMessage | null>(null);
   /** The message the next one replies to (shown above the input). */
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const listRef = useRef<FlatList<ChatListItem>>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -94,23 +101,37 @@ export function ChatRoomScreen(): React.JSX.Element {
     [data],
   );
 
-  /** Long press on a message: reply, or delete your own (for everyone). */
+  /** Long press on a message: actions menu (reply, edit, delete). */
   const showActions = useCallback(
     (message: ChatMessage) => {
+      const isMyMessage = message.isMe ?? (room.myId ? message.senderId === room.myId : false);
       const deleteIt = () =>
         Alert.alert(translate('common', 'deleteMessage'), translate('common', 'deleteMessageConfirm'), [
           { text: translate('common', 'cancel'), style: 'cancel' },
           { text: translate('common', 'delete'), style: 'destructive', onPress: () => room.deleteMessage(message.id) },
         ]);
-      Alert.alert(translate('common', 'message'), undefined, [
+      Alert.alert(translate('common', 'messageActions'), undefined, [
         ...(message.status !== 'failed' ? [{ text: translate('common', 'reply'), onPress: () => setReplyingTo(message) }] : []),
-        ...(message.isMe && message.status !== 'failed' ? [{ text: translate('common', 'delete'), style: 'destructive' as const, onPress: deleteIt }] : []),
+        ...(isMyMessage && message.type === 'text' && message.status !== 'failed' ? [{ text: translate('common', 'edit'), onPress: () => setEditingMessage(message) }] : []),
+        ...(isMyMessage && message.status !== 'failed' ? [{ text: translate('common', 'delete'), style: 'destructive' as const, onPress: deleteIt }] : []),
         { text: translate('common', 'cancel'), style: 'cancel' },
       ]);
     },
     [room],
   );
 
+{{#if HAS_CALLING}}
+  // A call in the chat: call the other person back with the same kind of call.
+  const callBack = (message: ChatMessage) => {
+    const log = callLog(message);
+    if (room.isBlocked) {
+      Alert.alert(translate('common', 'userBlocked'), translate('common', 'unblockToCall'));
+      return;
+    }
+    if (log && room.other?.id) callContext.startCall(room.other.id, {{#if VIDEO_CALL}}log.callType{{else}}'audio'{{/if}}, title);
+  };
+
+{{/if}}
   const renderItem = ({ item }: { item: ChatListItem }) =>
     item.kind === 'date' ? (
       <ChatNotice text={item.label} />
@@ -121,9 +142,11 @@ export function ChatRoomScreen(): React.JSX.Element {
         onPressMedia={setPreviewMedia}
         onRetry={room.retry}
         onLongPress={showActions}
+        onReply={setReplyingTo}
         onPressReply={showOriginal}
         highlighted={item.message.id === highlightedId}{{#if GROUP_CHAT}}
-        showSender={isGroup}{{/if}}
+        showSender={isGroup}{{/if}}{{#if HAS_CALLING}}
+        onPressCall={callBack}{{/if}}
       />
     );
 
@@ -171,6 +194,69 @@ export function ChatRoomScreen(): React.JSX.Element {
             {subtitle ? <AppText fontSize="size12" color={room.other?.isOnline ? 'success' : 'textSecondary'} numberOfLines={1} text={subtitle} /> : null}
           </View>
         </TouchableOpacity>
+
+{{#if HAS_CALLING}}
+        <View style={styles.headerActions}>
+{{#if AUDIO_CALL}}
+          <TouchableOpacity
+            style={styles.headerActionBtn}
+            onPress={() => {
+              if (room.isBlocked) {
+                Alert.alert(translate('common', 'userBlocked'), translate('common', 'unblockToCall'));
+                return;
+              }
+{{#if GROUP_CHAT}}
+              if (isGroup) {
+                const pIds = room.conversation?.participants.map(p => p.id).filter(id => id !== room.myId) ?? [];
+                callContext.startGroupCall(pIds, 'audio');
+                return;
+              }
+{{/if}}
+              if (room.other?.id) {
+                callContext.startCall(room.other.id, 'audio', title);
+              }
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Audio Call"
+          >
+{{#if VECTOR_ICONS}}
+            <AppIcon name="phone-outline" size={22} tintColor={styles.icon.color} />
+{{else}}
+            <AppText fontSize="size16" text="📞" />
+{{/if}}
+          </TouchableOpacity>
+{{/if}}
+{{#if VIDEO_CALL}}
+          <TouchableOpacity
+            style={styles.headerActionBtn}
+            onPress={() => {
+              if (room.isBlocked) {
+                Alert.alert(translate('common', 'userBlocked'), translate('common', 'unblockToCall'));
+                return;
+              }
+{{#if GROUP_CHAT}}
+              if (isGroup) {
+                const pIds = room.conversation?.participants.map(p => p.id).filter(id => id !== room.myId) ?? [];
+                callContext.startGroupCall(pIds, 'video');
+                return;
+              }
+{{/if}}
+              if (room.other?.id) {
+                callContext.startCall(room.other.id, 'video', title);
+              }
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Video Call"
+          >
+{{#if VECTOR_ICONS}}
+            <AppIcon name="video-outline" size={22} tintColor={styles.icon.color} />
+{{else}}
+            <AppText fontSize="size16" text="📹" />
+{{/if}}
+          </TouchableOpacity>
+{{/if}}
+        </View>
+{{/if}}
       </View>
 
       <KeyboardAvoidingView style={styles.chatArea} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -192,15 +278,34 @@ export function ChatRoomScreen(): React.JSX.Element {
         <TypingIndicator typing={room.typing} />
 
         <View style={{ paddingBottom: Math.max(insets.bottom, 8) }}>
-          <ChatInputBar
-            replyTo={replyingTo}
-            onCancelReply={() => setReplyingTo(null)}
-            onSend={draft => {
-              room.send(replyingTo ? { ...draft, replyToId: replyingTo.id } : draft);
-              setReplyingTo(null);
-            }}
-            onTyping={room.notifyTyping}
-          />
+          {room.isBlocked ? (
+            <TouchableOpacity
+              style={styles.blockedBanner}
+              onPress={() =>
+                Alert.alert(translate('common', 'unblockUser'), translate('common', 'unblockUserConfirm'), [
+                  { text: translate('common', 'cancel'), style: 'cancel' },
+                  { text: translate('common', 'unblock'), onPress: room.unblockUser },
+                ])
+              }>
+              <AppText fontSize="size13" color="textSecondary" text={translate('common', 'youBlockedThisContact')} />
+            </TouchableOpacity>
+          ) : (
+            <ChatInputBar
+              replyTo={replyingTo}
+              onCancelReply={() => setReplyingTo(null)}
+              editingMessage={editingMessage}
+              onCancelEdit={() => setEditingMessage(null)}
+              onEdit={(msgId, newText) => {
+                room.editMessage(msgId, newText);
+                setEditingMessage(null);
+              }}
+              onSend={draft => {
+                room.send(replyingTo ? { ...draft, replyToId: replyingTo.id } : draft);
+                setReplyingTo(null);
+              }}
+              onTyping={room.notifyTyping}
+            />
+          )}
         </View>
 
         <ChatMediaPreview visible={Boolean(previewMedia)} message={previewMedia} onClose={() => setPreviewMedia(null)} />
@@ -261,6 +366,16 @@ const createStyles = (theme: Theme) =>
       flex: 1,
       marginStart: theme.spacing.spacing10,
     },
+    headerActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.spacing8,
+      paddingEnd: theme.spacing.spacing4,
+    },
+    headerActionBtn: {
+      padding: theme.spacing.spacing6,
+      borderRadius: 20,
+    },
     chatArea: {
       flex: 1,
     },
@@ -269,5 +384,15 @@ const createStyles = (theme: Theme) =>
     },
     older: {
       marginVertical: theme.spacing.spacing12,
+    },
+    blockedBanner: {
+      paddingVertical: theme.spacing.spacing12,
+      paddingHorizontal: theme.spacing.spacing16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.colors.surface,
+      borderRadius: 12,
+      marginHorizontal: theme.spacing.spacing16,
+      marginVertical: theme.spacing.spacing4,
     },
   });

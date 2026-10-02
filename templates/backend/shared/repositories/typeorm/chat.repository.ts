@@ -1,7 +1,7 @@
 import { Brackets, In, IsNull, type DataSource, type Repository } from 'typeorm';
 import type { Conversation, ConversationMember, Message, MessageType, SystemEvent } from '{{IMPORT:domain.chat}}';
 import type { ChatRepository, CreateConversationData, CreateMessageData } from '{{IMPORT:contract.chat}}';
-import { ConversationMemberOrmEntity, ConversationOrmEntity, MessageOrmEntity } from '{{IMPORT:typeorm.chat}}';
+import { BlockedUserOrmEntity, ConversationMemberOrmEntity, ConversationOrmEntity, MessageOrmEntity } from '{{IMPORT:typeorm.chat}}';
 
 const toConversation = (e: ConversationOrmEntity): Conversation => ({
   id: e.id,
@@ -51,11 +51,13 @@ export class TypeOrmChatRepository implements ChatRepository {
   private readonly conversations: Repository<ConversationOrmEntity>;
   private readonly members: Repository<ConversationMemberOrmEntity>;
   private readonly messages: Repository<MessageOrmEntity>;
+  private readonly blocked: Repository<BlockedUserOrmEntity>;
 
   constructor(private readonly dataSource: DataSource) {
     this.conversations = dataSource.getRepository(ConversationOrmEntity);
     this.members = dataSource.getRepository(ConversationMemberOrmEntity);
     this.messages = dataSource.getRepository(MessageOrmEntity);
+    this.blocked = dataSource.getRepository(BlockedUserOrmEntity);
   }
 
   createConversation({ memberIds, ...data }: CreateConversationData): Promise<Conversation> {
@@ -223,5 +225,33 @@ export class TypeOrmChatRepository implements ChatRepository {
 
   async softDeleteMessage(id: string): Promise<void> {
     await this.messages.update({ id, deletedAt: IsNull() }, { deletedAt: new Date() });
+  }
+
+  async updateMessageText(id: string, text: string): Promise<Message | null> {
+    await this.messages.update({ id, deletedAt: IsNull() }, { text });
+    return this.findMessage(id);
+  }
+
+  async blockUser(blockerId: string, blockedId: string): Promise<void> {
+    await this.blocked.save(this.blocked.create({ blockerId, blockedId }));
+  }
+
+  async unblockUser(blockerId: string, blockedId: string): Promise<void> {
+    await this.blocked.delete({ blockerId, blockedId });
+  }
+
+  async isBlocked(userAId: string, userBId: string): Promise<boolean> {
+    const found = await this.blocked.findOne({
+      where: [
+        { blockerId: userAId, blockedId: userBId },
+        { blockerId: userBId, blockedId: userAId },
+      ],
+    });
+    return !!found;
+  }
+
+  async getBlockedUserIds(userId: string): Promise<string[]> {
+    const list = await this.blocked.find({ where: { blockerId: userId } });
+    return list.map(b => b.blockedId);
   }
 }

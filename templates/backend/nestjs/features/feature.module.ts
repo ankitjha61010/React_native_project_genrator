@@ -41,10 +41,24 @@ import { NotificationsController } from '{{IMPORT:nest.notifications.controller}
 @Module({ controllers: [NotificationsController] })
 export class NotificationsModule {}
 {{/if}}
+{{#if MODULE_CALLING}}
+import { CallingController } from '{{IMPORT:nest.calling.controller}}';
+
+/** Services come from the global CoreModule – a feature module only declares its controller. */
+@Module({ controllers: [CallingController] })
+export class CallingModule {}
+{{/if}}
+{{#if MODULE_OTA}}
+import { OTAController } from '{{IMPORT:nest.ota.controller}}';
+
+/** Services come from the global CoreModule – a feature module only declares its controller. */
+@Module({ controllers: [OTAController] })
+export class OtaModule {}
+{{/if}}
 {{#if MODULE_LEGAL}}
 import { LegalController } from '{{IMPORT:nest.legal.controller}}';
 
-/** Terms & Conditions / Privacy Policy links for the app (config only – no service). */
+/** Services come from the global CoreModule – a feature module only declares its controller. */
 @Module({ controllers: [LegalController] })
 export class LegalModule {}
 {{/if}}

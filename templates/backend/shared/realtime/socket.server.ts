@@ -28,6 +28,26 @@ export const SOCKET_EVENTS = {
 {{#if CHAT}}
   markRead: 'chat:message_read',
 {{/if}}
+{{#if HAS_CALLING}}
+  // Calling events (real-time call signaling)
+  callIncoming: 'call:incoming',
+  callRinging: 'call:ringing',
+  callAccepted: 'call:accepted',
+  callRejected: 'call:rejected',
+  callBusy: 'call:busy',
+  callCancelled: 'call:cancelled',
+  callConnected: 'call:connected',
+  callEnded: 'call:ended',
+  callMissed: 'call:missed',
+  callParticipantJoined: 'call:participant-joined',
+  callParticipantLeft: 'call:participant-left',
+  callMute: 'call:mute',
+{{#if VIDEO_CALL}}
+  callCamera: 'call:camera',
+{{/if}}
+  callReconnecting: 'call:reconnecting',
+  callFailed: 'call:failed',
+{{/if}}
 } as const;
 
 const userRoom = (userId: string) => `user:${userId}`;
@@ -174,6 +194,15 @@ export function attachSocketServer(httpServer: HttpServer, hub: SocketHub, deps:
       deps.users.update(user.id, { lastSeenAt: new Date() }).catch(error => deps.logger.debug({ err: error }, 'lastSeenAt not saved'));
     });
   });
+
+{{#if HAS_CALLING}}
+  // Calling: the CallingService should call hub.toUser() to signal call events.
+  // Example usage in CallingService:
+  //   hub.toUser(receiverId, SOCKET_EVENTS.callIncoming, { callId, callerId, callType, callerName });
+  //   hub.toUser(callerId, SOCKET_EVENTS.callAccepted, { callId });
+  //   hub.toUser(callerId, SOCKET_EVENTS.callRejected, { callId });
+  //   hub.toUser(userId, SOCKET_EVENTS.callEnded, { callId, endReason });
+{{/if}}
 
   hub.attach(io);
   deps.logger.info('Socket.IO ready');

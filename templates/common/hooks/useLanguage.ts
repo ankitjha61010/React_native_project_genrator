@@ -1,12 +1,11 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { FALLBACK_LANGUAGE, isSupportedLanguage, LANGUAGES, type LanguageCode } from '{{IMPORT:i18n.index}}';
 {{#if RTL}}
-import { applyLayoutDirection, FALLBACK_LANGUAGE, isSupportedLanguage, LANGUAGES, type LanguageCode } from '{{IMPORT:i18n.index}}';
+import { applyLayoutDirection } from '{{IMPORT:i18n.index}}';
+{{/if}}
 import { StorageKeys } from '{{IMPORT:storage.keys}}';
 import { storageService } from '{{IMPORT:storage.service}}';
-{{else}}
-import { FALLBACK_LANGUAGE, isSupportedLanguage, LANGUAGES, type LanguageCode } from '{{IMPORT:i18n.index}}';
-{{/if}}
 
 /** Current language + a setter that persists the choice (see i18n/languageDetector.ts). */
 export function useLanguage() {
@@ -16,9 +15,8 @@ export function useLanguage() {
   const changeLanguage = useCallback(
     async (code: LanguageCode) => {
       await i18n.changeLanguage(code);
-{{#if RTL}}
-      // Saved, then the layout direction follows at once (no restart).
       await storageService.set(StorageKeys.LANGUAGE, code);
+{{#if RTL}}
       applyLayoutDirection(code);
 {{/if}}
     },

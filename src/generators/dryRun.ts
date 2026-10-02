@@ -12,7 +12,7 @@ export const NATIVE_CHANGES = [
   'android/app/build.gradle        apply Google Services when google-services.json exists',
   'android/app/src/main/AndroidManifest.xml   POST_NOTIFICATIONS + CAMERA permissions, supportsRtl only with RTL support',
   'android/app/src/main/res/values/strings.xml  app display name',
-  'ios/Podfile                     react-native-permissions setup + static frameworks, Firebase via CocoaPods (SPM off)',
+  'ios/Podfile                     react-native-permissions setup, Firebase via CocoaPods (SPM off, modular GoogleUtilities)',
   'ios/.xcode.env                  resolves node via nvm/fnm/Volta/Homebrew/PATH (no hard-coded path)',
   'ios/<App>/AppDelegate.swift     FirebaseApp.configure() when GoogleService-Info.plist is bundled',
   'ios/<App>/Info.plist            display name, camera/photo usage descriptions, remote-notification mode, UIAppFonts',

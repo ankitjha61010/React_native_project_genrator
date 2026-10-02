@@ -83,3 +83,9 @@ yarn-error.log
 # Firebase – project specific config files (remove these lines if your team commits them)
 android/app/google-services.json
 ios/**/GoogleService-Info.plist
+{{#if OTA}}
+
+# OTA – the signing key stays private (back it up!) and builds are generated
+ota/*.pem
+ota-builds/
+{{/if}}

@@ -40,6 +40,16 @@ export async function generateBackend(options: BackendOptions): Promise<BackendS
   await step('Writing backend', () => writeBackend(projectDir, files, packageJson), `Backend written to ${projectDir}`);
   summary.files = files.length + 1;
 
+  if (options.firebaseServiceAccountPath) {
+    try {
+      const dest = path.join(projectDir, 'firebase-service-account.json');
+      await fs.copy(options.firebaseServiceAccountPath, dest);
+      summary.files += 1;
+    } catch (error) {
+      summary.warnings.push(`Could not copy firebase-service-account.json: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   if (options.installDependencies) {
     try {
       await step(

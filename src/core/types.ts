@@ -66,6 +66,10 @@ export interface ProjectOptions {
   chat: boolean;
   /** Group chats (needs chat): admins / members, name, image, add / remove members, leave. */
   groupChat: boolean;
+  /** Audio calling: one-to-one + group audio calls via Agora, CallKeep/iOS, native Android. */
+  audioCall: boolean;
+  /** Video calling: one-to-one + group video calls via Agora, CallKeep/iOS, native Android. */
+  videoCall: boolean;
   /** Terms & Conditions / Privacy Policy links, read from the backend (GET /legal). */
   termsAndConditions: boolean;
   /** Profile → Delete account (DELETE /users/me). */
@@ -77,6 +81,12 @@ export interface ProjectOptions {
   googleLocation: boolean;
   /** Side drawer menu wrapping the bottom tabs. */
   drawer: boolean;
+  /** Over-The-Air (OTA) updates module. */
+  ota: boolean;
+  /** Admin panel web application. */
+  adminPanel: boolean;
+  /** Admin panel tech stack choice (react or next). */
+  adminTechStack?: 'react' | 'next';
   initGit: boolean;
   installDependencies: boolean;
   installPods: boolean;
@@ -125,6 +135,8 @@ export type GroupId =
   | 'firebase'
   | 'socket'
   | 'chat'
+  | 'calling'
+  | 'ota'
   | 'components'
   | 'navigation'
   | 'screens'

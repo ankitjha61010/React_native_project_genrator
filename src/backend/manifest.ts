@@ -49,6 +49,8 @@ const dbCodes: Condition = ctx => codes(ctx) && !redisCodes(ctx);
 const authTables: Condition = ctx => refresh(ctx) || dbCodes(ctx) || social(ctx);
 const chat: Condition = ctx => auth(ctx) && ctx.options.modules.chat;
 const notifications: Condition = ctx => auth(ctx) && ctx.options.modules.notifications;
+/** Agora calling module (audio or video, or both). */
+const calling: Condition = ctx => auth(ctx) && (ctx.options.modules.audioCall || ctx.options.modules.videoCall);
 /** The users' devices (FCM tokens) – part of push notifications. */
 const devices: Condition = notifications;
 /** Sign-in payloads carry the app's device: stored here, or published to the notifications service (identity). */
@@ -57,7 +59,9 @@ const deviceInput: Condition = ctx => (devices(ctx) && ctx.options.service === u
 const legal: Condition = ctx => ctx.options.modules.legal && !replica(ctx);
 /** DELETE /users/me – the user deletes their own account. */
 const deleteAccount: Condition = ctx => auth(ctx) && ctx.options.modules.deleteAccount && !replica(ctx);
-const realtime: Condition = ctx => chat(ctx) || notifications(ctx);
+/** Over-The-Air updates: public update checks, admin-only releases (monolith / identity service). */
+const ota: Condition = ctx => auth(ctx) && Boolean(ctx.options.modules.ota) && !replica(ctx);
+const realtime: Condition = ctx => chat(ctx) || notifications(ctx) || calling(ctx);
 const encryption: Condition = ({ options }) => options.apiEncryption;
 const prisma: Condition = ({ options }) => options.orm === 'prisma';
 const typeorm: Condition = ({ options }) => options.orm === 'typeorm';
@@ -101,7 +105,9 @@ const FEATURES: Array<[BackendFeature, Condition]> = [
   ['chat', chat],
   ['devices', devices],
   ['notifications', notifications],
+  ['calling', calling],
   ['legal', legal],
+  ['ota', ota],
 ];
 
 export const BACKEND_MANIFEST: BackendManifestEntry[] = [
@@ -175,7 +181,7 @@ export const BACKEND_MANIFEST: BackendManifestEntry[] = [
   { id: 'port.fileStorage', template: 'shared/ports/file-storage.ts', layer: 'ports', file: 'file-storage.ts', when: uploads, mergeInto: ['impl.fileStorage'] },
   { id: 'port.pushSender', template: 'shared/ports/push-sender.ts', layer: 'ports', file: 'push-sender.ts', when: chatPush, mergeInto: ['impl.pushSender'] },
   { id: 'port.realtime', template: 'shared/ports/realtime.ts', layer: 'ports', file: 'realtime.ts', when: realtime, mergeInto: ['realtime.server', 'events.realtime'] },
-  { id: 'impl.passwordHasher', template: 'shared/security/password-hasher.impl.ts', layer: 'security', file: ({ options }) => HASHER_FILES[options.hashing], when: email },
+  { id: 'impl.passwordHasher', template: 'shared/security/password-hasher.impl.ts', layer: 'security', file: ({ options }) => HASHER_FILES[options.hashing ?? (options as any).passwordHashing ?? 'bcrypt'], when: email },
   { id: 'impl.tokenService', template: 'shared/security/jwt-token.service.ts', layer: 'security', file: 'jwt-token.service.ts', when: auth },
   { id: 'impl.socialVerifier', template: 'shared/security/social-verifier.ts', layer: 'security', file: 'social-verifier.ts', when: social },
   { id: 'impl.mailer', template: 'shared/adapters/mailer.ts', layer: 'adapters', file: 'mailer.ts', when: email },
@@ -237,6 +243,30 @@ export const BACKEND_MANIFEST: BackendManifestEntry[] = [
   { id: 'app.chatService', template: 'shared/application/chat.service.ts', layer: 'application', feature: 'chat', file: 'chat.service.ts', when: chat },
   { id: 'app.devicesService', template: 'shared/application/devices.service.ts', layer: 'application', feature: 'devices', file: 'devices.service.ts', when: devices },
   { id: 'app.notificationsService', template: 'shared/application/notifications.service.ts', layer: 'application', feature: 'notifications', file: 'notifications.service.ts', when: notifications },
+  // ── Calling (Agora token generation, call lifecycle, signaling, history) ──
+  { id: 'domain.call', template: 'shared/domain/call.entity.ts', layer: 'domain', feature: 'calling', file: 'call.entity.ts', when: calling },
+  { id: 'contract.calling', template: 'shared/domain/calling.repository.ts', layer: 'repositoryContract', feature: 'calling', file: 'calling.repository.ts', when: calling, mergeInto: ['repo.calling'] },
+  { id: 'repo.calling', template: 'shared/repositories/{orm}/calling.repository.ts', layer: 'repositoryImpl', feature: 'calling', file: repoFile('calling'), when: calling },
+  // Prisma schema / migration entries for calling
+  { id: 'prisma.calling', template: 'shared/database/prisma/calling.schema.prisma', file: 'prisma/calling.prisma', when: all(prisma, calling) },
+  { id: 'typeorm.calling', template: 'shared/database/typeorm/call.orm-entities.ts', layer: 'model', feature: 'calling', file: 'call.orm-entities.ts', when: all(typeorm, calling) },
+  { id: 'mongoose.calling', template: 'shared/database/mongoose/call.models.ts', layer: 'model', feature: 'calling', file: 'call.models.ts', when: all(mongoose, calling) },
+  { id: 'app.callingService', template: 'shared/application/calling.service.ts', layer: 'application', feature: 'calling', file: 'calling.service.ts', when: calling },
+  // Legal links + pages edited in the admin panel (GET / PUT /legal) – one record in the database.
+  { id: 'domain.legal', template: 'shared/domain/legal.entity.ts', layer: 'domain', feature: 'legal', file: 'legal.entity.ts', when: legal },
+  { id: 'contract.legal', template: 'shared/domain/legal.repository.ts', layer: 'repositoryContract', feature: 'legal', file: 'legal.repository.ts', when: legal, mergeInto: ['repo.legal'] },
+  { id: 'repo.legal', template: 'shared/repositories/{orm}/legal.repository.ts', layer: 'repositoryImpl', feature: 'legal', file: repoFile('legal'), when: legal },
+  { id: 'typeorm.legal', template: 'shared/database/typeorm/legal.orm-entity.ts', layer: 'model', feature: 'legal', file: 'legal.orm-entity.ts', when: all(typeorm, legal) },
+  { id: 'mongoose.legal', template: 'shared/database/mongoose/legal.model.ts', layer: 'model', feature: 'legal', file: 'legal.model.ts', when: all(mongoose, legal) },
+  { id: 'app.legalService', template: 'shared/application/legal.service.ts', layer: 'application', feature: 'legal', file: 'legal.service.ts', when: legal },
+  // OTA updates module
+  { id: 'domain.ota', template: 'shared/domain/ota.entity.ts', layer: 'domain', feature: 'ota', file: 'ota.entity.ts', when: ota },
+  { id: 'contract.ota', template: 'shared/domain/ota.repository.ts', layer: 'repositoryContract', feature: 'ota', file: 'ota.repository.ts', when: ota, mergeInto: ['repo.ota'] },
+  { id: 'repo.ota', template: 'shared/repositories/{orm}/ota.repository.ts', layer: 'repositoryImpl', feature: 'ota', file: repoFile('ota'), when: ota },
+  { id: 'app.otaService', template: 'shared/application/ota.service.ts', layer: 'application', feature: 'ota', file: 'ota.service.ts', when: ota },
+  // Tests
+  { id: 'test.unit.calling', template: 'shared/test/calling.spec.ts', file: 'test/unit/calling.spec.ts', when: calling },
+  { id: 'test.e2e.calling', template: 'shared/test/calling.e2e-spec.ts', file: 'test/e2e/calling.e2e-spec.ts', when: calling },
   { id: 'app.container', template: 'shared/bootstrap/container.ts', layer: 'bootstrap', file: 'container.ts' },
 
   // ── views (MVC presenters) ──────────────────────────────────────────────────
@@ -266,7 +296,7 @@ export const BACKEND_MANIFEST: BackendManifestEntry[] = [
   ...FEATURES.flatMap(([feature, enabled]): BackendManifestEntry[] => [
     { id: `ex.${feature}.routes`, template: `express/features/${feature}.routes.ts`, layer: 'routes', feature, file: `${feature}.routes.ts`, when: all(express, enabled) },
     { id: `ex.${feature}.controller`, template: `express/features/${feature}.controller.ts`, layer: 'http', feature, file: `${feature}.controller.ts`, when: all(express, enabled) },
-    ...(feature === 'health' || feature === 'legal'
+    ...(feature === 'health'
       ? []
       : [{ id: `ex.${feature}.schemas`, template: `express/features/${feature}.schemas.ts`, layer: 'dto' as const, feature, file: `${feature}.schemas.ts`, when: all(express, enabled) }]),
     { id: `ex.${feature}.docs`, template: `express/docs/${feature}.docs.ts`, layer: 'docs', feature, file: `${feature}.docs.ts`, when: all(express, enabled, swagger) },
@@ -298,7 +328,7 @@ export const BACKEND_MANIFEST: BackendManifestEntry[] = [
     return [
       { id: `nest.${feature}.controller`, template: `nestjs/features/${feature}.controller.ts`, layer: 'http', feature, file: `${feature}.controller.ts`, when: on },
       { id: `nest.${feature}.module`, template: 'nestjs/features/feature.module.ts', layer: 'module', feature, file: `${feature}.module.ts`, when: ctx => on(ctx) && ctx.arch.featureModules, flags: { [`MODULE_${feature.toUpperCase()}`]: true } },
-      ...(feature === 'health' || feature === 'legal'
+      ...(feature === 'health'
         ? []
         : [{ id: `nest.${feature}.dto`, template: `nestjs/features/${feature}.dto.ts`, layer: 'dto' as const, feature, file: `${feature}.dto.ts`, when: on }]),
     ];

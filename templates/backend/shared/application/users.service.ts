@@ -19,8 +19,12 @@ import { USERS_MESSAGES } from '{{IMPORT:messages.users}}';
 /** Fields an administrator may change. */
 export interface UpdateUserInput {
   name?: string;
+  email?: string | null;
   role?: UserRole;
   isActive?: boolean;
+  avatarUrl?: string | null;
+  countryCode?: string | null;
+  phone?: string | null;
 }
 
 /** Fields users change on their own profile (the app's Edit Profile screen). */
@@ -167,12 +171,33 @@ export class UsersService {
       throw new ForbiddenError(USERS_MESSAGES.selfModification);
     }
     const securityChange = (input.role !== undefined && input.role !== user.role) || (input.isActive !== undefined && input.isActive !== user.isActive);
-    return this.users.update(id, {
+    const changes: Parameters<UsersRepository['update']>[1] = {
       ...(input.name !== undefined ? { name: input.name.trim() } : {}),
       ...(input.role !== undefined ? { role: input.role } : {}),
       ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+      ...(input.avatarUrl !== undefined ? { avatarUrl: input.avatarUrl } : {}),
       ...(securityChange ? { tokenVersion: user.tokenVersion + 1 } : {}),
-    });
+    };
+    if (input.email !== undefined) {
+      if (input.email && input.email !== user.email) {
+        const existing = await this.users.findByEmail(input.email);
+        if (existing && existing.id !== id) throw new ConflictError(USERS_MESSAGES.emailTaken);
+      }
+      changes.email = input.email;
+    }
+    if (input.phone !== undefined) {
+      if (!input.phone) {
+        Object.assign(changes, { countryCode: null, phone: null, phoneVerifiedAt: null });
+      } else {
+        const next = normalizePhone(input.countryCode ?? user.countryCode ?? '', input.phone);
+        if (next.countryCode !== user.countryCode || next.phone !== user.phone) {
+          const owner = await this.users.findByPhone(next.countryCode, next.phone);
+          if (owner && owner.id !== id) throw new ConflictError(USERS_MESSAGES.phoneTaken);
+          Object.assign(changes, next);
+        }
+      }
+    }
+    return this.users.update(id, changes);
   }
 
   async delete(id: string, actorId: string): Promise<void> {

@@ -21,7 +21,8 @@ export type MessageType = 'text' | 'image' | 'video' | 'audio' | 'document' | 's
 export type SendableMessageType = Exclude<MessageType, 'system'>;
 
 /** What a `system` message says happened – the app renders its own text per event. */
-export type SystemEvent = 'MEMBER_ADDED';
+/** `CALL` / `MISSED_CALL`: a one-to-one call – `text` is 'audio' | 'video', `duration` the seconds talked. */
+export type SystemEvent = 'MEMBER_ADDED' | 'CALL' | 'MISSED_CALL';
 
 export interface ChatPerson {
   id: string;

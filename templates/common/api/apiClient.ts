@@ -1,4 +1,5 @@
 import axios, { type AxiosError, type AxiosRequestConfig, type InternalAxiosRequestConfig } from 'axios';
+import { Platform } from 'react-native';
 import { StorageKeys } from '{{IMPORT:storage.keys}}';
 import { storageService } from '{{IMPORT:storage.service}}';
 import { logger } from '{{IMPORT:utils.logger}}';
@@ -179,9 +180,21 @@ export const api = {
   /** multipart/form-data upload of one file (`uri` from the image / document picker). */
   upload: <T>(url: string, field: string, file: { uri: string; name: string; type: string }, config?: AxiosRequestConfig) => {
     const form = new FormData();
-    form.append(field, file as unknown as Blob);
+    let uri = file.uri;
+    if (Platform.OS === 'android') {
+      if (!uri.startsWith('file://') && !uri.startsWith('content://')) {
+        uri = `file://${uri}`;
+      }
+    } else {
+      if (!uri.startsWith('file://') && !uri.startsWith('ph://') && !uri.startsWith('assets-library://')) {
+        uri = `file://${uri}`;
+      }
+    }
+    form.append(field, { uri, name: file.name, type: file.type } as unknown as Blob);
+    const headers = { ...(config?.headers ?? {}) };
+    headers['Content-Type'] = 'multipart/form-data';
     return apiClient
-      .post(url, form, { ...config, headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120_000 })
+      .post(url, form, { ...config, headers, timeout: 120_000, transformRequest: data => data{{#if API_ENCRYPTION}}, skipEncryption: true{{/if}} })
       .then(r => unwrap<T>(r.data));
   },
 };

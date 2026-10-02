@@ -63,6 +63,9 @@ export const BACKEND_VERSIONS: Record<string, string> = {
   mongoose: '9.10.2',
   // Tooling
   typescript: '6.0.3',
+  // Calling: Agora access token generation (server-side, never sent to client directly)
+  'agora-access-token': '2.0.4',
+  // Tooling continues
   '@types/node': '24.19.0',
   tsx: '4.23.15',
   vitest: '4.1.11',
@@ -138,6 +141,7 @@ export function resolveBackendDependencies(o: BackendOptions): BackendDependenci
       add(dev, 'socket.io-client');
     }
     if (o.modules.notifications) add(runtime, 'firebase-admin');
+    if (o.modules.audioCall || o.modules.videoCall) add(runtime, 'agora-access-token');
   }
   // Redis: always for microservices (events), optional for a monolith.
   if (o.redis || o.service) {

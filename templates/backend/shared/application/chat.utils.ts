@@ -3,7 +3,7 @@ import type { MessageType, SendableMessageType } from '{{IMPORT:domain.chat}}';
 /** Which uploads may be sent, and as which message type. */
 const MEDIA_TYPES: Array<[RegExp, SendableMessageType]> = [
   [/^image\/(jpeg|png|gif|webp|heic|heif)$/, 'image'],
-  [/^video\/(mp4|quicktime|3gpp|webm)$/, 'video'],
+  [/^video\/(mp4|quicktime|3gpp|webm|x-matroska|x-msvideo|avi|mpeg|ogg|mp2t)$/, 'video'],
   [/^audio\/(mpeg|mp4|aac|x-m4a|m4a|ogg|wav|webm|3gpp|x-wav)$/, 'audio'],
   [/^(application\/(pdf|msword|zip|vnd\.openxmlformats-officedocument\.[\w.]+|vnd\.ms-(excel|powerpoint))|text\/(plain|csv))$/, 'document'],
 ];

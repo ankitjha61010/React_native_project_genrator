@@ -38,7 +38,7 @@ export function planMicroservices(base: BackendOptions): MicroservicesPlan {
   const none = { email: false, mobileOtp: false, google: false, facebook: false, apple: false };
   const chat = base.modules.chat;
   const notifications = base.modules.notifications;
-  const off = { chat: false, groupChat: false, notifications: false, legal: false, deleteAccount: false };
+  const off = { chat: false, groupChat: false, audioCall: false, videoCall: false, notifications: false, legal: false, deleteAccount: false };
   return {
     rootDir: base.projectDir,
     chat,

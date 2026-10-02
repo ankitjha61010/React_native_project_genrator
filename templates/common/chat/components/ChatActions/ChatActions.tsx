@@ -15,10 +15,12 @@ export interface ChatActionsProps {
   canDelete?: boolean;
   /** The chat was deleted – close the screen. */
   onDeleted?: () => void;
+  isBlocked?: boolean;
+  onToggleBlock?: () => void;
 }
 
-/** "Clear chat", "Clear all chats"{{#if GROUP_CHAT}} (Chat details and Group info){{/if}} – each one confirmed first. */
-export function ChatActions({ conversationId, canDelete = false, onDeleted }: ChatActionsProps): React.JSX.Element {
+/** "Clear chat", "Delete chat", "Block/Unblock" – each one confirmed first. */
+export function ChatActions({ conversationId, canDelete = false, onDeleted, isBlocked = false, onToggleBlock }: ChatActionsProps): React.JSX.Element {
   const styles = useStyles(createStyles);
   const actions = useChatActions(conversationId, onDeleted);
 
@@ -35,12 +37,16 @@ export function ChatActions({ conversationId, canDelete = false, onDeleted }: Ch
   return (
     <View style={styles.card}>
       {row('clear', translate('common', 'clearChat'), {{#if VECTOR_ICONS}}'broom', {{/if}}actions.clearChat)}
-      <View style={styles.divider} />
-      {row('clearAll', translate('common', 'clearAllChats'), {{#if VECTOR_ICONS}}'delete-sweep-outline', {{/if}}actions.clearAllChats)}
       {canDelete ? (
         <>
           <View style={styles.divider} />
           {row('delete', translate('common', 'deleteChat'), {{#if VECTOR_ICONS}}'delete-outline', {{/if}}actions.deleteChat)}
+        </>
+      ) : null}
+      {onToggleBlock ? (
+        <>
+          <View style={styles.divider} />
+          {row('block', translate('common', isBlocked ? 'unblockUser' : 'blockUser'), {{#if VECTOR_ICONS}}isBlocked ? 'account-check' : 'account-cancel', {{/if}}onToggleBlock)}
         </>
       ) : null}
     </View>

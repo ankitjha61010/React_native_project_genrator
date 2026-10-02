@@ -67,4 +67,9 @@ export interface ChatRepository {
   /** Messages from others created after `since` (and after `after`) – `system` messages don't count. */
   countUnread(conversationId: string, userId: string, since: Date | null, after: Date | null): Promise<number>;
   softDeleteMessage(id: string): Promise<void>;
+  updateMessageText(id: string, text: string): Promise<Message | null>;
+  blockUser(blockerId: string, blockedId: string): Promise<void>;
+  unblockUser(blockerId: string, blockedId: string): Promise<void>;
+  isBlocked(userAId: string, userBId: string): Promise<boolean>;
+  getBlockedUserIds(userId: string): Promise<string[]>;
 }

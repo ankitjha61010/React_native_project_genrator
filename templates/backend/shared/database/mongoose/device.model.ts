@@ -9,6 +9,8 @@ const deviceSchema = new Schema(
     deviceId: { type: String, required: true, unique: true, maxlength: 128 },
     // FCM registration token (null until the app has one) – unique when set, see the index below.
     fcmToken: { type: String, default: null, maxlength: 512 },
+    // iOS VoIP push token for incoming calls (PushKit).
+    voipToken: { type: String, default: null, maxlength: 512 },
     deviceType: { type: String, required: true, enum: Object.values(DeviceType) },
     deviceModel: { type: String, default: null, maxlength: 120 },
     osVersion: { type: String, default: null, maxlength: 32 },

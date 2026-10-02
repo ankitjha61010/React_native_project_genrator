@@ -21,6 +21,9 @@ export const SOCKET_EVENTS = {
   RECEIVE_MESSAGE: 'chat:receive_message',
   MESSAGE_READ: 'chat:message_read',
   MESSAGE_DELETE: 'chat:message_deleted',
+  MESSAGE_EDIT: 'chat:message_edited',
+  USER_BLOCKED: 'chat:user_blocked',
+  USER_UNBLOCKED: 'chat:user_unblocked',
   /** You cleared a chat (`conversationId`) or all chats (`conversationId: null`), maybe on another device. */
   CONVERSATION_CLEARED: 'chat:conversation_cleared',
 {{#if GROUP_CHAT}}

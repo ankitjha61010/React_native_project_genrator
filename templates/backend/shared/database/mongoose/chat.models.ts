@@ -61,3 +61,15 @@ messageSchema.index({ conversationId: 1, createdAt: -1, _id: -1 });
 
 export type MessageDocument = InferSchemaType<typeof messageSchema> & { _id: Types.ObjectId; conversationId: Types.ObjectId; senderId: Types.ObjectId; targetUserId: Types.ObjectId | null; replyToId: Types.ObjectId | null; createdAt: Date };
 export const MessageModel = model('Message', messageSchema);
+
+const blockedUserSchema = new Schema(
+  {
+    blockerId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    blockedId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  },
+  { timestamps: { createdAt: true, updatedAt: false }, collection: 'blocked_users' },
+);
+blockedUserSchema.index({ blockerId: 1, blockedId: 1 }, { unique: true });
+
+export type BlockedUserDocument = InferSchemaType<typeof blockedUserSchema> & { _id: Types.ObjectId; blockerId: Types.ObjectId; blockedId: Types.ObjectId; createdAt: Date };
+export const BlockedUserModel = model('BlockedUser', blockedUserSchema);

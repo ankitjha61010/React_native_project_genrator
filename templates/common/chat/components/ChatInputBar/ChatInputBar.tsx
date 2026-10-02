@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, {{#if !RTL}}I18nManager, {{/if}}StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { errorCodes, isErrorWithCode, pick as pickDocument, types } from '@react-native-documents/picker';
 {{#if VECTOR_ICONS}}
@@ -32,6 +32,31 @@ export interface ChatInputBarProps {
   /** The message being replied to – shown above the input; the next message quotes it. */
   replyTo?: ChatMessage | null;
   onCancelReply?: () => void;
+  /** The message being edited */
+  editingMessage?: ChatMessage | null;
+  onCancelEdit?: () => void;
+  onEdit?: (messageId: string, text: string) => void;
+}
+
+/** "Editing Rahul's message..." above the input, with ✕ to cancel. */
+function EditBar({ message, onCancel }: { message: ChatMessage; onCancel?: () => void }): React.JSX.Element {
+  const styles = useStyles(createStyles);
+  const { theme } = useTheme();
+  return (
+    <View style={styles.replyBar}>
+      <View style={styles.replyText}>
+        <AppText fontSize="size12" fontFamily="semiBold" color="primary" numberOfLines={1} text={translate('common', 'editMessage')} />
+        <AppText fontSize="size12" color="textSecondary" numberOfLines={1} text={message.text ?? ''} />
+      </View>
+      <TouchableOpacity onPress={onCancel} hitSlop={10} accessibilityRole="button" accessibilityLabel={translate('common', 'cancel')}>
+{{#if VECTOR_ICONS}}
+        <AppIcon name="close" size={20} tintColor={theme.colors.textSecondary} />
+{{else}}
+        <AppText color="textSecondary" text="✕" />
+{{/if}}
+      </TouchableOpacity>
+    </View>
+  );
 }
 
 /** "Replying to Rahul · Hey, are you available today?" above the input, with ✕ to cancel. */
@@ -56,7 +81,7 @@ function ReplyBar({ message, onCancel }: { message: ChatMessage; onCancel?: () =
 }
 
 /** The message composer: text, camera, attachments (photo, video, file) and voice messages. */
-export function ChatInputBar({ onSend, onTyping, replyTo, onCancelReply }: ChatInputBarProps): React.JSX.Element {
+export function ChatInputBar({ onSend, onTyping, replyTo, onCancelReply, editingMessage, onCancelEdit, onEdit }: ChatInputBarProps): React.JSX.Element {
   const styles = useStyles(createStyles);
   const { theme } = useTheme();
   const { pick } = useImagePicker();
@@ -70,11 +95,24 @@ export function ChatInputBar({ onSend, onTyping, replyTo, onCancelReply }: ChatI
   const [recordingSeconds, setRecordingSeconds] = useState<number | null>(null);
   const [stoppingRecording, setStoppingRecording] = useState(false);
 
+  useEffect(() => {
+    if (editingMessage) {
+      setText(editingMessage.text ?? '');
+    }
+  }, [editingMessage]);
+
   const sendText = () => {
     const value = text.trim();
     if (!value) return;
-    onSend({ type: 'text', text: value });
+    if (editingMessage && onEdit) {
+      onEdit(editingMessage.id, value);
+      setText('');
+      onCancelEdit?.();
+      return;
+    }
+    onSend({ type: 'text', text: value, replyToId: replyTo?.id });
     setText('');
+    onCancelReply?.();
   };
 
   // ── photos / videos (edited in MediaEditorModal first) ───────────────────────
@@ -82,10 +120,15 @@ export function ChatInputBar({ onSend, onTyping, replyTo, onCancelReply }: ChatI
     const picked = await pick(option);
     if (!picked?.path) return;
     const isVideo = option === 'camera_video' || option === 'gallery_video';
+    const fallbackExt = isVideo ? '.mp4' : '.jpg';
+    let safeName = picked.filename || picked.path.split('/').pop() || (isVideo ? 'video' : 'photo');
+    if (!/\.[a-z0-9]{2,6}$/i.test(safeName)) {
+      safeName = `${safeName}${fallbackExt}`;
+    }
     setEditingMedia({
       uri: picked.path,
       type: isVideo ? 'video' : 'image',
-      fileName: picked.filename,
+      fileName: safeName,
       fileSize: picked.size ? humanSize(picked.size) : undefined,
       duration: picked.duration,
     });
@@ -93,12 +136,19 @@ export function ChatInputBar({ onSend, onTyping, replyTo, onCancelReply }: ChatI
 
   const sendEditedMedia = (media: MediaItem) => {
     setEditingMedia(null);
+    const isVideo = media.type === 'video';
+    const fallbackExt = isVideo ? '.mp4' : '.jpg';
+    let safeName = media.fileName || (isVideo ? `video_${Date.now()}.mp4` : `photo_${Date.now()}.jpg`);
+    if (!/\.[a-z0-9]{2,6}$/i.test(safeName)) {
+      safeName = `${safeName}${fallbackExt}`;
+    }
     onSend({
       type: media.type,
       mediaUrl: media.uri,
-      fileName: media.fileName,
+      fileName: safeName,
       fileSize: media.fileSize,
-      ...(media.type === 'video' ? { duration: media.duration } : { crop: media.crop }),
+      mimeType: isVideo ? 'video/mp4' : 'image/jpeg',
+      ...(isVideo ? { duration: media.duration } : { crop: media.crop }),
     });
   };
 
@@ -194,8 +244,12 @@ export function ChatInputBar({ onSend, onTyping, replyTo, onCancelReply }: ChatI
 
   return (
     <View>
-      {replyTo ? <ReplyBar message={replyTo} onCancel={onCancelReply} /> : null}
-    <View style={styles.container}>
+      {editingMessage ? (
+        <EditBar message={editingMessage} onCancel={onCancelEdit} />
+      ) : replyTo ? (
+        <ReplyBar message={replyTo} onCancel={onCancelReply} />
+      ) : null}
+      <View style={styles.container}>
       <TouchableOpacity style={styles.actionBtn} onPress={() => setShowAttachMenu(true)} accessibilityRole="button" accessibilityLabel="Attach">
 {{#if VECTOR_ICONS}}
         <AppIcon name="plus" size={24} tintColor={theme.colors.textSecondary} />

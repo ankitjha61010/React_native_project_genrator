@@ -143,6 +143,43 @@ export async function configureAndroidLayoutDirection(projectDir: string, rtl: b
   });
 }
 
+/**
+ * Android 9+ blocks cleartext HTTP by default. Development machines run HTTP APIs (and serve
+ * uploaded photos/media) at http://10.0.2.2:3000 or local network IPs, so usesCleartextTraffic
+ * is required for images and API calls to work on Android devices & emulators.
+ */
+export async function configureAndroidCleartextTraffic(projectDir: string): Promise<void> {
+  const manifest = path.join(projectDir, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+  await edit(manifest, 'AndroidManifest.xml', source => {
+    if (source.includes('android:usesCleartextTraffic')) return source;
+    return source.replace(/<application\b/, '<application\n      android:usesCleartextTraffic="true"');
+  });
+}
+
+/**
+ * react-native-screens cannot restore its screens when Android re-creates MainActivity from saved state (the app
+ * was killed in the background and is reopened – e.g. by answering a call): the app crashes on start. Its fragment
+ * factory handles the restore (react-native-screens README).
+ */
+export async function configureAndroidScreensRestoration(projectDir: string, packageName: string): Promise<void> {
+  const packagePath = packageName.replace(/\./g, '/');
+  const main = path.join(projectDir, 'android', 'app', 'src', 'main');
+  const kotlin = path.join(main, 'kotlin', packagePath, 'MainActivity.kt');
+  const file = (await fs.pathExists(kotlin)) ? kotlin : path.join(main, 'java', packagePath, 'MainActivity.kt');
+  await edit(file, 'MainActivity.kt', source => {
+    if (source.includes('RNScreensFragmentFactory')) return source;
+    let next = source.replace(
+      /(package\s+[^\n]+\n)/,
+      `$1\nimport android.os.Bundle\nimport com.swmansion.rnscreens.fragment.restoration.RNScreensFragmentFactory\n`,
+    );
+    next = next.replace(/\nimport android\.os\.Bundle\n([\s\S]*)\nimport android\.os\.Bundle\n/, '\nimport android.os.Bundle\n$1\n');
+    return next.replace(
+      /class\s+MainActivity[^{]*\{/,
+      `$&\n\n  // react-native-screens: restores its screens when Android re-creates this activity.\n  override fun onCreate(savedInstanceState: Bundle?) {\n    supportFragmentManager.fragmentFactory = RNScreensFragmentFactory()\n    super.onCreate(savedInstanceState)\n  }`,
+    );
+  });
+}
+
 export async function setAndroidDisplayName(projectDir: string, displayName: string): Promise<void> {
   const strings = path.join(projectDir, 'android', 'app', 'src', 'main', 'res', 'values', 'strings.xml');
   await edit(strings, 'strings.xml', source => {

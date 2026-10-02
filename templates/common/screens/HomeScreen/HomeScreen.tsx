@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Image, Platform, StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { AppButton } from '{{IMPORT:components.AppButton}}';
 import { AppScreen } from '{{IMPORT:components.AppScreen}}';
@@ -14,6 +14,9 @@ import type { RootNavigation } from '{{IMPORT:navigation.types}}';
 import { notificationService } from '{{IMPORT:notification.service}}';
 import { flash } from '{{IMPORT:utils.flashMessage}}';
 {{/if}}
+{{#if HAS_CALLING}}
+import { syncVoipTokenWithBackend } from '{{IMPORT:calling.voipPushService}}';
+{{/if}}
 import type { Theme } from '{{IMPORT:theme.index}}';
 
 /** Main dashboard screen displaying app architecture status, quick action tools, and live previews. */
@@ -23,6 +26,15 @@ export function HomeScreen(): React.JSX.Element {
   const { user } = useAuthSession();
   const { image, picking, pick } = useImagePicker();
   const [showMediaModal, setShowMediaModal] = useState(false);
+
+{{#if HAS_CALLING}}
+  // On iOS, ensure VoIP push token is registered and synced with backend for incoming CallKit calls
+  useEffect(() => {
+    if (Platform.OS === 'ios') {
+      syncVoipTokenWithBackend();
+    }
+  }, []);
+{{/if}}
 
 {{#if NOTIFICATIONS}}
   const enableNotifications = async () => {

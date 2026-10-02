@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { checkbox, confirm, input, select } from '@inquirer/prompts';
 import chalk from 'chalk';
@@ -51,7 +52,7 @@ const SECURITY_CHOICES: Array<{ key: keyof BackendSecurity; name: string; descri
 ];
 
 const AUTH_METHOD_ITEMS: Record<string, keyof BackendAuthMethods> = { email: 'email', mobile: 'mobileOtp', otp: 'mobileOtp', google: 'google', facebook: 'facebook', apple: 'apple' };
-const MODULE_ITEMS: Record<string, keyof BackendModules> = { chat: 'chat', notifications: 'notifications' };
+const MODULE_ITEMS: Record<string, keyof BackendModules> = { chat: 'chat', notifications: 'notifications', 'audio-call': 'audioCall', 'video-call': 'videoCall' };
 
 /** `--flag a,b` → option keys (undefined when the flag isn't given). */
 function parseList<K extends string>(value: string | undefined, items: Record<string, K>, flag: string): K[] | undefined {
@@ -115,7 +116,7 @@ export function describeBackend(o: BackendOptions): string[] {
     `Authentication: ${AUTH_LABELS[o.auth]}`,
     ...(auth ? [`Sign-in:        ${describeMethods(o.authMethods)}`] : []),
     ...(auth && o.authMethods.email ? [`Hashing:        ${HASHING_LABELS[o.hashing]}`] : []),
-    ...(auth ? [`Modules:        chat ${on(o.modules.chat)} · group chat ${on(o.modules.groupChat)} · push notifications ${on(o.modules.notifications)} · delete account ${on(o.modules.deleteAccount)}`] : []),
+    ...(auth ? [`Modules:        chat ${on(o.modules.chat)} · group chat ${on(o.modules.groupChat)} · audio call ${on(o.modules.audioCall)} · video call ${on(o.modules.videoCall)} · push notifications ${on(o.modules.notifications)} · delete account ${on(o.modules.deleteAccount)}`] : []),
     `Legal pages:    ${on(o.modules.legal)}`,
     ...(auth ? [`Deployment:     ${o.deployment === 'microservices' ? 'microservices (gateway + services, Redis)' : 'monolith'}`] : []),
     `Redis:          ${on(o.redis)}${o.redis ? chalk.dim(' (rate limits, Socket.IO adapter, cache, OTP codes)') : ''}`,
@@ -124,12 +125,28 @@ export function describeBackend(o: BackendOptions): string[] {
     `Swagger:        ${on(o.swagger)}`,
     `Rate limiting:  ${on(s.rateLimit)} global · ${on(auth && s.authRateLimit)} auth routes`,
     `Security:       helmet ${on(s.helmet)} · CORS ${on(s.cors)} · body limit ${on(s.bodyLimit)} · sanitize ${on(s.sanitize)}${auth ? ` · lockout ${on(s.accountLockout)}` : ''}`,
+    ...(o.firebaseServiceAccountPath ? [`Firebase SA:    ${chalk.cyan(o.firebaseServiceAccountPath)} (copied to backend)`] : []),
     `Install deps:   ${on(o.installDependencies)}   Git: ${on(o.initGit)}`,
   ];
 }
 
 /** Full-stack: what the app decides for the backend (these questions are not asked). */
-export type BackendPreset = Pick<BackendOptions, 'appName' | 'displayName' | 'projectDir' | 'authMethods' | 'modules' | 'apiEncryption' | 'socialCredentials' | 'appPackage' | 'installDependencies' | 'initGit'>;
+export type BackendPreset = Pick<
+  BackendOptions,
+  | 'appName'
+  | 'displayName'
+  | 'projectDir'
+  | 'authMethods'
+  | 'modules'
+  | 'apiEncryption'
+  | 'socialCredentials'
+  | 'appPackage'
+  | 'installDependencies'
+  | 'initGit'
+  | 'firebaseServiceAccountPath'
+  | 'agoraAppId'
+  | 'agoraAppCertificate'
+>;
 
 /**
  * Backend wizard. Flags are used as-is; everything else is asked (or defaulted with --yes).
@@ -338,7 +355,7 @@ export async function collectBackendOptions(flags: CliFlags, previous?: BackendO
   }
 
   // Feature modules – one Yes / No question each (the same questions as the app wizard).
-  let modules: BackendModules = { chat: false, groupChat: false, notifications: false, legal: flags.terms ?? true, deleteAccount: flags.deleteAccount ?? true };
+  let modules: BackendModules = { chat: false, groupChat: false, audioCall: false, videoCall: false, notifications: false, legal: flags.terms ?? true, deleteAccount: flags.deleteAccount ?? true };
   const yesNo = (flag: boolean | undefined, message: string, label: string, fallback: boolean, current?: boolean) =>
     ask(
       flag,
@@ -358,16 +375,18 @@ export async function collectBackendOptions(flags: CliFlags, previous?: BackendO
   if (preset) {
     modules = { ...preset.modules };
   } else if (auth !== 'none') {
-    // `--modules chat,notifications` still works; otherwise --chat / --notifications / --group-chat… or the questions.
+    // `--modules chat,notifications,audio-call,video-call` still works.
     const fromFlag = flags.modules === 'none' ? [] : parseList(flags.modules, MODULE_ITEMS, '--modules');
     const chat = fromFlag ? fromFlag.includes('chat') : await yesNo(flags.chat, 'Do you want Chat functionality?', 'Chat', false, previous?.modules.chat);
     const groupChat = chat ? await yesNo(flags.groupChat, 'Do you want Group Chat?', 'Group chat', false, previous?.modules.groupChat) : false;
+    const audioCall = fromFlag ? fromFlag.includes('audioCall') : await yesNo(undefined, 'Do you want Audio Calling (Agora, CallKeep/iOS, native Android)?', 'Audio calling', false, previous?.modules.audioCall);
+    const videoCall = fromFlag ? fromFlag.includes('videoCall') : await yesNo(undefined, 'Do you want Video Calling (Agora, camera, CallKeep/iOS, native Android)?', 'Video calling', false, previous?.modules.videoCall);
     const notifications = fromFlag
       ? fromFlag.includes('notifications')
       : await yesNo(flags.notifications, 'Do you want FCM / Push Notification support (device registration, device APIs)?', 'Push notifications', false, previous?.modules.notifications);
     const legal = await yesNo(flags.terms, 'Do you want Terms & Conditions (GET /legal + editable pages)?', 'Terms & Conditions', true, previous?.modules.legal);
     const deleteAccount = await yesNo(flags.deleteAccount, 'Do you want Delete Account functionality (DELETE /users/me)?', 'Delete account', true, previous?.modules.deleteAccount);
-    modules = { chat, groupChat, notifications, legal, deleteAccount };
+    modules = { chat, groupChat, audioCall, videoCall, notifications, legal, deleteAccount };
     if (fromFlag) log.success(`Modules: ${chalk.cyan(fromFlag.join(', ') || 'none')}`);
   } else {
     // No accounts: only the legal pages make sense.
@@ -506,6 +525,49 @@ export async function collectBackendOptions(flags: CliFlags, previous?: BackendO
     : flags.install && (interactive ? await confirm({ message: 'Install dependencies now (npm install)?', default: previous?.installDependencies ?? true }) : true);
   const initGit = preset ? preset.initGit : flags.git && (interactive ? await confirm({ message: 'Initialize a git repository?', default: previous?.initGit ?? true }) : true);
 
+  // Firebase service account for push notifications / VoIP calling
+  let firebaseServiceAccountPath =
+    preset?.firebaseServiceAccountPath ?? (flags.firebaseServiceAccount ? resolveUserPath(flags.firebaseServiceAccount) : previous?.firebaseServiceAccountPath);
+  if (!firebaseServiceAccountPath && interactive && (modules.notifications || modules.audioCall || modules.videoCall)) {
+    const saInput = await input({
+      message: 'Path to firebase-service-account.json (for push/VoIP call notifications, leave empty to skip):',
+      validate: (value: string) => {
+        const trimmed = value.trim();
+        if (!trimmed) return true;
+        const resolved = resolveUserPath(trimmed);
+        if (!fs.existsSync(resolved)) return `File not found at ${resolved}`;
+        try {
+          JSON.parse(fs.readFileSync(resolved, 'utf8'));
+          return true;
+        } catch {
+          return 'File is not valid JSON.';
+        }
+      },
+    });
+    if (saInput.trim()) {
+      firebaseServiceAccountPath = resolveUserPath(saInput.trim());
+      log.success(`Firebase service account: ${chalk.cyan(firebaseServiceAccountPath)} (will be copied to backend root)`);
+    }
+  }
+
+  // Agora credentials for audio/video calling
+  let agoraAppId = preset?.agoraAppId ?? flags.agoraAppId ?? previous?.agoraAppId;
+  let agoraAppCertificate = preset?.agoraAppCertificate ?? flags.agoraAppCertificate ?? previous?.agoraAppCertificate;
+  if (!agoraAppId && interactive && (modules.audioCall || modules.videoCall)) {
+    const appIdInput = await input({
+      message: 'Agora App ID (leave empty to configure in backend .env later):',
+    });
+    if (appIdInput.trim()) {
+      agoraAppId = appIdInput.trim();
+      const certInput = await input({
+        message: 'Agora App Certificate (leave empty to configure in backend .env later):',
+      });
+      if (certInput.trim()) {
+        agoraAppCertificate = certInput.trim();
+      }
+    }
+  }
+
   const options: BackendOptions = {
     appName,
     displayName: preset?.displayName ?? appName.replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
@@ -520,6 +582,9 @@ export async function collectBackendOptions(flags: CliFlags, previous?: BackendO
     modules,
     apiEncryption,
     socialCredentials,
+    firebaseServiceAccountPath,
+    agoraAppId,
+    agoraAppCertificate,
     deployment,
     appPackage: preset?.appPackage ?? (flags.package?.trim() || `com.example.${appName.toLowerCase().replace(/[^a-z0-9]/g, '')}`),
     swagger,

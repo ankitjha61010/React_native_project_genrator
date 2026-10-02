@@ -20,6 +20,8 @@ export const BASE_GROUPS: Record<GroupId, string> = {
   firebase: 'src/services/firebase',
   socket: 'src/services/socket',
   chat: 'src/features/chat',
+  calling: 'src/features/calling',
+  ota: 'src/features/ota',
   components: 'src/components',
   navigation: 'src/navigation',
   screens: 'src/screens',

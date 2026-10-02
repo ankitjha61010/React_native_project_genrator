@@ -178,9 +178,10 @@ PATH, so upgrading Node never breaks the build. Don't put an absolute node path 
 machine specific override, use `ios/.xcode.env.local` (git-ignored). The Podfile keeps that file free
 of the hard-coded path `pod install` would otherwise write into it.
 
-**Firebase + CocoaPods.** The Podfile uses static frameworks with `$RNFirebaseDisableSPM = true`, so the
-Firebase SDK comes from CocoaPods. Firebase's Swift packages can't be linked into static frameworks:
-they fail with duplicate symbols.
+**Firebase + CocoaPods.** The Podfile is the standard React Native one (static libraries) with
+`$RNFirebaseDisableSPM = true`, so the Firebase SDK comes from CocoaPods – Firebase's Swift packages
+would require dynamic frameworks. The only addition is `:modular_headers => true` for the pods that
+Firebase's Swift code imports as modules (`GoogleUtilities`, plus `RecaptchaInterop` with Google Sign-In).
 
 ## Firebase setup
 
@@ -540,8 +541,42 @@ mode later, replace `useTheme` in `{{PATH_HOOKS_USETHEME}}` with a context (`dar
 | `npm run lint` | ESLint |
 | `npm run format` | Prettier (write) |
 | `npm run typecheck` | `tsc --noEmit` |
+{{#if OTA}}
+| `npm run ota:android` / `npm run ota:ios` | Signed OTA update archive (see [OTA updates](#over-the-air-ota-updates)) |
+{{/if}}
 | `npm test` | Jest |
 
+{{#if OTA}}
+## Over-The-Air (OTA) updates
+
+JavaScript and image changes can be shipped without a store release. The app only installs
+archives **signed with this project's key**: `ota/ota-signing-key.pem` was created when the
+project was generated (git-ignored – keep a backup, without it you can't ship OTA updates to
+installed apps).
+
+Build an update (the OTA version must be higher than the one on the phone):
+
+```sh
+npm run ota:android -- --ota-version 2 --notes "Fixed the login screen"
+npm run ota:ios -- --ota-version 2 --force        # --force: mandatory update
+```
+
+`ota-builds/<platform>-v<n>/` then contains `release.zip` and `release.json`. Host the zip
+anywhere the phone can download it (pass `--base-url https://…` and the URL is filled in), then
+**Admin panel → OTA Updates → New release** and paste `release.json`.
+
+**Testing on your own phone** – serve the zip from this computer (same Wi-Fi):
+
+```sh
+npm run ota:android -- --ota-version 2 --serve    # prints http://<your-ip>:8099/release.zip
+```
+
+Install a **release** build first (`npx react-native run-android --mode release`, or the Release
+scheme in Xcode) – debug builds load JavaScript from Metro and never use OTA bundles. An update
+applies only to the app version it was built for (`versionName` / `MARKETING_VERSION`);
+`--native-version` overrides it. All options: `node scripts/ota-bundle.mjs --help`.
+
+{{/if}}
 ## Building a production APK/AAB
 
 1. Generate an upload key:

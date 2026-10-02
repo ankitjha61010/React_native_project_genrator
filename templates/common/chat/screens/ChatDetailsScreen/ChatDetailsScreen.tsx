@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Image, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Image, ScrollView, StyleSheet, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { errorMessage } from '{{IMPORT:api.errors}}';
@@ -21,6 +21,7 @@ export function ChatDetailsScreen(): React.JSX.Element {
   const styles = useStyles(createStyles);
   const { conversationId } = route.params;
   const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [isBlocked, setIsBlocked] = useState(false);
 
   useEffect(() => {
     chatService
@@ -29,12 +30,49 @@ export function ChatDetailsScreen(): React.JSX.Element {
       .catch(error => flash.error({ message: errorMessage(error) }));
   }, [conversationId]);
 
+  const other = conversation?.participants[0];
+  const title = conversation?.title ?? '';
+
+  useEffect(() => {
+    if (other) {
+      chatService
+        .fetchBlockedUsers()
+        .then(ids => setIsBlocked(ids.includes(other.id)))
+        .catch(() => undefined);
+    }
+  }, [other]);
+
+  const runToggleBlock = useCallback(async () => {
+    if (!other) return;
+    try {
+      if (isBlocked) {
+        await chatService.unblockUser(other.id);
+        setIsBlocked(false);
+        flash.success({ message: translate('common', 'userUnblocked') });
+      } else {
+        await chatService.blockUser(other.id);
+        setIsBlocked(true);
+        flash.success({ message: translate('common', 'userBlocked') });
+      }
+    } catch (error) {
+      flash.error({ message: errorMessage(error) });
+    }
+  }, [other, isBlocked]);
+
+  /** Block / Unblock – asks first. */
+  const toggleBlock = useCallback(
+    () =>
+      Alert.alert(translate('common', isBlocked ? 'unblockUser' : 'blockUser'), translate('common', isBlocked ? 'unblockUserConfirm' : 'blockUserConfirm'), [
+        { text: translate('common', 'cancel'), style: 'cancel' },
+        { text: translate('common', isBlocked ? 'unblock' : 'blockUser'), style: isBlocked ? 'default' : 'destructive', onPress: runToggleBlock },
+      ]),
+    [isBlocked, runToggleBlock],
+  );
+
   // Deleted: back past the (now empty) chat to the chat list.
   const closeChat = useCallback(() => navigation.popToTop(), [navigation]);
 
   if (!conversation) return <AppLoader fullScreen />;
-  const other = conversation.participants[0];
-  const title = conversation.title;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -50,7 +88,7 @@ export function ChatDetailsScreen(): React.JSX.Element {
         {other ? <AppText color={other.isOnline ? 'success' : 'textSecondary'} text={translate('common', other.isOnline ? 'online' : 'offline')} /> : null}
       </View>
 
-      <ChatActions conversationId={conversationId} canDelete onDeleted={closeChat} />
+      <ChatActions conversationId={conversationId} canDelete onDeleted={closeChat} isBlocked={isBlocked} onToggleBlock={toggleBlock} />
     </ScrollView>
   );
 }

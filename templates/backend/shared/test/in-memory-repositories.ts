@@ -14,6 +14,10 @@ import type { SocialAccount, SocialProvider } from '{{IMPORT:domain.authTokens}}
 {{#if CHAT}}
 import type { Conversation, ConversationMember, Message } from '{{IMPORT:domain.chat}}';
 {{/if}}
+{{#if CALLING}}
+import type { CallEntity, CallParticipantEntity } from '{{IMPORT:domain.call}}';
+import { CALLING_MESSAGES } from '{{IMPORT:messages.calling}}';
+{{/if}}
 {{#if DEVICES}}
 import type { Device, DeviceInput } from '{{IMPORT:domain.device}}';
 {{/if}}
@@ -37,11 +41,22 @@ import type { SocialAccountsRepository } from '{{IMPORT:contract.auth}}';
 {{#if CHAT}}
 import type { ChatRepository, CreateConversationData, CreateMessageData } from '{{IMPORT:contract.chat}}';
 {{/if}}
+{{#if CALLING}}
+import type { CreateCallInput, ICallingRepository, UpdateCallStatusInput } from '{{IMPORT:contract.calling}}';
+{{/if}}
 {{#if DEVICES}}
 import type { DevicesRepository } from '{{IMPORT:contract.devices}}';
 {{/if}}
 {{#if NOTIFICATIONS}}
 import type { CreateNotificationData, NotificationsRepository } from '{{IMPORT:contract.notifications}}';
+{{/if}}
+{{#if OTA}}
+import type { OTADownloadEvent, OTARelease } from '{{IMPORT:domain.ota}}';
+import type { OTARepository } from '{{IMPORT:contract.ota}}';
+{{/if}}
+{{#if LEGAL}}
+import type { LegalSettings, LegalSettingsInput } from '{{IMPORT:domain.legal}}';
+import type { LegalRepository } from '{{IMPORT:contract.legal}}';
 {{/if}}
 import type { CreateUserData, UpdateUserData, UsersRepository } from '{{IMPORT:contract.users}}';
 
@@ -389,6 +404,33 @@ export class InMemoryChatRepository implements ChatRepository {
     if (message) this.messages.set(id, { ...message, deletedAt: new Date() });
   }
 
+  async updateMessageText(id: string, text: string) {
+    const message = this.messages.get(id);
+    if (!message || message.deletedAt) return null;
+    const updated = { ...message, text };
+    this.messages.set(id, updated);
+    return updated;
+  }
+
+  private readonly blocked = new Set<string>();
+
+  async blockUser(blockerId: string, blockedId: string) {
+    this.blocked.add(`${blockerId}:${blockedId}`);
+  }
+
+  async unblockUser(blockerId: string, blockedId: string) {
+    this.blocked.delete(`${blockerId}:${blockedId}`);
+  }
+
+  async isBlocked(userAId: string, userBId: string) {
+    return this.blocked.has(`${userAId}:${userBId}`) || this.blocked.has(`${userBId}:${userAId}`);
+  }
+
+  async getBlockedUserIds(userId: string) {
+    const prefix = `${userId}:`;
+    return [...this.blocked].filter(k => k.startsWith(prefix)).map(k => k.slice(prefix.length));
+  }
+
   /** Non-deleted messages, newest first. */
   private visible(conversationId: string) {
     return [...this.messages.values()].filter(m => m.conversationId === conversationId && !m.deletedAt).toSorted(newest);
@@ -411,6 +453,7 @@ export class InMemoryDevicesRepository implements DevicesRepository {
       userId,
       deviceId: input.deviceId,
       fcmToken,
+      voipToken: input.voipToken ?? null,
       deviceType: input.deviceType,
       deviceModel: input.deviceModel ?? null,
       osVersion: input.osVersion ?? null,
@@ -428,6 +471,14 @@ export class InMemoryDevicesRepository implements DevicesRepository {
     if (!existing) return null;
     this.forgetToken(fcmToken, deviceId);
     const device = { ...existing, fcmToken, lastActiveAt: new Date(), updatedAt: new Date() };
+    this.devices = this.devices.map(d => (d.deviceId === deviceId ? device : d));
+    return device;
+  }
+
+  async updateVoipToken(userId: string, deviceId: string, voipToken: string) {
+    const existing = this.devices.find(d => d.userId === userId && d.deviceId === deviceId);
+    if (!existing) return null;
+    const device = { ...existing, voipToken, lastActiveAt: new Date(), updatedAt: new Date() };
     this.devices = this.devices.map(d => (d.deviceId === deviceId ? device : d));
     return device;
   }
@@ -517,6 +568,144 @@ export class InMemoryNotificationsRepository implements NotificationsRepository 
   }
 }
 {{/if}}
+{{#if CALLING}}
+
+const ACTIVE_CALL: CallEntity['status'][] = ['initiating', 'ringing', 'connecting', 'connected', 'reconnecting'];
+const FINISHED_CALL: CallEntity['status'][] = ['ended', 'missed', 'declined', 'cancelled', 'failed'];
+
+export class InMemoryCallingRepository implements ICallingRepository {
+  readonly calls = new Map<string, CallEntity>();
+  readonly participants: CallParticipantEntity[] = [];
+
+  async createCall(input: CreateCallInput) {
+    const now = new Date();
+    const call: CallEntity = { id: randomUUID(), ...input, status: 'initiating', createdAt: now, updatedAt: now };
+    this.calls.set(call.id, call);
+    return call;
+  }
+
+  async findCallById(callId: string) {
+    return this.calls.get(callId) ?? null;
+  }
+
+  async findActiveCallByUserId(userId: string) {
+    const mine = new Set(this.participants.filter(p => p.userId === userId && ['invited', 'ringing', 'joined'].includes(p.status)).map(p => p.callId));
+    return [...this.calls.values()].find(c => ACTIVE_CALL.includes(c.status) && (c.callerId === userId || c.receiverId === userId || mine.has(c.id))) ?? null;
+  }
+
+  async updateCallStatus({ callId, ...changes }: UpdateCallStatusInput) {
+    const call = this.calls.get(callId);
+    if (!call) throw new NotFoundError(CALLING_MESSAGES.callNotFound);
+    const updated = { ...call, ...Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined)), updatedAt: new Date() };
+    this.calls.set(callId, updated);
+    return updated;
+  }
+
+  private history(userId: string) {
+    const visible = new Set(this.participants.filter(p => p.userId === userId && !p.hiddenAt).map(p => p.callId));
+    return [...this.calls.values()].filter(c => visible.has(c.id) && FINISHED_CALL.includes(c.status)).toSorted(newest);
+  }
+
+  async getUserCallHistory(userId: string, limit: number, offset: number) {
+    return this.history(userId).slice(offset, offset + limit);
+  }
+
+  async countUserCalls(userId: string) {
+    return this.history(userId).length;
+  }
+
+  async addParticipant(callId: string, userId: string, role: CallParticipantEntity['role'] = 'participant') {
+    const existing = this.participants.find(p => p.callId === callId && p.userId === userId);
+    if (existing) {
+      existing.role = role;
+      return existing;
+    }
+    const participant: CallParticipantEntity = { id: randomUUID(), callId, userId, role, status: 'invited' };
+    this.participants.push(participant);
+    return participant;
+  }
+
+  async updateParticipantStatus(callId: string, userId: string, status: CallParticipantEntity['status'], leftAt?: Date) {
+    for (const p of this.participants) {
+      if (p.callId !== callId || p.userId !== userId) continue;
+      p.status = status;
+      if (leftAt) p.leftAt = leftAt;
+    }
+  }
+
+  async getCallParticipants(callId: string) {
+    return this.participants.filter(p => p.callId === callId);
+  }
+
+  async findParticipant(callId: string, userId: string) {
+    return this.participants.find(p => p.callId === callId && p.userId === userId) ?? null;
+  }
+
+  async hideCallForUser(callId: string, userId: string) {
+    for (const p of this.participants) if (p.callId === callId && p.userId === userId) p.hiddenAt = new Date();
+  }
+
+  async hideAllCallsForUser(userId: string) {
+    for (const p of this.participants) if (p.userId === userId && !p.hiddenAt) p.hiddenAt = new Date();
+  }
+}
+{{/if}}
+
+{{#if LEGAL}}
+export class InMemoryLegalRepository implements LegalRepository {
+  settings: LegalSettings | null = null;
+
+  async find() {
+    return this.settings && { ...this.settings };
+  }
+
+  async save(input: LegalSettingsInput) {
+    const empty = { termsUrl: null, privacyPolicyUrl: null, deleteAccountUrl: null, termsHtml: null, privacyPolicyHtml: null, deleteAccountHtml: null };
+    this.settings = { ...empty, ...this.settings, ...input, updatedAt: new Date() };
+    return { ...this.settings };
+  }
+}
+{{/if}}
+
+{{#if OTA}}
+export class InMemoryOTARepository implements OTARepository {
+  releases: OTARelease[] = [];
+  events: OTADownloadEvent[] = [];
+
+  async findLatestActive(platform: string, nativeVersion: string) {
+    const matching = this.releases.filter(r => r.status === 'active' && r.nativeVersion === nativeVersion && (r.platform === platform || r.platform === 'all'));
+    return matching.sort((a, b) => b.version - a.version)[0] ?? null;
+  }
+
+  async listReleases() {
+    return [...this.releases].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async createRelease(data: Omit<OTARelease, 'id' | 'createdAt' | 'updatedAt' | 'downloadCount'>) {
+    const now = new Date();
+    const release: OTARelease = { id: randomUUID(), ...data, downloadCount: 0, createdAt: now, updatedAt: now };
+    this.releases.push(release);
+    return release;
+  }
+
+  async rollbackRelease(id: string) {
+    const release = this.releases.find(r => r.id === id);
+    if (!release) return null;
+    release.status = 'rolled_back';
+    release.updatedAt = new Date();
+    return release;
+  }
+
+  async recordEvent(event: Omit<OTADownloadEvent, 'id' | 'createdAt'>) {
+    this.events.push({ id: randomUUID(), ...event, createdAt: new Date() });
+  }
+
+  async incrementDownloadCount(otaVersion: number) {
+    const release = this.releases.find(r => r.version === otaVersion);
+    if (release) release.downloadCount += 1;
+  }
+}
+{{/if}}
 
 /** A fresh set of in-memory repositories. */
 export function createInMemoryRepositories() {
@@ -534,11 +723,20 @@ export function createInMemoryRepositories() {
 {{#if CHAT}}
     chat: new InMemoryChatRepository(),
 {{/if}}
+{{#if CALLING}}
+    calling: new InMemoryCallingRepository(),
+{{/if}}
 {{#if DEVICES}}
     devices: new InMemoryDevicesRepository(),
 {{/if}}
 {{#if NOTIFICATIONS}}
     notifications: new InMemoryNotificationsRepository(),
+{{/if}}
+{{#if LEGAL}}
+    legal: new InMemoryLegalRepository(),
+{{/if}}
+{{#if OTA}}
+    ota: new InMemoryOTARepository(),
 {{/if}}
   } satisfies Repositories;
 }

@@ -25,6 +25,10 @@ export class DeviceOrmEntity {
   @Column({ name: 'fcm_token', type: 'varchar', length: 512, unique: true, nullable: true })
   fcmToken: string | null;
 
+  /** iOS VoIP push token for incoming calls (null on Android or until registered). */
+  @Column({ name: 'voip_token', type: 'varchar', length: 512, nullable: true })
+  voipToken: string | null;
+
   @Column({ name: 'device_type', type: 'enum', enum: DeviceType, enumName: 'device_type' })
   deviceType: DeviceType;
 

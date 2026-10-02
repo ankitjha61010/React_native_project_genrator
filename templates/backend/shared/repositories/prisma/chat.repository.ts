@@ -138,4 +138,43 @@ export class PrismaChatRepository implements ChatRepository {
   async softDeleteMessage(id: string): Promise<void> {
     await this.prisma.message.update({ where: { id }, data: { deletedAt: new Date() } });
   }
+
+  async updateMessageText(id: string, text: string): Promise<Message | null> {
+    const record = await this.prisma.message.update({ where: { id }, data: { text } });
+    return toMessage(record);
+  }
+
+  async blockUser(blockerId: string, blockedId: string): Promise<void> {
+    await (this.prisma as any).blockedUser.upsert({
+      where: { blockerId_blockedId: { blockerId, blockedId } },
+      create: { blockerId, blockedId },
+      update: {},
+    });
+  }
+
+  async unblockUser(blockerId: string, blockedId: string): Promise<void> {
+    await (this.prisma as any).blockedUser.deleteMany({
+      where: { blockerId, blockedId },
+    });
+  }
+
+  async isBlocked(userAId: string, userBId: string): Promise<boolean> {
+    const count = await (this.prisma as any).blockedUser.count({
+      where: {
+        OR: [
+          { blockerId: userAId, blockedId: userBId },
+          { blockerId: userBId, blockedId: userAId },
+        ],
+      },
+    });
+    return count > 0;
+  }
+
+  async getBlockedUserIds(userId: string): Promise<string[]> {
+    const list = await (this.prisma as any).blockedUser.findMany({
+      where: { blockerId: userId },
+      select: { blockedId: true },
+    });
+    return list.map((b: { blockedId: string }) => b.blockedId);
+  }
 }

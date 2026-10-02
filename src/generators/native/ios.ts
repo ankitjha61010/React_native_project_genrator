@@ -72,18 +72,27 @@ export async function configureXcodeEnv(projectDir: string, appName: string): Pr
 }
 
 /**
- * Podfile: react-native-permissions handlers, static frameworks for React Native
- * Firebase (resolved through CocoaPods, not SPM) and a path-free `.xcode.env.local`.
+ * Podfile: the stock React Native template plus only what is genuinely needed –
+ * react-native-permissions handlers, React Native Firebase resolved through CocoaPods
+ * (not SPM, which would require dynamic frameworks) and a path-free `.xcode.env.local`.
  */
-export async function configurePodfile(projectDir: string, appName: string, extraPermissions: string[] = []): Promise<void> {
+export async function configurePodfile(
+  projectDir: string,
+  appName: string,
+  extraPermissions: string[] = [],
+  googleSignIn = false,
+): Promise<void> {
   const { podfile } = iosPaths(projectDir, appName);
-  await edit(podfile, 'ios/Podfile', source =>
-    applyPatches(
+  await edit(podfile, 'ios/Podfile', source => {
+    // react-native-zip-archive (OTA) declares iOS 15.5, above React Native's minimum.
+    source = source.replace(/^platform :ios, min_ios_version_supported$/m, "platform :ios, '15.5'");
+
+    return applyPatches(
       source,
       [
         {
           id: 'node-require',
-          anchor: /^platform :ios, min_ios_version_supported$/m,
+          anchor: /^platform :ios, (?:min_ios_version_supported|'15.5')$/m,
           position: 'before',
           comment: '#',
           content: [
@@ -106,8 +115,8 @@ export async function configurePodfile(projectDir: string, appName: string, extr
           comment: '#',
           content: [
             '# `pod install` writes the absolute path of the current node into .xcode.env.local',
-            '# when that file is missing – which breaks the build after every Node upgrade',
-            '# ("…/bin/node: No such file or directory", error 65). Keep a path-free file instead;',
+            '# when that file is missing - which breaks the build after every Node upgrade',
+            '# (".../bin/node: No such file or directory", error 65). Keep a path-free file instead;',
             '# NODE_BINARY is resolved dynamically in .xcode.env.',
             "xcode_env_local = File.join(__dir__, '.xcode.env.local')",
             'if !File.exist?(xcode_env_local) || File.read(xcode_env_local).strip.match?(/\\Aexport NODE_BINARY=[^$\\n]+\\z/)',
@@ -127,34 +136,27 @@ export async function configurePodfile(projectDir: string, appName: string, extr
             '# Add more (e.g. LocationWhenInUse) together with their Info.plist usage description.',
             `setup_permissions([${['Camera', 'Notifications', ...extraPermissions].map(p => `'${p}'`).join(', ')}])`,
             '',
-            '# React Native Firebase requires static frameworks.',
-            'use_frameworks! :linkage => :static',
-            '$RNFirebaseAsStaticFramework = true',
-            "# Firebase's SPM products can't be linked into static frameworks (duplicate symbols) –",
-            '# resolve the Firebase SDK through CocoaPods instead.',
+            '# React Native Firebase config',
             '$RNFirebaseDisableSPM = true',
           ].join('\n'),
         },
         {
-          id: 'min-ios-deployment-target',
-          anchor: /react_native_post_install\([\s\S]*?\n\s*\)/m,
+          // Swift pods built as static libraries can only import dependencies that define
+          // modules: Firebase (FirebaseCoreInternal, …) imports GoogleUtilities, and Google
+          // Sign-In's AppCheckCore imports RecaptchaInterop.
+          id: 'firebase-modular-headers',
+          anchor: /config = use_native_modules!/m,
           position: 'after',
           comment: '#',
           content: [
-            '',
-            '    installer.pods_project.targets.each do |target|',
-            '      target.build_configurations.each do |config|',
-            "        if Gem::Version.new(config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] || '0') < Gem::Version.new(min_ios_version_supported)",
-            "          config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = min_ios_version_supported",
-            '        end',
-            '      end',
-            '    end',
+            "pod 'GoogleUtilities', :modular_headers => true",
+            ...(googleSignIn ? ["pod 'RecaptchaInterop', :modular_headers => true"] : []),
           ].join('\n'),
         },
       ],
       'ios/Podfile',
-    ),
-  );
+    );
+  });
 }
 
 /** AppDelegate: configure Firebase only when GoogleService-Info.plist is bundled. */

@@ -76,15 +76,20 @@ export function prepareGeneration(options: ProjectOptions): PreparedGeneration {
     SOCIAL_FACEBOOK: social.facebook,
     SOCIAL_APPLE: social.apple,
     HAS_SOCIAL_AUTH: hasSocialLogin(social),
-    SOCKET: options.socket,
+    SOCKET: options.socket || options.chat || options.audioCall || options.videoCall,
     CHAT: options.chat,
     GROUP_CHAT: options.chat && options.groupChat,
+    AUDIO_CALL: options.audioCall,
+    VIDEO_CALL: options.videoCall,
+    HAS_CALLING: options.audioCall || options.videoCall,
     /** Terms & Conditions / Privacy Policy links from the backend (GET /legal). */
     TERMS: options.termsAndConditions,
     DELETE_ACCOUNT: options.deleteAccount,
     GOOGLE_LOCATION: options.googleLocation,
     DRAWER: options.drawer,
     HAS_HEADER_BUTTONS: options.drawer || options.notifications,
+    OTA: Boolean(options.ota),
+    ADMIN_PANEL: Boolean(options.adminPanel),
   };
   for (const a of ARCHITECTURES) {
     flags[`ARCH_${toVarName(a.id)}`] = a.id === architecture.id;

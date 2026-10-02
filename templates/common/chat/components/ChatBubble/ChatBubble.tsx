@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useMemo, useRef } from 'react';
 import {
   StyleSheet,
   View,
   Image,
   TouchableOpacity,
   Pressable,
+  Animated,
+  PanResponder,
 } from 'react-native';
 import { AppText } from '{{IMPORT:components.AppText}}';
 {{#if VECTOR_ICONS}}
@@ -14,7 +16,7 @@ import { useStyles } from '{{IMPORT:hooks.useTheme}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
 import type { ChatMessage } from '{{IMPORT:chat.types}}';
 import { translate } from '{{IMPORT:i18n.index}}';
-import { replyPreview, systemMessageText } from '../../utils/chatFormat';
+import { callLog, replyPreview, systemMessageText } from '../../utils/chatFormat';
 import { AudioMessage } from '../AudioMessage/AudioMessage';
 import { ChatNotice } from '../ChatNotice/ChatNotice';
 
@@ -27,22 +29,96 @@ export interface ChatBubbleProps {
   onRetry?: (message: ChatMessage) => void;
   /** Long press: the message actions (reply, delete…). */
   onLongPress?: (message: ChatMessage) => void;
+  /** Horizontal swipe: reply to this message. */
+  onReply?: (message: ChatMessage) => void;
   /** Tap on the quote of a reply: jump to the original. */
   onPressReply?: (messageId: string) => void;
   /** Briefly tinted – the original after tapping a reply's quote. */
   highlighted?: boolean;
   /** Your user id – system messages say "You added …". */
   myId?: string;
+  /** Tap on a call in the chat: call back. */
+  onPressCall?: (message: ChatMessage) => void;
 }
 
-export function ChatBubble({ message, onPressMedia, showSender = false, onRetry, onLongPress, onPressReply, highlighted = false, myId }: ChatBubbleProps): React.JSX.Element {
+export function ChatBubble({ message, onPressMedia, showSender = false, onRetry, onLongPress, onReply, onPressReply, highlighted = false, myId, onPressCall }: ChatBubbleProps): React.JSX.Element {
   const styles = useStyles(createStyles);
-  const isMe = message.isMe;
+  const isMe = message.isMe ?? (myId ? message.senderId === myId : false);
+  const panX = useRef(new Animated.Value(0)).current;
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) => {
+          if (!onReply || message.status === 'sending' || message.status === 'failed') return false;
+          return Math.abs(gestureState.dx) > 12 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5;
+        },
+        onPanResponderMove: (_, gestureState) => {
+          if (!onReply) return;
+          if (gestureState.dx > 0) {
+            panX.setValue(Math.min(gestureState.dx * 0.7, 70));
+          }
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          if (gestureState.dx > 45 && onReply) {
+            onReply(message);
+          }
+          Animated.spring(panX, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 4,
+          }).start();
+        },
+        onPanResponderTerminate: () => {
+          Animated.spring(panX, {
+            toValue: 0,
+            useNativeDriver: true,
+          }).start();
+        },
+      }),
+    [message, onReply, panX],
+  );
 
   const timeFormatted = new Date(message.createdAt).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
   });
+
+  // A call: a small bubble on the caller's side ("Missed voice call", "Video call · 2:14") – tap to call back.
+  const call = callLog(message);
+  if (call) {
+    const iCalled = message.actor?.id === myId;
+    const missed = !call.answered && !iCalled;
+    const text = systemMessageText(message, myId);
+{{#if VECTOR_ICONS}}
+    const iconStyle = missed ? styles.callIconMissed : iCalled ? styles.callIconMe : styles.callIconOther;
+{{/if}}
+    return (
+      <View style={[styles.container, iCalled ? styles.containerMe : styles.containerOther]}>
+        <TouchableOpacity
+          activeOpacity={0.8}
+          disabled={!onPressCall}
+          onPress={() => onPressCall?.(message)}
+          style={[styles.bubble, styles.callBubble, iCalled ? styles.bubbleMe : styles.bubbleOther]}
+          accessibilityRole="button"
+          accessibilityLabel={`${text}. ${translate('common', 'tapToCallBack')}`}>
+{{#if VECTOR_ICONS}}
+          <View style={[styles.callIcon, iconStyle]}>
+            <AppIcon
+              name={call.callType === 'video' ? (missed ? 'video-off-outline' : 'video-outline') : iCalled ? 'phone-outgoing' : missed ? 'phone-missed' : 'phone-incoming'}
+              size={20}
+              tintColor={iconStyle.color}
+            />
+          </View>
+{{/if}}
+          <View>
+            <AppText fontFamily="semiBold" style={iCalled ? styles.textMe : styles.textOther} text={text} />
+            <AppText style={[styles.time, iCalled ? styles.timeMe : styles.timeOther]} text={timeFormatted} />
+          </View>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   // "Jane added John" – a notice in the middle, not a bubble.
   if (message.type === 'system') {
@@ -84,12 +160,32 @@ export function ChatBubble({ message, onPressMedia, showSender = false, onRetry,
   const imageDims = getImageDimensions();
 
   return (
-    <View style={[styles.container, isMe ? styles.containerMe : styles.containerOther, highlighted && styles.highlighted]}>
-      <Pressable
-        onPress={message.status === 'failed' ? () => onRetry?.(message) : undefined}
-        onLongPress={onLongPress && message.status !== 'sending' ? () => onLongPress(message) : undefined}
-        delayLongPress={300}
-        style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleOther, message.status === 'failed' && styles.bubbleFailed]}>
+    <View style={[styles.container, isMe ? styles.containerMe : styles.containerOther, highlighted && styles.highlighted]} {...panResponder.panHandlers}>
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.replyIconContainer,
+          {
+            opacity: panX.interpolate({ inputRange: [0, 20, 45], outputRange: [0, 0.6, 1], extrapolate: 'clamp' }),
+            transform: [
+              {
+                scale: panX.interpolate({ inputRange: [0, 25, 50], outputRange: [0.5, 0.8, 1], extrapolate: 'clamp' }),
+              },
+            ],
+          },
+        ]}>
+{{#if VECTOR_ICONS}}
+        <AppIcon name="reply" size={16} tintColor={styles.quoteName.color} />
+{{else}}
+        <AppText text="↩" />
+{{/if}}
+      </Animated.View>
+      <Animated.View style={{ transform: [{ translateX: panX }] }}>
+        <Pressable
+          onPress={message.status === 'failed' ? () => onRetry?.(message) : undefined}
+          onLongPress={onLongPress && message.status !== 'sending' ? () => onLongPress(message) : undefined}
+          delayLongPress={300}
+          style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleOther, message.status === 'failed' && styles.bubbleFailed]}>
         {showSender && !isMe ? <AppText fontSize="size12" fontFamily="semiBold" color="primary" numberOfLines={1} text={message.senderName} /> : null}
         {/* Reply: the quoted message – tap to jump to it. */}
         {message.replyTo ? (
@@ -128,7 +224,15 @@ export function ChatBubble({ message, onPressMedia, showSender = false, onRetry,
         {/* Media: Video */}
         {message.type === 'video' && (
           <TouchableOpacity activeOpacity={0.9} onPress={() => onPressMedia?.(message)} style={styles.mediaContainer}>
-            <Image source={{ uri: message.thumbnailUrl || message.mediaUrl }} style={styles.imageMedia} resizeMode="cover" />
+            {message.thumbnailUrl ? (
+              <Image source={{ uri: message.thumbnailUrl }} style={styles.imageMedia} resizeMode="cover" />
+            ) : (
+              <View style={[styles.imageMedia, styles.videoPoster]}>
+{{#if VECTOR_ICONS}}
+                <AppIcon name="movie-outline" size={42} tintColor="#FFFFFF40" />
+{{/if}}
+              </View>
+            )}
             <View style={styles.videoPlayOverlay}>
 {{#if VECTOR_ICONS}}
               <AppIcon name="play-circle" size={40} tintColor="#FFFFFF" />
@@ -196,6 +300,7 @@ export function ChatBubble({ message, onPressMedia, showSender = false, onRetry,
         </View>
         {message.status === 'failed' ? <AppText fontSize="size12" color="error" text={translate('common', 'sendFailed')} /> : null}
       </Pressable>
+      </Animated.View>
     </View>
   );
 }
@@ -206,6 +311,24 @@ const createStyles = (theme: Theme) =>
       marginVertical: 4,
       paddingHorizontal: 12,
       flexDirection: 'row',
+    },
+    replyIconContainer: {
+      position: 'absolute',
+      left: 14,
+      top: '50%',
+      marginTop: -14,
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: theme.colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+      elevation: 2,
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.15,
+      shadowRadius: 2,
+      zIndex: 5,
     },
     containerMe: {
       justifyContent: 'flex-end',
@@ -256,6 +379,30 @@ const createStyles = (theme: Theme) =>
       backgroundColor: theme.colors.surface,
       borderBottomStartRadius: 2,
     },
+    callBubble: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    callIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    callIconMe: {
+      backgroundColor: '#FFFFFF26',
+      color: '#FFFFFF',
+    },
+    callIconOther: {
+      backgroundColor: theme.colors.primarySoft,
+      color: theme.colors.primary,
+    },
+    callIconMissed: {
+      backgroundColor: theme.colors.background,
+      color: theme.colors.error,
+    },
     text: {
       fontSize: 15,
       lineHeight: 20,
@@ -277,6 +424,11 @@ const createStyles = (theme: Theme) =>
       width: 240,
       height: 180,
       borderRadius: 12,
+    },
+    videoPoster: {
+      backgroundColor: '#1C1C24',
+      justifyContent: 'center',
+      alignItems: 'center',
     },
     videoPlayOverlay: {
       ...StyleSheet.absoluteFill,

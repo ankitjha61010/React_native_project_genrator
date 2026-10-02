@@ -74,13 +74,15 @@ export async function configureXcodeEnv(projectDir: string, appName: string): Pr
 /**
  * Podfile: the stock React Native template plus only what is genuinely needed –
  * react-native-permissions handlers, React Native Firebase resolved through CocoaPods
- * (not SPM, which would require dynamic frameworks) and a path-free `.xcode.env.local`.
+ * (not SPM, which would require dynamic frameworks), the Stripe iOS SDK likewise resolved
+ * through CocoaPods when Stripe is the gateway, and a path-free `.xcode.env.local`.
  */
 export async function configurePodfile(
   projectDir: string,
   appName: string,
   extraPermissions: string[] = [],
   googleSignIn = false,
+  stripe = false,
 ): Promise<void> {
   const { podfile } = iosPaths(projectDir, appName);
   await edit(podfile, 'ios/Podfile', source => {
@@ -138,6 +140,14 @@ export async function configurePodfile(
             '',
             '# React Native Firebase config',
             '$RNFirebaseDisableSPM = true',
+            ...(stripe
+              ? [
+                  '',
+                  '# stripe-react-native: the Stripe iOS SDK through CocoaPods. Its Swift package needs',
+                  '# dynamic frameworks, which break the static Firebase / prebuilt React Native setup.',
+                  '$StripeDisableSPM = true',
+                ]
+              : []),
           ].join('\n'),
         },
         {

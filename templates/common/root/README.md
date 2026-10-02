@@ -182,6 +182,11 @@ of the hard-coded path `pod install` would otherwise write into it.
 `$RNFirebaseDisableSPM = true`, so the Firebase SDK comes from CocoaPods – Firebase's Swift packages
 would require dynamic frameworks. The only addition is `:modular_headers => true` for the pods that
 Firebase's Swift code imports as modules (`GoogleUtilities`, plus `RecaptchaInterop` with Google Sign-In).
+{{#if GATEWAY_STRIPE}}
+**Stripe + CocoaPods.** For the same reason the Podfile sets `$StripeDisableSPM = true`, so the Stripe iOS
+SDK comes from CocoaPods. Don't switch to `use_frameworks! :linkage => :dynamic` – that breaks the build
+of the other native modules against React Native's prebuilt core.
+{{/if}}
 
 ## Firebase setup
 

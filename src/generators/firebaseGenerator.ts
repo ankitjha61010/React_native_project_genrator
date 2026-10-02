@@ -29,7 +29,7 @@ export async function generateFirebase(
   await configurePodfile(projectDir, options.appName, [
     ...(options.chat || options.audioCall || options.videoCall ? ['Microphone'] : []),
     ...(options.googleLocation ? ['LocationWhenInUse'] : []),
-  ], options.socialAuth.google);
+  ], options.socialAuth.google, options.paymentGateway === 'stripe');
   await configureAppDelegate(projectDir, options.appName);
 
   const result: FirebaseResult = { android: 'example', ios: 'example' };

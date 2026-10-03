@@ -21,6 +21,8 @@ export const usersDocs: ApiDocGroup = {
     { method: 'get', path: '/users', summary: 'List users (paginated, searchable) – permission users:read', auth: true, query: searchPageQuery, response: publicUserSchema, paginated: true, errors: [401, 403, 422] },
     { method: 'get', path: '/users/:id', summary: 'Get a user – permission users:read', auth: true, params: idParams, response: publicUserSchema, errors: [401, 403, 404] },
     { method: 'patch', path: '/users/:id', summary: 'Update a user (name, role, active) – permission users:write', auth: true, params: idParams, body: updateUserSchema, response: publicUserSchema, errors: [401, 403, 404, 422] },
+    { method: 'post', path: '/users/:id/avatar', summary: "Upload a user's profile picture (multipart field `avatar`: JPEG, PNG, WebP or HEIC) – permission users:write", auth: true, params: idParams, upload: 'avatar', response: publicUserSchema, errors: [400, 401, 403, 404, 413, 422] },
+    { method: 'delete', path: '/users/:id/avatar', summary: "Remove a user's profile picture – permission users:write", auth: true, params: idParams, response: publicUserSchema, errors: [401, 403, 404] },
     { method: 'delete', path: '/users/:id', summary: 'Delete a user – permission users:delete', auth: true, params: idParams, errors: [401, 403, 404] },
 {{else}}
     { method: 'get', path: '/users', summary: 'List users (paginated, searchable)', query: searchPageQuery, response: publicUserSchema, paginated: true, errors: [422] },

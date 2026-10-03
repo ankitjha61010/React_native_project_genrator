@@ -56,6 +56,16 @@ export function useCall() {
   /** The call ringing now – the socket and the push both report it. */
   const incomingCallIdRef = useRef<string | null>(null);
   const isVideoRef = useRef(false);
+  /** Latest state for native callbacks (CallKit events arrive outside React's render cycle). */
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  /**
+   * iOS cold start: Answer / Decline on the CallKit screen can reach JS before the call itself (the VoIP push
+   * payload). The CallKit uuid waits here until that call arrives.
+   */
+  const pendingCallKitActionRef = useRef<{ kind: 'answer' | 'end'; uuid: string } | null>(null);
+  const answerCallRef = useRef<(callId: string, options?: { fromCallKit?: boolean }) => Promise<void>>(async () => {});
+  const declineCallRef = useRef<(callId: string) => Promise<void>>(async () => {});
 
   // ── Agora event handler ───────────────────────────────────────────────────
 
@@ -114,7 +124,10 @@ export function useCall() {
       if (!engine) {
         Agora.initAgoraEngine(data.appId);
       }
-      await Agora.joinChannel(data, isVideoRef.current, eventHandler);
+      // iOS call answered through CallKit: CallKit owns the audio session – start audio only once it is active.
+      const callKitCall = Platform.OS === 'ios' && Boolean(callUUIDRef.current);
+      if (callKitCall) await CK.waitForAudioSession();
+      await Agora.joinChannel(data, isVideoRef.current, eventHandler, { systemManagedAudio: callKitCall });
       nativeCallService.setCallActive(true);
       setState(s => ({ ...s, call, status: 'connecting' }));
     },
@@ -127,7 +140,7 @@ export function useCall() {
     async (receiverId: string, callType: CallType) => {
       await ensureCallPermissions(callType === 'video');
       isVideoRef.current = callType === 'video';
-      setState(s => ({ ...s, status: 'initiating' }));
+      setState(s => ({ ...s, status: 'initiating', outgoing: true }));
       let call: Call | null = null;
       try {
         call = await CallingApi.initiateCall(receiverId, callType);
@@ -182,6 +195,19 @@ export function useCall() {
         // which causes iOS to immediately reject/abort the incoming call.
         const uuid = CK.displayIncomingCall(data);
         callUUIDRef.current = uuid;
+        // Already answered / declined on the CallKit screen while JS was starting.
+        const pending = pendingCallKitActionRef.current;
+        if (pending && pending.uuid === uuid.toLowerCase()) {
+          pendingCallKitActionRef.current = null;
+          if (pending.kind === 'answer') {
+            setState(s => ({ ...s, status: 'ringing' }));
+            answerCallRef.current(data.callId, { fromCallKit: true }).catch(() => undefined);
+          } else {
+            callUUIDRef.current = null;
+            declineCallRef.current(data.callId).catch(() => undefined);
+          }
+          return;
+        }
       } else {
         // Native decides (it knows whether the app is really on screen): in the background the notification rings
         // (full screen on the lock screen, a pop-up otherwise); on screen only the app's own call screen rings.
@@ -194,16 +220,18 @@ export function useCall() {
     [],
   );
 
+  /** `fromCallKit`: answered on the iOS CallKit screen – CallKit already knows, don't answer it again. */
   const answerCall = useCallback(
-    async (callId: string) => {
+    async (callId: string, options?: { fromCallKit?: boolean }) => {
       if (answeredCallIdRef.current === callId) return;
       answeredCallIdRef.current = callId;
       // The call screen shows right away ("Connecting…") while the call is accepted and joined.
       setState(s => ({ ...s, status: 'connecting' }));
-      Agora.stopRingtone();
       if (Platform.OS === 'ios') {
-        if (callUUIDRef.current) CK.answerIncomingCall(callUUIDRef.current);
+        // Answered in the app: tell CallKit, which then activates the audio session for the call.
+        if (callUUIDRef.current && !options?.fromCallKit) CK.answerIncomingCall(callUUIDRef.current);
       } else {
+        Agora.stopRingtone();
         await nativeCallService.endCall();
       }
       try {
@@ -221,13 +249,13 @@ export function useCall() {
   );
 
   const declineCall = useCallback(async (callId: string) => {
-    Agora.stopRingtone();
     if (Platform.OS === 'ios') {
       if (callUUIDRef.current) {
         CK.rejectIncomingCall(callUUIDRef.current);
         callUUIDRef.current = null;
       }
     } else {
+      Agora.stopRingtone();
       await nativeCallService.endCall();
     }
     incomingCallIdRef.current = null;
@@ -240,7 +268,7 @@ export function useCall() {
 
   const hangUp = useCallback(async () => {
     // Hanging up while an answer is still connecting ends that call too.
-    const callId = state.call?.id ?? answeredCallIdRef.current;
+    const callId = stateRef.current.call?.id ?? answeredCallIdRef.current;
     if (!callId) return;
     if (Platform.OS === 'android') {
       await nativeCallService.endCall();
@@ -250,7 +278,7 @@ export function useCall() {
     } finally {
       await _cleanup();
     }
-  }, [state.call, _cleanup]);
+  }, [_cleanup]);
 
   const cancelOutgoing = useCallback(async () => {
     const callId = state.call?.id;
@@ -275,6 +303,53 @@ export function useCall() {
     },
     [state.call, incomingCall, _cleanup],
   );
+
+  // ── iOS CallKit buttons ───────────────────────────────────────────────────
+
+  /** Answer on the CallKit screen. */
+  const handleCallKitAnswer = useCallback(
+    (callUUID: string) => {
+      if (!callUUIDRef.current) {
+        // The call itself hasn't reached JS yet – answer it as soon as it does.
+        pendingCallKitActionRef.current = { kind: 'answer', uuid: callUUID.toLowerCase() };
+        return;
+      }
+      if (callUUID.toLowerCase() !== callUUIDRef.current.toLowerCase()) return;
+      const callId = incomingCallIdRef.current;
+      if (callId) return answerCall(callId, { fromCallKit: true });
+    },
+    [answerCall],
+  );
+
+  /**
+   * CallKit ended a call. Only the user's own End / Decline on the CallKit screen reaches the API:
+   * ends the app asked for itself, and calls that aren't the current one (left over from an earlier run),
+   * are ignored. Answered → end the call; still ringing → decline it.
+   */
+  const handleCallKitEnd = useCallback(
+    async (callUUID: string) => {
+      if (CK.consumeEndedByApp(callUUID)) return;
+      if (!callUUIDRef.current && !answeredCallIdRef.current && !incomingCallIdRef.current) {
+        // Declined before the call reached JS – decline it as soon as it does.
+        pendingCallKitActionRef.current = { kind: 'end', uuid: callUUID.toLowerCase() };
+        return;
+      }
+      if (!callUUIDRef.current || callUUID.toLowerCase() !== callUUIDRef.current.toLowerCase()) return;
+      // CallKit has already closed its screen – nothing to report back.
+      callUUIDRef.current = null;
+      const answeredId = answeredCallIdRef.current ?? stateRef.current.call?.id;
+      if (answeredId) {
+        await hangUp().catch(() => undefined);
+        return;
+      }
+      const ringingId = incomingCallIdRef.current;
+      if (ringingId) await declineCall(ringingId).catch(() => undefined);
+    },
+    [hangUp, declineCall],
+  );
+
+  answerCallRef.current = answerCall;
+  declineCallRef.current = declineCall;
 
   // ── Audio / Video controls ────────────────────────────────────────────────
 
@@ -329,6 +404,8 @@ export function useCall() {
     hangUp,
     cancelOutgoing,
     closeCall,
+    handleCallKitAnswer,
+    handleCallKitEnd,
     // Controls
     toggleMute,
     toggleSpeaker,

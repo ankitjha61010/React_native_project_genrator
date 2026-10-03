@@ -28,6 +28,9 @@ export const CALLING_MESSAGES = {
   participantsRetrieved: 'Participants retrieved.',
   callLogDeleted: 'Call removed from history.',
   callLogsCleared: 'Call history cleared.',
+  voipTokenSaved: 'VoIP push token saved.',
+  /** No push notifications module: there are no devices to keep the token on. */
+  voipTokenIgnored: 'VoIP push is not enabled on this server – token not stored.',
 
   // Incoming call push (the caller's name is the title)
   incomingAudioCall: 'Incoming audio call',

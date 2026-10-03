@@ -107,6 +107,17 @@ const schema = z.object({
   AGORA_APP_CERTIFICATE: z.string().default(''),
   /** Ringing timeout in seconds before call is marked missed. */
   CALL_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(60),
+{{#if VOIP_PUSH}}
+  // iOS VoIP pushes (APNs token auth). Empty / REPLACE_ME values count as "not set" – VoIP pushes are then skipped.
+  APNS_KEY_ID: z.string().default(''),
+  APNS_TEAM_ID: z.string().default(''),
+  /** Path to the AuthKey_XXXX.p8 file (or the PEM itself). */
+  APNS_KEY_PATH: z.string().default('./keys/AuthKey_REPLACE_ME.p8'),
+  /** The iOS bundle id – VoIP pushes go to the `<bundle id>.voip` topic. */
+  APNS_BUNDLE_ID: z.string().default('{{APP_PACKAGE}}'),
+  /** api.push.apple.com instead of api.sandbox.push.apple.com. */
+  APNS_PRODUCTION: boolean.default(false),
+{{/if}}
 {{/if}}
 {{#if GATEWAY_STRIPE}}
   // Stripe (dashboard → Developers → API keys / Webhooks). Values containing REPLACE_ME count as "not set".
@@ -332,6 +343,15 @@ export const config = {
     agoraAppId: env.AGORA_APP_ID,
     agoraAppCertificate: env.AGORA_APP_CERTIFICATE,
     callTimeoutSeconds: env.CALL_TIMEOUT_SECONDS,
+  },
+{{/if}}
+{{#if VOIP_PUSH}}
+  apns: {
+    keyId: env.APNS_KEY_ID,
+    teamId: env.APNS_TEAM_ID,
+    keyPath: env.APNS_KEY_PATH,
+    bundleId: env.APNS_BUNDLE_ID,
+    production: env.APNS_PRODUCTION,
   },
 {{/if}}
 {{#if LEGAL}}

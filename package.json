@@ -2,6 +2,15 @@
   "name": "rn-architecture-generator",
   "version": "1.0.0",
   "description": "Interactive CLI that generates production-ready React Native (TypeScript) projects with a selectable architecture, navigation, Firebase messaging, i18n, API/storage services and more.",
+  "author": "Abhishek Kashyap",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ankitjha61010/React_native_project_genrator.git"
+  },
+  "homepage": "https://github.com/ankitjha61010/React_native_project_genrator#readme",
+  "bugs": {
+    "url": "https://github.com/ankitjha61010/React_native_project_genrator/issues"
+  },
   "type": "module",
   "bin": {
     "rn-architecture-generator": "bin/cli.js"
@@ -10,6 +19,7 @@
     "bin",
     "dist",
     "templates",
+    "docs",
     "README.md",
     "LICENSE"
   ],
@@ -34,7 +44,15 @@
     "typescript",
     "firebase",
     "clean-architecture",
-    "mvvm"
+    "mvvm",
+    "nestjs",
+    "express",
+    "admin-panel",
+    "chat",
+    "agora",
+    "video-call",
+    "push-notifications",
+    "fullstack"
   ],
   "engines": {
     "node": ">=22.13.0"

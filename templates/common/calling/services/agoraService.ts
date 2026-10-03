@@ -15,6 +15,11 @@ import InCallManager from 'react-native-incall-manager';
 import type { AgoraTokenResult } from '../types/calling.types';
 
 let engine: IRtcEngine | null = null;
+/**
+ * iOS CallKit call: CallKit owns the audio session (it activates it after the answer). InCallManager must not
+ * touch it – its start()/stop() activate and deactivate the session themselves, and iOS then ends the call.
+ */
+let systemManagedAudio = false;
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
 
@@ -41,8 +46,10 @@ export async function joinChannel(
   tokenResult: AgoraTokenResult,
   enableVideo: boolean,
   eventHandler: IRtcEngineEventHandler,
+  options?: { systemManagedAudio?: boolean },
 ): Promise<void> {
   if (!engine) throw new Error('[Agora] Engine not initialised.');
+  systemManagedAudio = Boolean(options?.systemManagedAudio);
   engine.registerEventHandler(eventHandler);
   engine.enableAudio();
   if (enableVideo) {
@@ -51,7 +58,7 @@ export async function joinChannel(
   }
   engine.setClientRole(ClientRoleType.ClientRoleBroadcaster);
   await engine.joinChannel(tokenResult.token, tokenResult.channelName, tokenResult.uid, {});
-  InCallManager.start({ media: enableVideo ? 'video' : 'audio' });
+  if (!systemManagedAudio) InCallManager.start({ media: enableVideo ? 'video' : 'audio' });
   InCallManager.setKeepScreenOn(true);
 }
 
@@ -60,7 +67,8 @@ export async function leaveChannel(eventHandler: IRtcEngineEventHandler): Promis
   await engine.leaveChannel();
   engine.unregisterEventHandler(eventHandler);
   InCallManager.setKeepScreenOn(false);
-  InCallManager.stop();
+  if (!systemManagedAudio) InCallManager.stop();
+  systemManagedAudio = false;
 }
 
 // ─── Audio controls ────────────────────────────────────────────────────────────
@@ -71,7 +79,7 @@ export function muteLocalAudio(muted: boolean): void {
 
 export function setSpeaker(enabled: boolean): void {
   engine?.setEnableSpeakerphone(enabled);
-  InCallManager.setSpeakerphoneOn(enabled);
+  if (!systemManagedAudio) InCallManager.setSpeakerphoneOn(enabled);
 }
 
 // ─── Video controls ────────────────────────────────────────────────────────────

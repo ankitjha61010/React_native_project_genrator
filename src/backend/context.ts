@@ -138,6 +138,8 @@ export function prepareBackendContext(options: BackendOptions): BackendRenderCon
     CALLING: hasAuth && (options.modules.audioCall || options.modules.videoCall),
     /** User devices (FCM tokens) – part of push notifications. */
     DEVICES: notifications,
+    /** iOS VoIP (PushKit) pushes over APNs for incoming calls – needs the devices (their VoIP tokens) and calling. */
+    VOIP_PUSH: notifications && hasAuth && (options.modules.audioCall || options.modules.videoCall),
     /** Sign-in payloads carry the app's `device` (stored here, or forwarded to the notifications service). */
     DEVICE_INPUT: (notifications && role === undefined) || (role === 'identity' && Boolean(options.remoteDevices)),
     /** Identity service: sign-in devices are published to the notifications service. */

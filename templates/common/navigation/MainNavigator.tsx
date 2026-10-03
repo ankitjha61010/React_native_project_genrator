@@ -72,7 +72,9 @@ export function MainNavigator(): React.JSX.Element {
       <Stack.Screen
         name="ChatRoom"
         component={ChatRoomScreen}
-        options={{ headerShown: false }}
+        // iOS 26 turns on "swipe anywhere to go back" – here that swipe means "reply", so only
+        // the edge swipe goes back.
+        options={{ headerShown: false, fullScreenGestureEnabled: false }}
       />
       <Stack.Screen name="ChatDetails" component={ChatDetailsScreen} options={{ title: translate('common', 'chatDetails') }} />
       <Stack.Screen name="NewChat" component={NewChatScreen} options={{ title: translate('common', 'newChat') }} />

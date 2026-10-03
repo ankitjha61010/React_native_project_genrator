@@ -84,6 +84,19 @@ export class UsersController {
     sendSuccess(res, USERS_MESSAGES.updated, view(user));
   };
 
+  /** POST /users/:id/avatar (admin, multipart field `avatar`) */
+  setAvatarOf = async (req: Request, res: Response) => {
+    const { id } = parseParams(idParams, req);
+    const user = await this.users.setAvatar(id, uploadedFile(req, 'avatar'));
+    sendSuccess(res, USERS_MESSAGES.avatarUpdated, view(user));
+  };
+
+  /** DELETE /users/:id/avatar (admin) */
+  removeAvatarOf = async (req: Request, res: Response) => {
+    const { id } = parseParams(idParams, req);
+    sendSuccess(res, USERS_MESSAGES.avatarRemoved, view(await this.users.removeAvatar(id)));
+  };
+
   /** DELETE /users/:id (admin) */
   delete = async (req: Request, res: Response) => {
     const { id } = parseParams(idParams, req);

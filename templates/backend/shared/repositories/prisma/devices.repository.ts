@@ -69,4 +69,13 @@ export class PrismaDevicesRepository implements DevicesRepository {
   async removeTokens(tokens: string[]): Promise<void> {
     await this.prisma.device.deleteMany({ where: { fcmToken: { in: tokens } } });
   }
+
+  async listWithVoipToken(userIds: string[]): Promise<Device[]> {
+    if (!userIds.length) return [];
+    return (await this.prisma.device.findMany({ where: { userId: { in: userIds }, deviceType: 'IOS', voipToken: { not: null } } })).map(toDevice);
+  }
+
+  async clearVoipTokens(tokens: string[]): Promise<void> {
+    await this.prisma.device.updateMany({ where: { voipToken: { in: tokens } }, data: { voipToken: null } });
+  }
 }

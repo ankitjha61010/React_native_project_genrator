@@ -19,7 +19,7 @@ import type { CallEntity, CallParticipantEntity } from '{{IMPORT:domain.call}}';
 import { CALLING_MESSAGES } from '{{IMPORT:messages.calling}}';
 {{/if}}
 {{#if DEVICES}}
-import type { Device, DeviceInput } from '{{IMPORT:domain.device}}';
+import { DeviceType, type Device, type DeviceInput } from '{{IMPORT:domain.device}}';
 {{/if}}
 {{#if NOTIFICATIONS}}
 import type { Broadcast, Notification } from '{{IMPORT:domain.notification}}';
@@ -526,6 +526,14 @@ export class InMemoryDevicesRepository implements DevicesRepository {
 
   async removeTokens(tokens: string[]) {
     this.devices = this.devices.filter(d => !d.fcmToken || !tokens.includes(d.fcmToken));
+  }
+
+  async listWithVoipToken(userIds: string[]) {
+    return this.devices.filter(d => userIds.includes(d.userId) && d.deviceType === DeviceType.IOS && d.voipToken !== null);
+  }
+
+  async clearVoipTokens(tokens: string[]) {
+    this.devices = this.devices.map(d => (d.voipToken && tokens.includes(d.voipToken) ? { ...d, voipToken: null } : d));
   }
 
   private forgetToken(fcmToken: string, exceptDeviceId: string) {

@@ -21,4 +21,8 @@ export interface DevicesRepository {
   removeAllForUser(userId: string): Promise<void>;
   /** Tokens FCM reported as no longer valid (the app was uninstalled…). */
   removeTokens(tokens: string[]): Promise<void>;
+  /** iOS devices of these users that can receive VoIP (PushKit) pushes (they have a VoIP token). */
+  listWithVoipToken(userIds: string[]): Promise<Device[]>;
+  /** VoIP tokens APNs reported as no longer valid – only the VoIP token is cleared (FCM keeps working). */
+  clearVoipTokens(tokens: string[]): Promise<void>;
 }

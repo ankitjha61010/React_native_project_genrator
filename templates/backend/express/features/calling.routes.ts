@@ -5,7 +5,11 @@ import { CallingController } from '{{IMPORT:ex.calling.controller}}';
 
 export function callingRoutes(services: Services): Router {
   const router = Router();
+{{#if VOIP_PUSH}}
+  const controller = new CallingController(services.calling, services.devices);
+{{else}}
   const controller = new CallingController(services.calling);
+{{/if}}
 
   // All calling routes require authentication
   router.use(requireAuth(services.sessions));
@@ -14,6 +18,8 @@ export function callingRoutes(services: Services): Router {
   router.post('/', controller.initiateCall);
   // Group call
   router.post('/group', controller.initiateGroupCall);
+  // iOS VoIP (PushKit) token of the signed-in user's device
+  router.post('/voip-token', controller.registerVoipToken);
   // Call history
   router.get('/history', controller.getCallHistory);
   router.delete('/history', controller.clearCallHistory);

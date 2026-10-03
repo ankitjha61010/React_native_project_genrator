@@ -148,5 +148,14 @@
   "deleteAllNotificationsConfirm": "Every notification will be removed. This cannot be undone.",
   "notificationDeleted": "Notification deleted",
   "allNotificationsDeleted": "All notifications deleted",
-  "deleteAllNotificationsFailed": "Couldn't delete the notifications. Please try again."
+  "deleteAllNotificationsFailed": "Couldn't delete the notifications. Please try again.",
+  "play": "Play",
+  "pause": "Pause",
+  "videoPlaybackFailed": "This video can't be played.",
+  "openDocument": "Open document",
+  "documentOpenFailed": "Couldn't open this document.",
+  "downloadingDocument": "Opening document…",
+  "noAppToOpenDocument": "No app on this device can open this file.",
+  "searchChats": "Search chats…",
+  "noChatsFound": "No chats found"
 }

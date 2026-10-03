@@ -148,5 +148,14 @@
   "deleteAllNotificationsConfirm": "सभी सूचनाएँ हटा दी जाएँगी। इसे पूर्ववत नहीं किया जा सकता।",
   "notificationDeleted": "सूचना हटा दी गई",
   "allNotificationsDeleted": "सभी सूचनाएँ हटा दी गईं",
-  "deleteAllNotificationsFailed": "सूचनाएँ हटाई नहीं जा सकीं। कृपया पुनः प्रयास करें।"
+  "deleteAllNotificationsFailed": "सूचनाएँ हटाई नहीं जा सकीं। कृपया पुनः प्रयास करें।",
+  "play": "चलाएँ",
+  "pause": "रोकें",
+  "videoPlaybackFailed": "यह वीडियो चलाया नहीं जा सकता।",
+  "openDocument": "दस्तावेज़ खोलें",
+  "documentOpenFailed": "यह दस्तावेज़ खोला नहीं जा सका।",
+  "downloadingDocument": "दस्तावेज़ खुल रहा है…",
+  "noAppToOpenDocument": "इस डिवाइस पर कोई ऐप यह फ़ाइल नहीं खोल सकता।",
+  "searchChats": "चैट खोजें…",
+  "noChatsFound": "कोई चैट नहीं मिली"
 }

@@ -4,13 +4,12 @@ import {
   StyleSheet,
   View,
   TouchableOpacity,
-  SafeAreaView,
-  Linking,
   ActivityIndicator,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ImageZoom } from '@likashefqet/react-native-image-zoom';
-import { WebView } from 'react-native-webview';
+import Pdf from 'react-native-pdf';
 import { AppText } from '{{IMPORT:components.AppText}}';
 {{#if VECTOR_ICONS}}
 import { AppIcon } from '{{IMPORT:components.AppIcon}}';
@@ -21,6 +20,10 @@ import { useDirection } from '{{IMPORT:hooks.useDirection}}';
 import { useStyles } from '{{IMPORT:hooks.useTheme}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
 import type { ChatMessage } from '{{IMPORT:chat.types}}';
+import { translate } from '{{IMPORT:i18n.index}}';
+import { AudioMessage } from '../AudioMessage/AudioMessage';
+import { ChatVideoPlayer } from '../ChatVideoPlayer/ChatVideoPlayer';
+import { isPdf, openInSystemViewer, toFileUri } from '../../utils/mediaFiles';
 
 export interface ChatMediaPreviewProps {
   visible: boolean;
@@ -39,9 +42,17 @@ export function ChatMediaPreview({ visible, message, onClose }: ChatMediaPreview
   // left the spinner running forever. Once the image has finished, ignore late starts.
   const imageSettled = useRef(false);
 
+  /** The PDF could not be rendered in the app – offer the system viewer instead. */
+  const [pdfFailed, setPdfFailed] = useState(false);
+  const [opening, setOpening] = useState(false);
+  const [openFailed, setOpenFailed] = useState(false);
+
   useEffect(() => {
     imageSettled.current = false;
     setLoading(false);
+    setPdfFailed(false);
+    setOpening(false);
+    setOpenFailed(false);
   }, [visible, message?.id]);
 
   const settleImage = () => {
@@ -51,9 +62,17 @@ export function ChatMediaPreview({ visible, message, onClose }: ChatMediaPreview
 
   if (!message) return null;
 
-  const handleOpenExternal = () => {
-    if (message.mediaUrl) {
-      Linking.openURL(message.mediaUrl).catch(() => {});
+  /** Documents: QuickLook on iOS, the installed viewer app on Android. */
+  const openDocument = async () => {
+    if (!message.mediaUrl || opening) return;
+    setOpening(true);
+    setOpenFailed(false);
+    try {
+      await openInSystemViewer(message.mediaUrl, message.fileName);
+    } catch {
+      setOpenFailed(true);
+    } finally {
+      setOpening(false);
     }
   };
 
@@ -104,188 +123,49 @@ export function ChatMediaPreview({ visible, message, onClose }: ChatMediaPreview
         );
 
       case 'video':
-        return (
-          <View style={styles.webMediaContainer}>
-            <WebView
-              originWhitelist={['*']}
-              allowsInlineMediaPlayback
-              mediaPlaybackRequiresUserAction={false}
-              javaScriptEnabled
-              domStorageEnabled
-              allowFileAccess
-              allowFileAccessFromFileURLs
-              allowUniversalAccessFromFileURLs
-              mixedContentMode="always"
-              source={{
-                html: `
-                  <!DOCTYPE html>
-                  <html>
-                    <head>
-                      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-                      <style>
-                        body {
-                          margin: 0;
-                          padding: 0;
-                          background-color: #000000;
-                          display: flex;
-                          align-items: center;
-                          justify-content: center;
-                          height: 100vh;
-                          overflow: hidden;
-                        }
-                        video {
-                          width: 100%;
-                          max-height: 100vh;
-                          outline: none;
-                        }
-                        .error-card {
-                          display: none;
-                          color: #FFFFFF;
-                          text-align: center;
-                          padding: 24px;
-                          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                        }
-                        .error-title {
-                          font-size: 16px;
-                          font-weight: 600;
-                          margin-bottom: 8px;
-                        }
-                        .error-sub {
-                          font-size: 13px;
-                          color: #AAAAAA;
-                        }
-                      </style>
-                    </head>
-                    <body>
-                      <video
-                        src="${message.mediaUrl}"
-                        controls
-                        autoplay
-                        playsinline
-                        controlsList="nodownload"
-                        onerror="document.getElementById('video-error').style.display='block';">
-                      </video>
-                      <div id="video-error" class="error-card">
-                        <div class="error-title">Unable to play video directly</div>
-                        <div class="error-sub">Tap 'Open' at the top right to view this video in your device player.</div>
-                      </div>
-                    </body>
-                  </html>
-                `,
-              }}
-              style={styles.webView}
-              onLoadStart={() => setLoading(true)}
-              onLoadEnd={() => setLoading(false)}
-            />
-          </View>
-        );
+        return message.mediaUrl ? <ChatVideoPlayer uri={message.mediaUrl} /> : null;
 
       case 'audio':
-        return (
-          <View style={styles.webMediaContainer}>
-            <WebView
-              originWhitelist={['*']}
-              allowsInlineMediaPlayback
-              mediaPlaybackRequiresUserAction={false}
-              javaScriptEnabled
-              domStorageEnabled
-              source={{
-                html: `
-                  <!DOCTYPE html>
-                  <html>
-                    <head>
-                      <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-                      <style>
-                        body {
-                          margin: 0;
-                          padding: 24px;
-                          background-color: #121212;
-                          display: flex;
-                          flex-direction: column;
-                          align-items: center;
-                          justify-content: center;
-                          height: 85vh;
-                          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                          color: #FFFFFF;
-                        }
-                        .audio-card {
-                          background: #1E1E1E;
-                          padding: 24px;
-                          border-radius: 16px;
-                          width: 90%;
-                          max-width: 360px;
-                          display: flex;
-                          flex-direction: column;
-                          align-items: center;
-                          box-shadow: 0 4px 16px rgba(0,0,0,0.5);
-                        }
-                        .icon {
-                          font-size: 48px;
-                          margin-bottom: 16px;
-                        }
-                        .title {
-                          font-size: 16px;
-                          font-weight: 600;
-                          margin-bottom: 20px;
-                          text-align: center;
-                        }
-                        audio {
-                          width: 100%;
-                          outline: none;
-                        }
-                      </style>
-                    </head>
-                    <body>
-                      <div class="audio-card">
-                        <div class="icon">🎵</div>
-                        <div class="title">${message.fileName || 'Voice Note / Audio'}</div>
-                        <audio src="${message.mediaUrl}" controls autoplay></audio>
-                      </div>
-                    </body>
-                  </html>
-                `,
-              }}
-              style={styles.webView}
-              onLoadStart={() => setLoading(true)}
-              onLoadEnd={() => setLoading(false)}
-            />
+        return message.mediaUrl ? (
+          <View style={styles.audioCard}>
+{{#if VECTOR_ICONS}}
+            <AppIcon name="music-note" size={48} tintColor="#FFFFFF" />
+{{/if}}
+            <AppText style={styles.docName} numberOfLines={2} text={message.fileName || translate('common', 'voiceMessage')} />
+            <View style={styles.audioPlayer}>
+              <AudioMessage uri={message.mediaUrl} duration={message.duration} inverted />
+            </View>
           </View>
-        );
+        ) : null;
 
       case 'document': {
-        const isPdf = (message.mediaUrl || message.fileName || '').toLowerCase().includes('.pdf');
-        const docViewerUrl = isPdf && message.mediaUrl?.startsWith('http')
-          ? `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(message.mediaUrl)}`
-          : message.mediaUrl;
-
+        // PDFs open right here (pinch / double-tap to zoom); anything else in the system viewer.
+        if (message.mediaUrl && isPdf(message.fileName, message.mediaUrl) && !pdfFailed) {
+          const remote = /^https?:\/\//i.test(message.mediaUrl);
+          return (
+            <Pdf
+              source={remote ? { uri: message.mediaUrl, cache: true } : { uri: toFileUri(message.mediaUrl) }}
+              style={styles.pdf}
+              minScale={1}
+              maxScale={5}
+              enableDoubleTapZoom
+              renderActivityIndicator={() => <ActivityIndicator size="large" color="#FFFFFF" />}
+              onError={() => setPdfFailed(true)}
+            />
+          );
+        }
         return (
-          <View style={styles.webMediaContainer}>
-            {docViewerUrl ? (
-              <WebView
-                originWhitelist={['*']}
-                source={{ uri: docViewerUrl }}
-                style={styles.webView}
-                startInLoadingState
-                renderLoading={() => (
-                  <View style={styles.loadingOverlay}>
-                    <ActivityIndicator size="large" color="#FFFFFF" />
-                  </View>
-                )}
-                onLoadStart={() => setLoading(true)}
-                onLoadEnd={() => setLoading(false)}
-              />
-            ) : (
-              <View style={styles.docBox}>
+          <View style={styles.docBox}>
 {{#if VECTOR_ICONS}}
-                <AppIcon name="file-document-outline" size={64} tintColor="#FFFFFF" />
+            <AppIcon name="file-document-outline" size={64} tintColor="#FFFFFF" />
 {{/if}}
-                <AppText style={styles.docName}>{message.fileName || 'Document'}</AppText>
-                <AppText style={styles.docSize}>{message.fileSize}</AppText>
-                <TouchableOpacity style={styles.downloadBtn} onPress={handleOpenExternal}>
-                  <AppText style={styles.downloadBtnText}>Open Document</AppText>
-                </TouchableOpacity>
-              </View>
-            )}
+            <AppText style={styles.docName} numberOfLines={3} text={message.fileName || translate('common', 'document')} />
+            {message.fileSize ? <AppText style={styles.docSize} text={message.fileSize} /> : null}
+            {openFailed ? <AppText style={styles.docError} text={translate('common', 'documentOpenFailed')} /> : null}
+            <TouchableOpacity style={styles.downloadBtn} onPress={openDocument} disabled={opening || !message.mediaUrl} accessibilityRole="button">
+              {opening ? <ActivityIndicator size="small" color="#FFFFFF" /> : null}
+              <AppText style={styles.downloadBtnText} text={translate('common', opening ? 'downloadingDocument' : 'openDocument')} />
+            </TouchableOpacity>
           </View>
         );
       }
@@ -311,26 +191,25 @@ export function ChatMediaPreview({ visible, message, onClose }: ChatMediaPreview
 
             <View style={styles.titleBox}>
               <AppText style={styles.senderText} numberOfLines={1}>
-                {message.type === 'video'
-                  ? 'Video Player'
-                  : message.type === 'audio'
-                  ? 'Audio Player'
-                  : message.type === 'document'
-                  ? 'Document Viewer'
-                  : message.senderName}
+                {message.type === 'document' ? message.fileName || translate('common', 'document') : message.senderName}
               </AppText>
               <AppText style={styles.timeText}>
                 {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </AppText>
             </View>
 
-            <TouchableOpacity onPress={handleOpenExternal} style={styles.headerButton}>
+            {/* Documents: also open in the system viewer (share, print, other apps). */}
+            {message.type === 'document' ? (
+              <TouchableOpacity onPress={openDocument} style={styles.headerButton} disabled={opening} accessibilityRole="button" accessibilityLabel={translate('common', 'openDocument')}>
 {{#if VECTOR_ICONS}}
-              <AppIcon name="open-in-new" size={22} tintColor="#FFFFFF" />
+                <AppIcon name="open-in-new" size={22} tintColor="#FFFFFF" />
 {{else}}
-              <AppText style={styles.btnText}>Open</AppText>
+                <AppText style={styles.btnText}>↗</AppText>
 {{/if}}
-            </TouchableOpacity>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.headerButtonSpacer} />
+            )}
           </View>
 
           {/* Media Viewer Area */}
@@ -402,14 +281,33 @@ const createStyles = (theme: Theme) =>
       width: '100%',
       height: '100%',
     },
-    webMediaContainer: {
+    headerButtonSpacer: {
+      width: 40,
+    },
+    pdf: {
+      flex: 1,
       width: '100%',
-      height: '100%',
       backgroundColor: '#000000',
     },
-    webView: {
-      flex: 1,
-      backgroundColor: '#000000',
+    audioCard: {
+      width: '90%',
+      maxWidth: 360,
+      padding: 24,
+      gap: 16,
+      borderRadius: 16,
+      alignItems: 'center',
+      backgroundColor: '#1E1E1E',
+    },
+    audioPlayer: {
+      alignSelf: 'stretch',
+      padding: 8,
+      borderRadius: 12,
+      backgroundColor: theme.colors.primary,
+    },
+    docError: {
+      color: '#FF8A80',
+      fontSize: 13,
+      textAlign: 'center',
     },
     docBox: {
       flex: 1,
@@ -429,6 +327,9 @@ const createStyles = (theme: Theme) =>
       fontSize: 14,
     },
     downloadBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
       backgroundColor: theme.colors.primary,
       paddingHorizontal: 20,
       paddingVertical: 12,

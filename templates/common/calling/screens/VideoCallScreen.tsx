@@ -1,6 +1,7 @@
 // ─── Video Call Screen ────────────────────────────────────────────────────────
 // Active video call UI with local preview, remote video tiles, camera/mute/end.
 // Supports minimize (picture-in-picture style), camera flip, and speaker.
+// Your own camera preview can be dragged anywhere and glides to the nearest side.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useState } from 'react';
@@ -11,13 +12,16 @@ import {
   TouchableOpacity,
   AppState,
   type AppStateStatus,
-  Dimensions,
 } from 'react-native';
+import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import Reanimated from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RtcSurfaceView, VideoSourceType } from 'react-native-agora';
 import { AppIcon, type AppIconName } from '{{IMPORT:components.AppIcon}}';
 import type { ActiveCallState } from '../types/calling.types';
+import { useFloatingDrag } from '../hooks/useFloatingDrag';
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const PREVIEW_EDGE = 16;
 
 interface Props {
   state: ActiveCallState;
@@ -45,6 +49,13 @@ export function VideoCallScreen({
   onMinimize,
 }: Props) {
   const [showControls, setShowControls] = useState(true);
+  const insets = useSafeAreaInsets();
+  // Your camera: starts top-right, drag it anywhere – it settles on the nearest side.
+  const preview = useFloatingDrag({
+    margins: { top: insets.top + PREVIEW_EDGE, bottom: insets.bottom + PREVIEW_EDGE, left: insets.left + PREVIEW_EDGE, right: insets.right + PREVIEW_EDGE },
+    initial: (size, screen) => ({ x: screen.width - size.width - PREVIEW_EDGE, y: insets.top + 72 }),
+    snapToSides: true,
+  });
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
@@ -63,6 +74,8 @@ export function VideoCallScreen({
   const firstRemote = state.remoteUids[0];
 
   return (
+    // The call screen is a Modal – a separate native root that needs its own gesture root.
+    <GestureHandlerRootView style={styles.root}>
     <TouchableOpacity
       style={styles.container}
       activeOpacity={1}
@@ -84,12 +97,16 @@ export function VideoCallScreen({
 
       {/* Local preview (PiP) */}
       {!state.isCameraOff && (
-        <View style={styles.localPreviewWrapper}>
-          <RtcSurfaceView
-            canvas={{ uid: localUid, sourceType: VideoSourceType.VideoSourceCamera }}
-            style={styles.localPreview}
-          />
-        </View>
+        <GestureDetector gesture={preview.gesture}>
+          <Reanimated.View style={[styles.localPreviewWrapper, preview.style]} onLayout={preview.onLayout}>
+            <RtcSurfaceView
+              canvas={{ uid: localUid, sourceType: VideoSourceType.VideoSourceCamera }}
+              style={styles.localPreview}
+              // Draw above the full-screen remote video (Android SurfaceView ordering).
+              zOrderMediaOverlay
+            />
+          </Reanimated.View>
+        </GestureDetector>
       )}
 
       {showControls && (
@@ -120,6 +137,7 @@ export function VideoCallScreen({
         </>
       )}
     </TouchableOpacity>
+    </GestureHandlerRootView>
   );
 }
 
@@ -146,6 +164,7 @@ function CtrlBtn({ icon, label, onPress, active, isEnd }: CtrlBtnProps) {
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1 },
   container: { flex: 1, backgroundColor: '#000' },
   remoteVideo: { ...StyleSheet.absoluteFill, zIndex: 0 },
   noRemotePlaceholder: {
@@ -158,9 +177,6 @@ const styles = StyleSheet.create({
   noRemoteText: { fontSize: 22, fontWeight: '700', color: '#fff' },
   connectingText: { fontSize: 14, color: 'rgba(255,255,255,0.5)' },
   localPreviewWrapper: {
-    position: 'absolute',
-    top: 72,
-    right: 16,
     width: 100,
     height: 150,
     borderRadius: 12,

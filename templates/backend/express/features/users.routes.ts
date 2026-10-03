@@ -28,6 +28,9 @@ export function usersRoutes(services: Services): Router {
   router.get('/', requirePermission('users:read'), users.list);
   router.get('/:id', requirePermission('users:read'), users.getById);
   router.patch('/:id', requirePermission('users:write'), users.update);
+  // The admin panel changes a user's picture – the same upload as /me/avatar (permission checked before the upload).
+  router.post('/:id/avatar', requirePermission('users:write'), upload('avatar'), users.setAvatarOf);
+  router.delete('/:id/avatar', requirePermission('users:write'), users.removeAvatarOf);
   router.delete('/:id', requirePermission('users:delete'), users.delete);
   return router;
 }

@@ -130,6 +130,8 @@ The server verifies it with the provider; an account with the same verified emai
 | GET | `/users/search?search=…&page=1&limit=20` 🔒 | – | `[{ id, name, avatar }]` + meta – other users A → Z (no `search`: everybody) |
 | GET | `/users?page&limit&search` | admin (`users:read`) | User[] + meta |
 | GET / PATCH / DELETE | `/users/:id` | admin (`users:read` / `users:write` / `users:delete`) | User |
+| POST | `/users/:id/avatar` | admin (`users:write`): multipart, field `avatar` (like `/users/me/avatar`) | User |
+| DELETE | `/users/:id/avatar` | admin (`users:write`) | User |
 {{else}}
 | GET | `/users?page&limit&search` | – | User[] + meta |
 | POST | `/users` | `email, name` | User (201) |
@@ -211,6 +213,37 @@ registers a device separately.
 | --- | --- | --- | --- |
 | GET | `/devices` | – | `Device { deviceId, deviceType, deviceModel, osVersion, appVersion, pushEnabled, lastActiveAt, createdAt }[]` |
 | PATCH | `/devices/:deviceId` | `fcmToken` | Device – only when FCM rotates the token of this install |
+| PATCH | `/devices/:deviceId/voip-token` | `voipToken` | Device – the iOS VoIP (PushKit) token of this install (`voipEnabled`) |
+{{/if}}
+{{#if CALLING}}
+
+## Calling – `/calls`
+
+Agora audio / video calls. All routes need `Authorization: Bearer`. The Agora App Certificate never leaves the server.
+
+| Method | Path | Body / query | Returns |
+| --- | --- | --- | --- |
+| POST | `/calls` | `receiverId, callType: 'audio'\|'video'` | Call (201) – the receiver is rung |
+| POST | `/calls/group` | `participantIds[], callType` | Call (201) |
+| POST | `/calls/voip-token` | `voipToken, deviceId?` | – {{#if VOIP_PUSH}}the iOS PushKit token, kept on the device (no `deviceId`: your most recently active iOS device; 404 `IOS_DEVICE_NOT_FOUND` without one){{else}}accepted but not stored (no push notifications module){{/if}} |
+| GET | `/calls/history?limit&offset` | – | `{ calls, total }` |
+| DELETE | `/calls/history` · `/calls/:callId` | – | – (your history only) |
+| GET | `/calls/active` | – | `{ call }` |
+| GET | `/calls/:callId` · `/calls/:callId/participants` | – | Call · `{ participants }` |
+| POST | `/calls/:callId/accept` · `reject` · `end` · `end-for-all` · `cancel` · `join` · `leave` | – | Call |
+| POST | `/calls/:callId/agora-token` | – | `{ token, appId, channelName, uid, expiresIn }` |
+
+Incoming call `IncomingCall { uuid, callId, callerId, callerName, callerAvatar?, callType, channelName, isGroupCall }` –
+`uuid` is the CallKit UUID, derived from `callId` and identical in every delivery (socket event, FCM push, VoIP push),
+so the phone never rings the same call twice.
+{{#if NOTIFICATIONS}}
+FCM push (data only, strings): `type: 'CALL_INCOMING'` + the IncomingCall fields (`isGroupCall: 'true'|'false'`);
+`type: 'CALL_ENDED'` takes the call screen down; `type: 'MISSED_CALL'` is a visible notification.
+{{/if}}
+{{#if VOIP_PUSH}}
+iOS VoIP push (PushKit, APNs topic `<bundle id>.voip`): the IncomingCall as flat JSON (`isGroupCall` a real boolean),
+sent only for a ringing call – never for "call ended" (iOS requires every VoIP push to report a call).
+{{/if}}
 {{/if}}
 {{#if NOTIFICATIONS}}
 
@@ -259,6 +292,11 @@ io('http://<host>:3000', { transports: ['websocket'], auth: { token: accessToken
 | server → app | `presence:user_online` / `presence:user_offline` | `{ userId, lastSeen? }` |
 {{#if NOTIFICATIONS}}
 | server → app | `notification:new` | Notification |
+{{/if}}
+{{#if CALLING}}
+| server → app | `call:incoming` | IncomingCall `{ uuid, callId, callerId, callerName, callerAvatar?, callType, channelName, isGroupCall }` |
+| server → app | `call:accepted` · `call:participant-joined` · `call:participant-left` | `{ callId, userId }` |
+| server → app | `call:rejected` · `call:cancelled` · `call:missed` · `call:ended` | `{ callId, endReason }` |
 {{/if}}
 {{/if}}
 {{#if PAYMENTS}}

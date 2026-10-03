@@ -53,6 +53,8 @@ const notifications: Condition = ctx => auth(ctx) && ctx.options.modules.notific
 const calling: Condition = ctx => auth(ctx) && (ctx.options.modules.audioCall || ctx.options.modules.videoCall);
 /** The users' devices (FCM tokens) – part of push notifications. */
 const devices: Condition = notifications;
+/** iOS VoIP (PushKit) pushes for incoming calls – sent to the devices' VoIP tokens (so calling + devices). */
+const voipPush: Condition = ctx => calling(ctx) && devices(ctx);
 /** Sign-in payloads carry the app's device: stored here, or published to the notifications service (identity). */
 const deviceInput: Condition = ctx => (devices(ctx) && ctx.options.service === undefined) || (ctx.options.service === 'identity' && Boolean(ctx.options.remoteDevices));
 /** GET /legal + the Terms & Conditions / Privacy Policy pages (monolith / identity service). */
@@ -187,6 +189,7 @@ export const BACKEND_MANIFEST: BackendManifestEntry[] = [
   { id: 'port.socialVerifier', template: 'shared/ports/social-verifier.ts', layer: 'ports', file: 'social-verifier.ts', when: social, mergeInto: ['impl.socialVerifier'] },
   { id: 'port.fileStorage', template: 'shared/ports/file-storage.ts', layer: 'ports', file: 'file-storage.ts', when: uploads, mergeInto: ['impl.fileStorage'] },
   { id: 'port.pushSender', template: 'shared/ports/push-sender.ts', layer: 'ports', file: 'push-sender.ts', when: chatPush, mergeInto: ['impl.pushSender'] },
+  { id: 'port.voipPushSender', template: 'shared/ports/voip-push-sender.ts', layer: 'ports', file: 'voip-push-sender.ts', when: voipPush, mergeInto: ['impl.voipPushSender'] },
   { id: 'port.realtime', template: 'shared/ports/realtime.ts', layer: 'ports', file: 'realtime.ts', when: realtime, mergeInto: ['realtime.server', 'events.realtime'] },
   { id: 'impl.passwordHasher', template: 'shared/security/password-hasher.impl.ts', layer: 'security', file: ({ options }) => HASHER_FILES[options.hashing ?? (options as any).passwordHashing ?? 'bcrypt'], when: email },
   { id: 'impl.tokenService', template: 'shared/security/jwt-token.service.ts', layer: 'security', file: 'jwt-token.service.ts', when: auth },
@@ -194,6 +197,7 @@ export const BACKEND_MANIFEST: BackendManifestEntry[] = [
   { id: 'impl.mailer', template: 'shared/adapters/mailer.ts', layer: 'adapters', file: 'mailer.ts', when: email },
   { id: 'impl.smsSender', template: 'shared/adapters/sms-sender.ts', layer: 'adapters', file: 'sms-sender.ts', when: otp },
   { id: 'impl.pushSender', template: 'shared/adapters/push-sender.ts', layer: 'adapters', file: 'push-sender.ts', when: notifications },
+  { id: 'impl.voipPushSender', template: 'shared/adapters/voip-push-sender.ts', layer: 'adapters', file: 'voip-push-sender.ts', when: voipPush },
   { id: 'impl.fileStorage', template: 'shared/adapters/local-file-storage.ts', layer: 'adapters', file: 'local-file-storage.ts', when: uploads },
   { id: 'realtime.server', template: 'shared/realtime/socket.server.ts', layer: 'realtime', file: 'socket.server.ts', when: socketServer },
   // Microservices: events between the services (Redis).

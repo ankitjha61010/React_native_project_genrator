@@ -8,7 +8,6 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { AppState, type AppStateStatus, Modal, Platform, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { errorMessage } from '{{IMPORT:api.errors}}';
 import { flash } from '{{IMPORT:utils.flashMessage}}';
 import { CallPermissionError, useCall } from '../hooks/useCall';
@@ -19,6 +18,7 @@ import { registerVoipPush, unregisterVoipPush, syncVoipTokenWithBackend } from '
 import type { Call, ActiveCallState, IncomingCallData, CallType } from '../types/calling.types';
 import { MinimizedCallBar } from '../components/MinimizedCallBar';
 import { IncomingCallScreen } from '../screens/IncomingCallScreen';
+import { OutgoingCallScreen } from '../screens/OutgoingCallScreen';
 {{#if AUDIO_CALL}}
 import { AudioCallScreen } from '../screens/AudioCallScreen';
 {{/if}}
@@ -70,7 +70,6 @@ function showCallError(error: unknown): void {
 
 export function CallProvider({ children }: CallProviderProps): React.JSX.Element {
   const call = useCall();
-  const insets = useSafeAreaInsets();
   const [isMinimized, setIsMinimized] = useState(false);
   const [callerDisplayName, setCallerDisplayName] = useState<string>('Calling...');
 
@@ -148,19 +147,13 @@ export function CallProvider({ children }: CallProviderProps): React.JSX.Element
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
     CK.registerCallKeepListeners({
-      onAnswerCall: ({ callUUID: _uuid }) => {
-        const c = callRef.current;
-        if (c.incomingCall) {
-          c.answerCall(c.incomingCall.callId);
-        }
+      onAnswerCall: ({ callUUID }) => {
+        callRef.current.handleCallKitAnswer(callUUID)?.catch(showCallError);
+        setIsMinimized(false);
       },
-      onEndCall: ({ callUUID: _uuid }) => {
-        const c = callRef.current;
-        if (c.incomingCall) {
-          c.declineCall(c.incomingCall.callId);
-        } else if (c.isInCall) {
-          c.hangUp();
-        }
+      // Decides itself: the user's End (end call), Decline (reject), or an end the app asked for (ignored).
+      onEndCall: ({ callUUID }) => {
+        callRef.current.handleCallKitEnd(callUUID);
       },
     });
 
@@ -264,6 +257,12 @@ export function CallProvider({ children }: CallProviderProps): React.JSX.Element
     setIsMinimized(false);
   }, [call]);
 
+  /** "Calling…" screen → Cancel: the receiver stops ringing (cancel, not end). */
+  const cancelOutgoing = useCallback(async () => {
+    await call.cancelOutgoing().catch(() => undefined);
+    setIsMinimized(false);
+  }, [call]);
+
   const minimizeCall = useCallback(() => {
     setIsMinimized(true);
   }, []);
@@ -340,6 +339,10 @@ export function CallProvider({ children }: CallProviderProps): React.JSX.Element
   // The caller sees the call screen while it rings on the other side.
   const showCallScreen =
     call.isInCall || Boolean(call.callState.call && call.callState.status === 'ringing');
+  /** Your own one-to-one call that hasn't been picked up yet. */
+  const calling =
+    Boolean(call.callState.outgoing) &&
+    (call.callState.status === 'initiating' || call.callState.status === 'ringing' || call.callState.status === 'connecting');
 
   return (
     <CallContext.Provider value={value}>
@@ -370,8 +373,12 @@ export function CallProvider({ children }: CallProviderProps): React.JSX.Element
         navigationBarTranslucent
         onRequestClose={minimizeCall}
       >
+        {/* You called: "Calling…" with Cancel until the other side picks up (Agora reports them in the channel). */}
+        {calling && activeCallType ? (
+          <OutgoingCallScreen callerName={callerDisplayName} callType={activeCallType} onCancel={cancelOutgoing} />
+        ) : null}
         {{#if VIDEO_CALL}}
-        {activeCallType === 'video' && (
+        {!calling && activeCallType === 'video' && (
           <VideoCallScreen
             state={call.callState}
             callerName={callerDisplayName}
@@ -386,7 +393,7 @@ export function CallProvider({ children }: CallProviderProps): React.JSX.Element
         )}
         {{/if}}
         {{#if AUDIO_CALL}}
-        {activeCallType === 'audio' && (
+        {!calling && activeCallType === 'audio' && (
           <AudioCallScreen
             state={call.callState}
             callerName={callerDisplayName}
@@ -400,9 +407,9 @@ export function CallProvider({ children }: CallProviderProps): React.JSX.Element
         {{/if}}
       </Modal>
 
-      {/* Floating minimised call bar, over the app below the status bar */}
+      {/* Floating minimised call bar over the app – drag it anywhere, tap to go back to the call */}
       {showCallScreen && isMinimized && (
-        <View pointerEvents="box-none" style={[styles.minimizedBar, { top: insets.top }]}>
+        <View pointerEvents="box-none" style={styles.minimizedLayer}>
           <MinimizedCallBar
             callState={call.callState}
             callerName={callerDisplayName}
@@ -417,5 +424,5 @@ export function CallProvider({ children }: CallProviderProps): React.JSX.Element
 }
 
 const styles = StyleSheet.create({
-  minimizedBar: { position: 'absolute', left: 0, right: 0, zIndex: 1000 },
+  minimizedLayer: { ...StyleSheet.absoluteFill, zIndex: 1000, elevation: 1000 },
 });

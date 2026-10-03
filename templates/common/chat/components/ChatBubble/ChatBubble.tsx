@@ -1,13 +1,14 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useCallback, useRef } from 'react';
 import {
   StyleSheet,
   View,
   Image,
   TouchableOpacity,
   Pressable,
-  Animated,
-  PanResponder,
 } from 'react-native';
+import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
+import Animated, { Extrapolation, interpolate, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 import { AppText } from '{{IMPORT:components.AppText}}';
 {{#if VECTOR_ICONS}}
 import { AppIcon } from '{{IMPORT:components.AppIcon}}';
@@ -20,6 +21,23 @@ import { callLog, replyPreview, systemMessageText } from '../../utils/chatFormat
 import { AudioMessage } from '../AudioMessage/AudioMessage';
 import { ChatNotice } from '../ChatNotice/ChatNotice';
 
+/** Where a message sits on screen (window coordinates) – the long-press menu opens next to it. */
+export interface BubbleLayout {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Drag this far (after the 0.7 resistance) to reply. */
+const REPLY_THRESHOLD = 45;
+const MAX_DRAG = 70;
+/**
+ * Touches that start this close to the left edge belong to the iOS back swipe, not to "reply".
+ * (The full-screen back swipe is switched off for the chat room – see MainNavigator.)
+ */
+const BACK_SWIPE_EDGE = 28;
+
 export interface ChatBubbleProps {
   message: ChatMessage;
   onPressMedia?: (message: ChatMessage) => void;
@@ -27,8 +45,8 @@ export interface ChatBubbleProps {
   showSender?: boolean;
   /** A message that failed to send: tap to send it again. */
   onRetry?: (message: ChatMessage) => void;
-  /** Long press: the message actions (reply, delete…). */
-  onLongPress?: (message: ChatMessage) => void;
+  /** Long press: the message actions (reply, edit, delete) next to the message. */
+  onLongPress?: (message: ChatMessage, layout: BubbleLayout) => void;
   /** Horizontal swipe: reply to this message. */
   onReply?: (message: ChatMessage) => void;
   /** Tap on the quote of a reply: jump to the original. */
@@ -44,40 +62,47 @@ export interface ChatBubbleProps {
 export function ChatBubble({ message, onPressMedia, showSender = false, onRetry, onLongPress, onReply, onPressReply, highlighted = false, myId, onPressCall }: ChatBubbleProps): React.JSX.Element {
   const styles = useStyles(createStyles);
   const isMe = message.isMe ?? (myId ? message.senderId === myId : false);
-  const panX = useRef(new Animated.Value(0)).current;
+  const rowRef = useRef<React.ComponentRef<typeof View>>(null);
+  const dragX = useSharedValue(0);
 
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gestureState) => {
-          if (!onReply || message.status === 'sending' || message.status === 'failed') return false;
-          return Math.abs(gestureState.dx) > 12 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5;
-        },
-        onPanResponderMove: (_, gestureState) => {
-          if (!onReply) return;
-          if (gestureState.dx > 0) {
-            panX.setValue(Math.min(gestureState.dx * 0.7, 70));
-          }
-        },
-        onPanResponderRelease: (_, gestureState) => {
-          if (gestureState.dx > 45 && onReply) {
-            onReply(message);
-          }
-          Animated.spring(panX, {
-            toValue: 0,
-            useNativeDriver: true,
-            bounciness: 4,
-          }).start();
-        },
-        onPanResponderTerminate: () => {
-          Animated.spring(panX, {
-            toValue: 0,
-            useNativeDriver: true,
-          }).start();
-        },
-      }),
-    [message, onReply, panX],
-  );
+  const reply = useCallback(() => onReply?.(message), [onReply, message]);
+
+  // Swipe right to reply. A native gesture (not a JS PanResponder), so it wins over the
+  // list's scrolling and never fights the navigation stack for the touch.
+  const swipe = usePanGesture({
+    enabled: Boolean(onReply) && message.status !== 'sending' && message.status !== 'failed',
+    activeOffsetX: 12,
+    failOffsetY: [-12, 12],
+    hitSlop: { left: -BACK_SWIPE_EDGE },
+    onUpdate: event => {
+      'worklet';
+      dragX.value = Math.min(Math.max(event.translationX, 0) * 0.7, MAX_DRAG);
+    },
+    onDeactivate: event => {
+      'worklet';
+      if (!event.canceled && Math.max(event.translationX, 0) * 0.7 >= REPLY_THRESHOLD) {
+        scheduleOnRN(reply);
+      }
+    },
+    onFinalize: () => {
+      'worklet';
+      dragX.value = withSpring(0, { damping: 18, stiffness: 220 });
+    },
+  });
+
+  const bubbleStyle = useAnimatedStyle(() => ({ transform: [{ translateX: dragX.value }] }));
+  const replyIconStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(dragX.value, [0, 20, REPLY_THRESHOLD], [0, 0.6, 1], Extrapolation.CLAMP),
+    transform: [{ scale: interpolate(dragX.value, [0, 25, REPLY_THRESHOLD + 5], [0.5, 0.8, 1], Extrapolation.CLAMP) }],
+  }));
+
+  /** Measure the row first – the menu is drawn right below (or above) this message. */
+  const handleLongPress = () => {
+    if (!onLongPress) return;
+    const row = rowRef.current;
+    if (!row) return;
+    row.measureInWindow((x, y, width, height) => onLongPress(message, { x, y, width, height }));
+  };
 
   const timeFormatted = new Date(message.createdAt).toLocaleTimeString([], {
     hour: '2-digit',
@@ -160,30 +185,19 @@ export function ChatBubble({ message, onPressMedia, showSender = false, onRetry,
   const imageDims = getImageDimensions();
 
   return (
-    <View style={[styles.container, isMe ? styles.containerMe : styles.containerOther, highlighted && styles.highlighted]} {...panResponder.panHandlers}>
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          styles.replyIconContainer,
-          {
-            opacity: panX.interpolate({ inputRange: [0, 20, 45], outputRange: [0, 0.6, 1], extrapolate: 'clamp' }),
-            transform: [
-              {
-                scale: panX.interpolate({ inputRange: [0, 25, 50], outputRange: [0.5, 0.8, 1], extrapolate: 'clamp' }),
-              },
-            ],
-          },
-        ]}>
+    <GestureDetector gesture={swipe}>
+    <View ref={rowRef} collapsable={false} style={[styles.container, isMe ? styles.containerMe : styles.containerOther, highlighted && styles.highlighted]}>
+      <Animated.View pointerEvents="none" style={[styles.replyIconContainer, replyIconStyle]}>
 {{#if VECTOR_ICONS}}
         <AppIcon name="reply" size={16} tintColor={styles.quoteName.color} />
 {{else}}
         <AppText text="↩" />
 {{/if}}
       </Animated.View>
-      <Animated.View style={{ transform: [{ translateX: panX }] }}>
+      <Animated.View style={[styles.bubbleWrap, isMe ? styles.bubbleWrapMe : styles.bubbleWrapOther, bubbleStyle]}>
         <Pressable
           onPress={message.status === 'failed' ? () => onRetry?.(message) : undefined}
-          onLongPress={onLongPress && message.status !== 'sending' ? () => onLongPress(message) : undefined}
+          onLongPress={onLongPress && message.status !== 'sending' ? handleLongPress : undefined}
           delayLongPress={300}
           style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleOther, message.status === 'failed' && styles.bubbleFailed]}>
         {showSender && !isMe ? <AppText fontSize="size12" fontFamily="semiBold" color="primary" numberOfLines={1} text={message.senderName} /> : null}
@@ -302,6 +316,7 @@ export function ChatBubble({ message, onPressMedia, showSender = false, onRetry,
       </Pressable>
       </Animated.View>
     </View>
+    </GestureDetector>
   );
 }
 
@@ -329,6 +344,17 @@ const createStyles = (theme: Theme) =>
       shadowOpacity: 0.15,
       shadowRadius: 2,
       zIndex: 5,
+    },
+    // The bubble's maxWidth (82%) is relative to this full-width wrapper.
+    bubbleWrap: {
+      flex: 1,
+      flexDirection: 'row',
+    },
+    bubbleWrapMe: {
+      justifyContent: 'flex-end',
+    },
+    bubbleWrapOther: {
+      justifyContent: 'flex-start',
     },
     containerMe: {
       justifyContent: 'flex-end',

@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { ArrayMinSize, IsArray, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { ArrayMinSize, IsArray, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 export class InitiateCallDto {
   @IsString()
@@ -17,6 +17,21 @@ export class InitiateGroupCallDto {
 
   @IsIn(['audio', 'video'])
   callType: 'audio' | 'video';
+}
+
+/** POST /calls/voip-token – the iOS app's PushKit token (the app usually sends no deviceId). */
+export class RegisterVoipTokenDto {
+  @IsString()
+  @MinLength(10)
+  @MaxLength(512)
+  voipToken: string;
+
+  /** The install's device id – default: your most recently active iOS device. */
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  deviceId?: string;
 }
 
 export class CallHistoryQueryDto {

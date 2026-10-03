@@ -7,6 +7,9 @@ import type { DevicesService } from '{{IMPORT:app.devicesService}}';
 import type { UsersRepository } from '{{IMPORT:contract.users}}';
 import type { PushMessage, PushSender } from '{{IMPORT:port.pushSender}}';
 import type { Realtime } from '{{IMPORT:port.realtime}}';
+{{#if VOIP_PUSH}}
+import type { VoipCallPayload, VoipPushSender } from '{{IMPORT:port.voipPushSender}}';
+{{/if}}
 import { NOTIFICATIONS_MESSAGES } from '{{IMPORT:messages.notifications}}';
 import { UserRole } from '{{IMPORT:domain.roles}}';
 
@@ -28,6 +31,10 @@ export interface NotificationsDependencies {
   devices: DevicesService;
   users: UsersRepository;
   pushSender: PushSender;
+{{#if VOIP_PUSH}}
+  /** iOS VoIP (PushKit) pushes through APNs – incoming calls only. */
+  voipPushSender?: VoipPushSender;
+{{/if}}
   realtime: Realtime;
   logger: Logger;
 }
@@ -128,4 +135,18 @@ export class NotificationsService {
     const { invalidTokens } = await this.deps.pushSender.send(tokens, message);
     await this.deps.devices.removeInvalidTokens(invalidTokens);
   }
+{{#if VOIP_PUSH}}
+
+  /**
+   * iOS VoIP push (PushKit) of an incoming call to these users' iOS devices that registered a VoIP token. Only
+   * for a call that is ringing: iOS requires every VoIP push to report a call to CallKit (never for "call ended").
+   */
+  async pushVoip(userIds: string[], payload: VoipCallPayload, ttlSeconds?: number): Promise<void> {
+    if (!this.deps.voipPushSender) return;
+    const tokens = await this.deps.devices.voipTokensOf(userIds);
+    if (!tokens.length) return;
+    const { invalidTokens } = await this.deps.voipPushSender.send(tokens, payload, ttlSeconds);
+    await this.deps.devices.clearInvalidVoipTokens(invalidTokens);
+  }
+{{/if}}
 }

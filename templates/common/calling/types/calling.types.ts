@@ -72,6 +72,8 @@ export interface IncomingCallData {
   callType: CallType;
   channelName: string;
   isGroupCall: boolean;
+  /** iOS CallKit id of this call – the same in the socket event, the FCM push and the VoIP push. */
+  uuid?: string;
 }
 
 export interface ActiveCallState {
@@ -86,6 +88,8 @@ export interface ActiveCallState {
   remoteUids: number[];
   status: CallStatus;
   connectedAt?: number | null;
+  /** You started this call (one-to-one): "Calling…" until the other side picks up. */
+  outgoing?: boolean;
 }
 
 // ─── Socket events ─────────────────────────────────────────────────────────

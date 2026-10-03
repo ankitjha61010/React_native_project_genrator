@@ -38,6 +38,10 @@ import { ProviderSocialVerifier } from '{{IMPORT:impl.socialVerifier}}';
 import type { PushSender } from '{{IMPORT:port.pushSender}}';
 import { createPushSender } from '{{IMPORT:impl.pushSender}}';
 {{/if}}
+{{#if VOIP_PUSH}}
+import type { VoipPushSender } from '{{IMPORT:port.voipPushSender}}';
+import { createVoipPushSender } from '{{IMPORT:impl.voipPushSender}}';
+{{/if}}
 {{#if REALTIME}}
 import type { Realtime } from '{{IMPORT:port.realtime}}';
 {{/if}}
@@ -148,6 +152,10 @@ export interface Infrastructure {
 {{#if NOTIFICATIONS}}
   pushSender: PushSender;
 {{/if}}
+{{#if VOIP_PUSH}}
+  /** iOS VoIP (PushKit) pushes through APNs – incoming calls. */
+  voipPushSender: VoipPushSender;
+{{/if}}
 {{#if REALTIME}}
   realtime: Realtime;
 {{/if}}
@@ -209,6 +217,10 @@ export function createInfrastructure(database: Database): Infrastructure {
 {{#if NOTIFICATIONS}}
     pushSender: createPushSender(config.firebase.serviceAccount, logger),
 {{/if}}
+{{#if VOIP_PUSH}}
+    // Not configured (APNS_* empty / REPLACE_ME): a no-op that says so once.
+    voipPushSender: createVoipPushSender(config.apns, logger),
+{{/if}}
 {{#if SOCKET_SERVER}}
     // Starts forwarding once the Socket.IO server is attached to the HTTP server.
     realtime: new SocketHub(),
@@ -266,7 +278,7 @@ export function createServices(infra: Infrastructure) {
   const devices = new DevicesService(repos.devices);
 {{/if}}
 {{#if NOTIFICATIONS}}
-  const notifications = new NotificationsService({ notifications: repos.notifications, devices, users: repos.users, pushSender: infra.pushSender, realtime: infra.realtime, logger });
+  const notifications = new NotificationsService({ notifications: repos.notifications, devices, users: repos.users, pushSender: infra.pushSender, {{#if VOIP_PUSH}}voipPushSender: infra.voipPushSender, {{/if}}realtime: infra.realtime, logger });
 {{/if}}
 
 {{#if CHAT}}
@@ -293,6 +305,9 @@ export function createServices(infra: Infrastructure) {
     realtime: infra.realtime,
 {{#if NOTIFICATIONS}}
     push: (userIds, message) => notifications.push(userIds, message),
+{{/if}}
+{{#if VOIP_PUSH}}
+    voipPush: (userIds, payload, ttlSeconds) => notifications.pushVoip(userIds, payload, ttlSeconds),
 {{/if}}
     logger,
 {{#if CHAT}}

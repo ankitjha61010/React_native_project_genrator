@@ -22,6 +22,10 @@ export const NotificationType = {
   PROMOTION: 'promotion',
   ACCOUNT: 'account',
   GENERAL: 'general',
+{{#if HAS_CALLING}}
+  /** Sent by the backend when an incoming call was not answered. */
+  MISSED_CALL: 'MISSED_CALL',
+{{/if}}
 } as const;
 
 export type NotificationType = (typeof NotificationType)[keyof typeof NotificationType];
@@ -43,6 +47,9 @@ export interface AppNotification {
 export type NotificationTarget =
 {{#if CHAT}}
   | { screen: 'ChatRoom'; params: MainStackParamList['ChatRoom'] }
+{{/if}}
+{{#if HAS_CALLING}}
+  | { screen: 'CallHistory'; params?: MainStackParamList['CallHistory'] }
 {{/if}}
   | { screen: 'WebView'; params: MainStackParamList['WebView'] }
   | { screen: 'Notifications'; params?: MainStackParamList['Notifications'] };
@@ -113,6 +120,16 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeConfig
     emoji: '🔔',
     color: '#6B7280',
   },
+{{#if HAS_CALLING}}
+  [NotificationType.MISSED_CALL]: {
+    label: 'Missed call',
+    icon: 'phone-missed',
+    emoji: '📞',
+    color: '#EF4444',
+    // Missed call → the call history, to call back.
+    target: () => ({ screen: 'CallHistory' }),
+  },
+{{/if}}
 };
 
 function isNotificationType(value: unknown): value is NotificationType {

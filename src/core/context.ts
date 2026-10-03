@@ -79,6 +79,8 @@ export function prepareGeneration(options: ProjectOptions): PreparedGeneration {
     SOCIAL_FACEBOOK: social.facebook,
     SOCIAL_APPLE: social.apple,
     HAS_SOCIAL_AUTH: hasSocialLogin(social),
+    /** Email + password fields on the Login screen: with email auth – or as the only way in when nothing else is on. */
+    EMAIL_LOGIN: options.authEmail || (!options.authMobile && !hasSocialLogin(social)),
     SOCKET: options.socket || options.chat || options.audioCall || options.videoCall,
     CHAT: options.chat,
     GROUP_CHAT: options.chat && options.groupChat,

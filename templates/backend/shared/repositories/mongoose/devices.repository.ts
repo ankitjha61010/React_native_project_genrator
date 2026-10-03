@@ -1,4 +1,4 @@
-import type { Device, DeviceInput } from '{{IMPORT:domain.device}}';
+import { DeviceType, type Device, type DeviceInput } from '{{IMPORT:domain.device}}';
 import type { DevicesRepository } from '{{IMPORT:contract.devices}}';
 import { isValidId } from '{{IMPORT:db.connection}}';
 import { DeviceModel, type DeviceDocument } from '{{IMPORT:mongoose.device}}';
@@ -70,5 +70,14 @@ export class MongooseDevicesRepository implements DevicesRepository {
 
   async removeTokens(tokens: string[]): Promise<void> {
     await DeviceModel.deleteMany({ fcmToken: { $in: tokens } });
+  }
+
+  async listWithVoipToken(userIds: string[]): Promise<Device[]> {
+    const valid = userIds.filter(isValidId);
+    return valid.length ? (await DeviceModel.find({ userId: { $in: valid }, deviceType: DeviceType.IOS, voipToken: { $type: 'string' } }).lean<DeviceDocument[]>()).map(toDevice) : [];
+  }
+
+  async clearVoipTokens(tokens: string[]): Promise<void> {
+    await DeviceModel.updateMany({ voipToken: { $in: tokens } }, { $set: { voipToken: null } });
   }
 }

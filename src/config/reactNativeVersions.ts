@@ -72,6 +72,12 @@ const ECOSYSTEM_2026_08: Record<string, string> = {
   // Chat: voice messages (record + play, a Nitro module like MMKV) and "send a file".
   'react-native-nitro-sound': '0.2.20',
   '@react-native-documents/picker': '12.0.2',
+  // Chat media viewer: native video, in-app PDF, system document viewer.
+  '@react-native-documents/viewer': '4.0.1',
+  'react-native-video': '6.19.3',
+  'react-native-pdf': '7.0.5',
+  'react-native-blob-util': '0.25.1',
+  'react-native-video-trim': '8.2.3',
   // Google Location SDK (optional).
   'react-native-geolocation-service': '5.3.1',
   // Calling: Agora RTC + iOS CallKit + VoIP push + helpers.

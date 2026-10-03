@@ -32,6 +32,9 @@ import type { Mailer, MailMessage } from '{{IMPORT:port.mailer}}';
 {{#if NOTIFICATIONS}}
 import type { PushMessage, PushSender } from '{{IMPORT:port.pushSender}}';
 {{/if}}
+{{#if VOIP_PUSH}}
+import type { VoipCallPayload, VoipPushSender } from '{{IMPORT:port.voipPushSender}}';
+{{/if}}
 {{#if REALTIME}}
 import type { Realtime } from '{{IMPORT:port.realtime}}';
 {{/if}}
@@ -118,6 +121,19 @@ export class FakePushSender implements PushSender {
 
   async send(tokens: string[], message: PushMessage): Promise<{ invalidTokens: string[] }> {
     this.sent.push({ tokens, message });
+    return { invalidTokens: tokens.filter(t => this.invalid.includes(t)) };
+  }
+}
+{{/if}}
+{{#if VOIP_PUSH}}
+
+export class FakeVoipPushSender implements VoipPushSender {
+  readonly sent: Array<{ tokens: string[]; payload: VoipCallPayload; ttlSeconds?: number }> = [];
+  /** Tokens to report as invalid on the next send (APNs 410 / BadDeviceToken). */
+  invalid: string[] = [];
+
+  async send(tokens: string[], payload: VoipCallPayload, ttlSeconds?: number): Promise<{ invalidTokens: string[] }> {
+    this.sent.push({ tokens, payload, ttlSeconds });
     return { invalidTokens: tokens.filter(t => this.invalid.includes(t)) };
   }
 }

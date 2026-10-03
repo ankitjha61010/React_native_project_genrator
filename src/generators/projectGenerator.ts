@@ -15,11 +15,11 @@ import { initGit } from './gitGenerator.js';
 import { generateNavigation, generateScreens } from './navigationGenerator.js';
 import { generateNotifications } from './notificationGenerator.js';
 import { generateSocialAuth } from './socialAuthGenerator.js';
-import { configureAndroidCleartextTraffic, configureAndroidLayoutDirection, configureAndroidLocation, configureAndroidMicrophone, configureAndroidScreensRestoration, installAndroidFonts } from './native/android.js';
+import { configureAndroidCleartextTraffic, configureAndroidLayoutDirection, configureAndroidLocation, configureAndroidMicrophone, configureAndroidPdfViewer, configureAndroidScreensRestoration, installAndroidFonts } from './native/android.js';
 import { configureAndroidCalling } from './native/androidCalling.js';
 import { configureAndroidOTA } from './native/androidOTA.js';
 import { configureIosLocation, configureIosMicrophone, configureXcodeEnv, linkIosFonts, VECTOR_ICON_FONTS } from './native/ios.js';
-import { configureIosCalling, configureIosCallingAppDelegate, configureIosCallingPodfile } from './native/iosCalling.js';
+import { configureIosCalling, configureIosCallingAppDelegate, configureIosCallingPodfile, configureIosVoipPushHandler } from './native/iosCalling.js';
 import { configureIosOTA } from './native/iosOTA.js';
 import { generateOTAKeys, writeOTAPrivateKey } from './native/otaKeys.js';
 import { initReactNativeProject } from './reactNativeInit.js';
@@ -136,8 +136,9 @@ export async function generateProject(options: ProjectOptions, hooks: Generation
         async () => {
           await configureAndroidMicrophone(projectDir);
           await configureIosMicrophone(projectDir, options.appName, options.displayName);
+          await configureAndroidPdfViewer(projectDir);
         },
-        'Microphone permission added (Android & iOS)',
+        'Microphone permission and media viewer configured (Android & iOS)',
       );
     }
 
@@ -149,6 +150,7 @@ export async function generateProject(options: ProjectOptions, hooks: Generation
           await configureIosCalling(projectDir, options.appName, options.displayName, options.videoCall);
           await configureIosCallingAppDelegate(projectDir, options.appName);
           await configureIosCallingPodfile(projectDir, options.appName);
+          await configureIosVoipPushHandler(projectDir, options.appName);
         },
         'Calling permissions and VoIP background modes added (Android & iOS)',
       );

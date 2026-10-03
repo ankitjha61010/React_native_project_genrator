@@ -3,10 +3,13 @@ import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/commo
 import { ApiTags } from '@nestjs/swagger';
 {{/if}}
 import { CallingService } from '{{IMPORT:app.callingService}}';
+{{#if VOIP_PUSH}}
+import { DevicesService } from '{{IMPORT:app.devicesService}}';
+{{/if}}
 import type { User } from '{{IMPORT:domain.user}}';
 import { CurrentUser } from '{{IMPORT:nest.decorators}}';
 import { Endpoint } from '{{IMPORT:nest.endpoint}}';
-import { CallHistoryQueryDto, InitiateCallDto, InitiateGroupCallDto } from '{{IMPORT:nest.calling.dto}}';
+import { CallHistoryQueryDto, InitiateCallDto, InitiateGroupCallDto, RegisterVoipTokenDto } from '{{IMPORT:nest.calling.dto}}';
 import { CALLING_MESSAGES } from '{{IMPORT:messages.calling}}';
 
 /** `/calls` – Agora audio / video calls: start, answer, end, tokens, history. */
@@ -15,7 +18,15 @@ import { CALLING_MESSAGES } from '{{IMPORT:messages.calling}}';
 {{/if}}
 @Controller('calls')
 export class CallingController {
+{{#if VOIP_PUSH}}
+  constructor(
+    private readonly calling: CallingService,
+    /** Where VoIP tokens are kept (one per iOS device). */
+    private readonly devices: DevicesService,
+  ) {}
+{{else}}
   constructor(private readonly calling: CallingService) {}
+{{/if}}
 
   @Post()
   @Endpoint({ summary: 'Start a one-to-one call', message: CALLING_MESSAGES.callInitiated, status: 201, errors: [400, 401, 404, 409, 422], bearer: true })
@@ -28,6 +39,20 @@ export class CallingController {
   initiateGroupCall(@CurrentUser() user: User, @Body() dto: InitiateGroupCallDto) {
     return this.calling.initiateGroupCall({ callerId: user.id, participantIds: dto.participantIds, callType: dto.callType });
   }
+
+  @Post('voip-token')
+{{#if VOIP_PUSH}}
+  @Endpoint({ summary: 'Save the iOS VoIP (PushKit) token of your device (no deviceId: your most recently active iOS device)', message: CALLING_MESSAGES.voipTokenSaved, status: 200, response: null, errors: [401, 404, 422], bearer: true })
+  async registerVoipToken(@CurrentUser() user: User, @Body() dto: RegisterVoipTokenDto) {
+    await this.devices.registerVoipToken(user.id, dto.voipToken, dto.deviceId);
+  }
+{{else}}
+  @Endpoint({ summary: 'iOS VoIP (PushKit) token – accepted but not stored (no push notifications module)', message: CALLING_MESSAGES.voipTokenIgnored, status: 200, response: null, errors: [401, 422], bearer: true })
+  // Validated like everywhere, but there are no devices to keep it on.
+  registerVoipToken(@Body() _dto: RegisterVoipTokenDto) {
+    return null;
+  }
+{{/if}}
 
   @Get('history')
   @Endpoint({ summary: 'Your call history', message: CALLING_MESSAGES.historyRetrieved, errors: [401, 422], bearer: true })

@@ -106,6 +106,49 @@ export async function configureAndroidMicrophone(projectDir: string): Promise<vo
   );
 }
 
+/**
+ * react-native-pdf (chat document viewer): its PDF renderer is hosted on JitPack, and pdfium
+ * ships its own libc++_shared.so next to React Native's – Gradle must pick one.
+ */
+export async function configureAndroidPdfViewer(projectDir: string): Promise<void> {
+  const android = path.join(projectDir, 'android');
+
+  await edit(path.join(android, 'build.gradle'), 'android/build.gradle', source =>
+    appendBlock(source, {
+      id: 'pdf-viewer-jitpack',
+      comment: '//',
+      content: [
+        '// react-native-pdf: AndroidPdfViewer is only published on JitPack.',
+        'allprojects {',
+        '    repositories {',
+        '        maven {',
+        '            url "https://jitpack.io"',
+        '            content { includeGroup "com.github.zacharee" }',
+        '        }',
+        '    }',
+        '}',
+      ].join('\n'),
+    }),
+  );
+
+  await edit(path.join(android, 'app', 'build.gradle'), 'android/app/build.gradle', source =>
+    appendBlock(source, {
+      id: 'pdf-viewer-packaging',
+      comment: '//',
+      content: [
+        '// react-native-pdf: pdfium and React Native both bundle libc++_shared.so.',
+        'android {',
+        '    packaging {',
+        '        jniLibs {',
+        "            pickFirsts += ['lib/x86/libc++_shared.so', 'lib/x86_64/libc++_shared.so', 'lib/armeabi-v7a/libc++_shared.so', 'lib/arm64-v8a/libc++_shared.so']",
+        '        }',
+        '    }',
+        '}',
+      ].join('\n'),
+    }),
+  );
+}
+
 /** Location permissions for the Google Location SDK (requested at runtime) – only when it was selected. */
 export async function configureAndroidLocation(projectDir: string): Promise<void> {
   const manifest = path.join(projectDir, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');

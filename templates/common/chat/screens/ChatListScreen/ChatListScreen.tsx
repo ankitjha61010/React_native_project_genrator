@@ -1,5 +1,5 @@
-import React, { useLayoutEffect } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, RefreshControl, StyleSheet, TouchableOpacity, View } from 'react-native';
+import React, { useLayoutEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, FlatList, Image, RefreshControl, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { AppText } from '{{IMPORT:components.AppText}}';
 {{#if VECTOR_ICONS}}
@@ -46,6 +46,21 @@ export function ChatListScreen(): React.JSX.Element {
   const styles = useStyles(createStyles);
   const { user } = useAuthSession();
   const { conversations, loading, refreshing, refresh, remove } = useChatList();
+  /** Search: chat name, people in it and the last message – over the loaded chats. */
+  const [search, setSearch] = useState('');
+  const query = search.trim().toLowerCase();
+  const shown = useMemo(
+    () =>
+      query
+        ? conversations.filter(
+            c =>
+              c.title.toLowerCase().includes(query) ||
+              c.participants.some(p => p.name?.toLowerCase().includes(query)) ||
+              messagePreview(c.lastMessage, user?.id).toLowerCase().includes(query),
+          )
+        : conversations,
+    [conversations, query, user?.id],
+  );
 
   // Before the first paint, so the button never pops in.
   useLayoutEffect(() => {
@@ -99,16 +114,35 @@ export function ChatListScreen(): React.JSX.Element {
 
   return (
     <View style={styles.container}>
+      {conversations.length > 0 || search ? (
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder={translate('common', 'searchChats')}
+          placeholderTextColor={styles.placeholder.color}
+          autoCapitalize="none"
+          autoCorrect={false}
+          clearButtonMode="while-editing"
+          returnKeyType="search"
+          accessibilityLabel={translate('common', 'searchChats')}
+          style={styles.search}
+        />
+      ) : null}
       <FlatList
-        data={conversations}
+        data={shown}
         keyExtractor={item => item.id}
         renderItem={renderItem}
         ItemSeparatorComponent={Separator}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
-        contentContainerStyle={conversations.length === 0 && styles.emptyContainer}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={shown.length === 0 && styles.emptyContainer}
         ListEmptyComponent={
           loading ? (
             <ActivityIndicator />
+          ) : query ? (
+            <View style={styles.empty}>
+              <AppText color="textSecondary" intlType="common" value="noChatsFound" />
+            </View>
           ) : (
             <View style={styles.empty}>
 {{#if VECTOR_ICONS}}
@@ -128,6 +162,20 @@ export function ChatListScreen(): React.JSX.Element {
 
 const createStyles = (theme: Theme) =>
   StyleSheet.create({
+    search: {
+      marginHorizontal: theme.spacing.spacing16,
+      marginVertical: theme.spacing.spacing8,
+      paddingHorizontal: theme.spacing.spacing12,
+      minHeight: theme.spacing.spacing40,
+      borderRadius: theme.borderRadius.radius8,
+      backgroundColor: theme.colors.surface,
+      color: theme.colors.text,
+      fontFamily: theme.typography.fontFamily.regular,
+      fontSize: theme.typography.fontSize.size14,
+    },
+    placeholder: {
+      color: theme.colors.placeholder,
+    },
     container: {
       flex: 1,
       backgroundColor: theme.colors.background,

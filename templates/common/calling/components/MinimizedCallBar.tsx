@@ -1,6 +1,6 @@
 // ─── Minimized Call Bar ────────────────────────────────────────────────────────
-// A small floating bar shown when the user navigates away during an active call.
-// Tapping it returns the user to the full call screen.
+// A small floating pill shown when the user navigates away during an active call.
+// Drag it anywhere on screen; tap it to return to the full call screen.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useRef } from 'react';
@@ -10,9 +10,16 @@ import {
   StyleSheet,
   TouchableOpacity,
   Animated,
+  useWindowDimensions,
 } from 'react-native';
-import { AppIcon, type AppIconName } from '{{IMPORT:components.AppIcon}}';
+import { GestureDetector } from 'react-native-gesture-handler';
+import Reanimated from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AppIcon } from '{{IMPORT:components.AppIcon}}';
 import type { ActiveCallState } from '../types/calling.types';
+import { useFloatingDrag } from '../hooks/useFloatingDrag';
+
+const EDGE = 12;
 
 interface Props {
   callState: ActiveCallState;
@@ -38,6 +45,13 @@ export function MinimizedCallBar({ callState, callerName, timer: propTimer, onMa
   const pulseAnim = useRef(new Animated.Value(0.6)).current;
   const localTimer = useTimer(callState.status === 'connected');
   const timer = propTimer ?? localTimer;
+  const insets = useSafeAreaInsets();
+  const { width: screenW } = useWindowDimensions();
+  // Starts at the top, centred under the status bar – then wherever the user drops it.
+  const drag = useFloatingDrag({
+    margins: { top: insets.top + 4, bottom: insets.bottom + EDGE, left: insets.left + EDGE, right: insets.right + EDGE },
+    initial: (size, screen) => ({ x: (screen.width - size.width) / 2, y: insets.top + 8 }),
+  });
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -51,6 +65,8 @@ export function MinimizedCallBar({ callState, callerName, timer: propTimer, onMa
   }, [pulseAnim]);
 
   return (
+    <GestureDetector gesture={drag.gesture}>
+    <Reanimated.View style={[drag.style, { maxWidth: screenW - EDGE * 2 }]} onLayout={drag.onLayout}>
     <TouchableOpacity onPress={onMaximize} activeOpacity={0.9} accessibilityLabel="Return to call" accessibilityRole="button">
       <View style={styles.bar}>
         {/* Green dot */}
@@ -72,6 +88,8 @@ export function MinimizedCallBar({ callState, callerName, timer: propTimer, onMa
         </TouchableOpacity>
       </View>
     </TouchableOpacity>
+    </Reanimated.View>
+    </GestureDetector>
   );
 }
 
@@ -82,9 +100,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1d2e',
     paddingVertical: 10,
     paddingHorizontal: 16,
-    borderRadius: 16,
-    marginHorizontal: 12,
-    marginTop: 8,
+    borderRadius: 28,
+    minWidth: 220,
     borderWidth: 1,
     borderColor: 'rgba(99,102,241,0.3)',
     shadowColor: '#6366f1',
@@ -99,7 +116,7 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: '#22c55e',
   },
-  info: { flex: 1 },
+  info: { flexShrink: 1, marginEnd: 4 },
   name: { fontSize: 14, fontWeight: '700', color: '#fff' },
   timer: { fontSize: 12, color: 'rgba(255,255,255,0.5)', fontVariant: ['tabular-nums'] },
   endBtn: {

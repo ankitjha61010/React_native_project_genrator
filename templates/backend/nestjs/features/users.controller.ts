@@ -98,6 +98,21 @@ export class UsersController {
     return one(await this.users.update(id, dto, actor.id));
   }
 
+  @Post(':id/avatar')
+  @RequirePermissions('users:write')
+  @Upload('avatar')
+  @Endpoint({ summary: "Upload a user's profile picture (multipart field `avatar`: JPEG, PNG, WebP or HEIC) – permission users:write", message: USERS_MESSAGES.avatarUpdated, status: 200, response: UserResponseDto, errors: [400, 401, 403, 404, 413, 422], bearer: true })
+  async setAvatarOf(@Param('id') id: string, @UploadedFileOf('avatar') file: UploadedFile) {
+    return one(await this.users.setAvatar(id, file));
+  }
+
+  @Delete(':id/avatar')
+  @RequirePermissions('users:write')
+  @Endpoint({ summary: "Remove a user's profile picture – permission users:write", message: USERS_MESSAGES.avatarRemoved, response: UserResponseDto, errors: [401, 403, 404], bearer: true })
+  async removeAvatarOf(@Param('id') id: string) {
+    return one(await this.users.removeAvatar(id));
+  }
+
   @Delete(':id')
   @RequirePermissions('users:delete')
   @Endpoint({ summary: 'Delete a user – permission users:delete', message: USERS_MESSAGES.deleted, errors: [401, 403, 404], bearer: true })

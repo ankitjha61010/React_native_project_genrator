@@ -181,6 +181,8 @@ export function ProfileScreen(): React.JSX.Element {
               </>
             ) : null}
 {{/if}}
+            <View style={styles.divider} />
+            <Row {{#if VECTOR_ICONS}}icon="cog-outline" {{/if}}label={translate('common', 'settings')} onPress={() => navigation.navigate('Main', { screen: 'Settings' })} />
           </View>
         </FadeInView>
 

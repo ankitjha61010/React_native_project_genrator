@@ -304,6 +304,11 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['chat.ChatNotice', 'components/ChatNotice/ChatNotice.tsx'],
     // Clear chat / Clear all chats / Delete chat (Chat details, Group info).
     ['chat.ChatActions', 'components/ChatActions/ChatActions.tsx'],
+    // Long press on a message: WhatsApp-style menu next to it (reply, edit, delete).
+    ['chat.MessageActionsMenu', 'components/MessageActionsMenu/MessageActionsMenu.tsx'],
+    // Media viewer: native video player with zoom, in-app PDF, system viewer for other files.
+    ['chat.ChatVideoPlayer', 'components/ChatVideoPlayer/ChatVideoPlayer.tsx'],
+    ['chat.mediaFiles', 'utils/mediaFiles.ts'],
     ['chat.AudioMessage', 'components/AudioMessage/AudioMessage.tsx'],
     ['chat.UserRow', 'components/UserRow/UserRow.tsx'],
     // Voice messages: record / play (react-native-nitro-sound).
@@ -339,6 +344,8 @@ export const COMMON_MANIFEST: ManifestEntry[] = [
     ['calling.OutgoingCallScreen', 'screens/OutgoingCallScreen.tsx'],
     ['calling.CallHistoryScreen', 'screens/CallHistoryScreen.tsx'],
     ['calling.MinimizedCallBar', 'components/MinimizedCallBar.tsx'],
+    // Drag the minimised call bar / your camera preview anywhere on screen.
+    ['calling.useFloatingDrag', 'hooks/useFloatingDrag.ts'],
     ['calling.CallContext', 'context/CallContext.tsx'],
   ]).map(e => ({ ...e, when: hasCalling })),
   ...entries('calling', [

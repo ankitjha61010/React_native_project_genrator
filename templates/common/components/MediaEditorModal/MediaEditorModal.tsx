@@ -23,6 +23,10 @@ import {
   useImage,
 } from '@shopify/react-native-skia';
 import { Dirs, FileSystem } from 'react-native-file-access';
+{{#if CHAT}}
+import Video, { type VideoRef } from 'react-native-video';
+import { trim as trimVideo } from 'react-native-video-trim';
+{{/if}}
 import { AppText } from '{{IMPORT:components.AppText}}';
 {{#if VECTOR_ICONS}}
 import { AppIcon } from '{{IMPORT:components.AppIcon}}';
@@ -38,6 +42,10 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const PREVIEW_W = SCREEN_WIDTH - 32;
 const PREVIEW_H = 320;
 const MIN_CROP = 60; // px – smallest allowed crop dimension
+/** Shortest video that can be sent after trimming (seconds). */
+const MIN_TRIM = 1;
+const TRIM_HANDLE_W = 18;
+const TRIM_TRACK_H = 56;
 
 export interface MediaCropData {
   /** Crop box left offset relative to the preview image (0-1 normalised). */
@@ -60,6 +68,9 @@ export interface MediaItem {
   fileName?: string;
   fileSize?: string;
   duration?: number;
+  /** Video: the part to keep (seconds from the start). `duration` = trimEnd − trimStart. */
+  trimStart?: number;
+  trimEnd?: number;
   crop?: MediaCropData;
 }
 
@@ -212,6 +223,111 @@ async function applyFilterToFile(uri: string, filter: Exclude<FilterId, 'normal'
   return { uri: `file://${path}`, width, height };
 }
 
+// ─── video trimmer ───────────────────────────────────────────────────────────
+
+/** 0:07 / 1:05.3 style label. */
+function formatTrimTime(seconds: number, precise = false) {
+  const m = Math.floor(seconds / 60);
+  const rest = seconds - m * 60;
+  const s = precise ? rest.toFixed(1).padStart(4, '0') : Math.floor(rest).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+type TrimDrag = 'start' | 'end' | 'window';
+
+interface VideoTrimmerProps {
+  duration: number;
+  start: number;
+  end: number;
+  /** Current playback position, drawn as a thin line inside the selection. */
+  playhead?: number;
+  onChange: (start: number, end: number, dragging: TrimDrag) => void;
+  onDragEnd?: () => void;
+  styles: ReturnType<typeof createStyles>;
+}
+
+/**
+ * Drag the left / right handles to choose where the video starts and ends,
+ * or drag the selected part itself to slide the whole window.
+ */
+function VideoTrimmer({ duration, start, end, playhead, onChange, onDragEnd, styles }: VideoTrimmerProps) {
+  const [trackW, setTrackW] = useState(1);
+  // Latest values for the PanResponder closures (created once).
+  const latest = useRef({ duration, start, end, trackW, onChange, onDragEnd });
+  latest.current = { duration, start, end, trackW, onChange, onDragEnd };
+  const dragStart = useRef({ start: 0, end: 0 });
+
+  const makeTrimPan = useCallback(
+    (kind: TrimDrag) =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        // Keep the drag even if the finger wanders vertically over the ScrollView.
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: () => {
+          dragStart.current = { start: latest.current.start, end: latest.current.end };
+        },
+        onPanResponderMove: (_: GestureResponderEvent, gs: PanResponderGestureState) => {
+          const { duration: total, trackW: width, onChange: change } = latest.current;
+          const usable = Math.max(1, width - TRIM_HANDLE_W * 2);
+          const delta = (gs.dx / usable) * total;
+          const s0 = dragStart.current.start;
+          const e0 = dragStart.current.end;
+          const minLen = Math.min(MIN_TRIM, total);
+          if (kind === 'start') {
+            change(clamp(s0 + delta, 0, e0 - minLen), e0, kind);
+          } else if (kind === 'end') {
+            change(s0, clamp(e0 + delta, s0 + minLen, total), kind);
+          } else {
+            const len = e0 - s0;
+            const nextStart = clamp(s0 + delta, 0, total - len);
+            change(nextStart, nextStart + len, kind);
+          }
+        },
+        onPanResponderRelease: () => latest.current.onDragEnd?.(),
+        onPanResponderTerminate: () => latest.current.onDragEnd?.(),
+      }),
+    [],
+  );
+  const startPan = useMemo(() => makeTrimPan('start'), [makeTrimPan]);
+  const endPan = useMemo(() => makeTrimPan('end'), [makeTrimPan]);
+  const windowPan = useMemo(() => makeTrimPan('window'), [makeTrimPan]);
+
+  const usable = Math.max(1, trackW - TRIM_HANDLE_W * 2);
+  const total = Math.max(duration, 0.001);
+  const left = (start / total) * usable;
+  const right = (end / total) * usable + TRIM_HANDLE_W * 2;
+  const playheadX = playhead !== undefined && playhead >= start && playhead <= end ? (playhead / total) * usable + TRIM_HANDLE_W : null;
+
+  return (
+    <View style={styles.trimmerTrack} onLayout={e => setTrackW(e.nativeEvent.layout.width)}>
+      {/* Film strip look */}
+      <View style={styles.filmStrip} pointerEvents="none">
+        {Array.from({ length: 14 }).map((_, i) => (
+          <View key={i} style={[styles.filmFrame, i % 2 === 1 && styles.filmFrameAlt]} />
+        ))}
+      </View>
+
+      {/* Cut-away parts */}
+      <View pointerEvents="none" style={[styles.trimDim, { left: 0, width: left + TRIM_HANDLE_W / 2 }]} />
+      <View pointerEvents="none" style={[styles.trimDim, { left: right - TRIM_HANDLE_W / 2, right: 0 }]} />
+
+      {/* Selected part: drag to slide it */}
+      <View {...windowPan.panHandlers} style={[styles.trimWindow, { left, width: right - left }]}>
+        {playheadX !== null ? <View pointerEvents="none" style={[styles.playhead, { left: playheadX - left - 1 }]} /> : null}
+      </View>
+
+      {/* Handles (wide touch area, slim look) */}
+      <View {...startPan.panHandlers} hitSlop={ { left: 14, right: 6, top: 10, bottom: 10 } } style={[styles.trimHandle, styles.trimHandleStart, { left }]}>
+        <View style={styles.trimGrip} />
+      </View>
+      <View {...endPan.panHandlers} hitSlop={ { left: 6, right: 14, top: 10, bottom: 10 } } style={[styles.trimHandle, styles.trimHandleEnd, { left: right - TRIM_HANDLE_W }]}>
+        <View style={styles.trimGrip} />
+      </View>
+    </View>
+  );
+}
+
 // ─── types ───────────────────────────────────────────────────────────────────
 
 /** Which crop handle the user is currently dragging. */
@@ -243,6 +359,15 @@ export function MediaEditorModal({
   const [filter, setFilter] = useState<FilterId>('normal');
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(media?.duration || 15);
+  /** Real length once the player has loaded it (the picker's value can be missing). */
+  const [videoDuration, setVideoDuration] = useState(media?.duration || 15);
+{{#if CHAT}}
+  const videoRef = useRef<VideoRef>(null);
+  const [playing, setPlaying] = useState(false);
+  const [playhead, setPlayhead] = useState(0);
+  const trimRef = useRef({ start: 0, end: media?.duration || 15 });
+  trimRef.current = { start: trimStart, end: trimEnd };
+{{/if}}
   const [isProcessing, setIsProcessing] = useState(false);
 
   // ── crop box (pixel-space inside the preview area) ────────────────────────
@@ -265,6 +390,11 @@ export function MediaEditorModal({
       setFilter('normal');
       setTrimStart(0);
       setTrimEnd(media.duration || 15);
+      setVideoDuration(media.duration || 15);
+{{#if CHAT}}
+      setPlaying(false);
+      setPlayhead(0);
+{{/if}}
       setIsProcessing(false);
     }
     // Intentionally depend on media?.uri so reopening with a NEW image resets.
@@ -286,7 +416,44 @@ export function MediaEditorModal({
     if (!media || isProcessing) return;
 
     if (media.type === 'video') {
-      onSend({ ...media, duration: Math.max(1, trimEnd - trimStart) });
+      const start = Math.round(trimStart * 10) / 10;
+      const end = Math.round(trimEnd * 10) / 10;
+      const trimmed = { ...media, trimStart: start, trimEnd: end, duration: Math.max(MIN_TRIM, Math.round(end - start)) };
+{{#if CHAT}}
+      // Only the selected part is sent: cut it into a new file on the device (react-native-video-trim / FFmpeg).
+      const cut = start > 0.05 || end < videoDuration - 0.05;
+      if (cut) {
+        setIsProcessing(true);
+        try {
+          const result = await trimVideo(toFileUri(media.uri), {
+            startTime: Math.round(start * 1000),
+            endTime: Math.round(end * 1000),
+            type: 'video',
+            outputExt: 'mp4',
+            saveToPhoto: false,
+            // Frame-accurate cut (re-encodes with the hardware encoder) – stream copy can drift to a keyframe.
+            enablePreciseTrimming: true,
+          });
+          if (!result.success || !result.outputPath) throw new Error('Trim failed');
+          onSend({
+            ...trimmed,
+            uri: toFileUri(result.outputPath),
+            fileName: `video_${Date.now()}.mp4`,
+            // The file now holds only the selected part.
+            trimStart: 0,
+            trimEnd: Math.max(MIN_TRIM, result.duration / 1000),
+            duration: Math.max(MIN_TRIM, Math.round(result.duration / 1000)),
+          });
+          onClose();
+        } catch (e) {
+          console.warn('[MediaEditorModal] Failed to trim video', e);
+        } finally {
+          setIsProcessing(false);
+        }
+        return;
+      }
+{{/if}}
+      onSend(trimmed);
       onClose();
       return;
     }
@@ -422,7 +589,22 @@ export function MediaEditorModal({
   if (!media) return null;
 
   const isVideo = media.type === 'video';
-  const totalDuration = media.duration || 15;
+  const totalDuration = videoDuration;
+
+  /** Dragging a trim handle shows that frame; sliding the window shows its first frame. */
+  const changeTrim = (start: number, end: number, dragging: TrimDrag) => {
+    setTrimStart(start);
+    setTrimEnd(end);
+{{#if CHAT}}
+    setPlaying(false);
+    videoRef.current?.seek(dragging === 'end' ? end : start);
+{{/if}}
+  };
+  const nudge = (edge: 'start' | 'end', by: number) => {
+    const minLen = Math.min(MIN_TRIM, totalDuration);
+    if (edge === 'start') changeTrim(clamp(trimStart + by, 0, trimEnd - minLen), trimEnd, 'start');
+    else changeTrim(trimStart, clamp(trimEnd + by, trimStart + minLen, totalDuration), 'end');
+  };
   const { x: cx, y: cy, w: cw, h: ch } = cropBox;
 
   return (
@@ -465,6 +647,45 @@ export function MediaEditorModal({
             Each handle is draggable and resizes the crop box.
           */}
           <View style={styles.imageFrame} pointerEvents="box-none">
+{{#if CHAT}}
+            {isVideo ? (
+              /* Plays only the selected part, on a loop – tap to play / pause. */
+              <TouchableOpacity activeOpacity={1} style={styles.previewImage} onPress={() => setPlaying(p => !p)}>
+                <Video
+                  ref={videoRef}
+                  source={ { uri: media.uri } }
+                  style={styles.previewImage}
+                  resizeMode="contain"
+                  paused={!playing}
+                  muted={false}
+                  progressUpdateInterval={100}
+                  onLoad={data => {
+                    if (!data.duration) return;
+                    setVideoDuration(data.duration);
+                    // The picker's duration was missing / rounded – select the whole video.
+                    setTrimEnd(end => (end > data.duration || !media.duration ? data.duration : end));
+                    videoRef.current?.seek(trimRef.current.start);
+                  }}
+                  onProgress={({ currentTime }) => {
+                    setPlayhead(currentTime);
+                    if (currentTime >= trimRef.current.end) videoRef.current?.seek(trimRef.current.start);
+                  }}
+                  onEnd={() => videoRef.current?.seek(trimRef.current.start)}
+                  repeat
+                />
+              </TouchableOpacity>
+            ) : (
+              /* Fixed background image — NOT wrapped in any pan responder */
+              <Image
+                source={{ uri: media.uri }}
+                style={[
+                  styles.previewImage,
+                  { transform: [{ rotate: `${rotation}deg` }] },
+                ]}
+                resizeMode="cover"
+              />
+            )}
+{{else}}
             {/* Fixed background image — NOT wrapped in any pan responder */}
             <Image
               source={{ uri: media.uri }}
@@ -474,6 +695,7 @@ export function MediaEditorModal({
               ]}
               resizeMode="cover"
             />
+{{/if}}
 
             {/* Filter preview — drawn on top of the image with the real colour matrix */}
             {!isVideo && filter !== 'normal' && previewImage && (
@@ -487,7 +709,7 @@ export function MediaEditorModal({
             )}
 
             {/* Video play indicator */}
-            {isVideo && (
+            {isVideo{{#if CHAT}} && !playing{{/if}} && (
               <View style={styles.playOverlay} pointerEvents="none">
 {{#if VECTOR_ICONS}}
                 <AppIcon name="play-circle" size={48} tintColor="#FFFFFF" />
@@ -590,38 +812,49 @@ export function MediaEditorModal({
             /* Video Trimmer */
             <View style={styles.trimContainer}>
               <View style={styles.trimHeader}>
-                <AppText style={styles.controlSectionTitle}>Video Trimming</AppText>
+                <AppText style={styles.controlSectionTitle}>Trim Video</AppText>
                 <AppText style={styles.trimDurationBadge}>
-                  {trimStart}s – {trimEnd}s ({Math.max(1, trimEnd - trimStart)}s)
+                  {formatTrimTime(Math.max(0, trimEnd - trimStart), true)}
                 </AppText>
               </View>
 
-              <View style={styles.trimTrack}>
-                <View
-                  style={[
-                    styles.trimSelectedRange,
-                    {
-                      left: `${(trimStart / totalDuration) * 100}%` as any,
-                      width: `${((trimEnd - trimStart) / totalDuration) * 100}%` as any,
-                    },
-                  ]}
-                />
+              <VideoTrimmer
+                duration={totalDuration}
+                start={trimStart}
+                end={trimEnd}
+{{#if CHAT}}
+                playhead={playing ? playhead : undefined}
+{{/if}}
+                onChange={changeTrim}
+                styles={styles}
+              />
+
+              <View style={styles.trimTimesRow}>
+                <AppText style={styles.trimTime}>{formatTrimTime(trimStart, true)}</AppText>
+                <AppText style={styles.trimHint}>Drag the handles or slide the selection</AppText>
+                <AppText style={styles.trimTime}>{formatTrimTime(trimEnd, true)}</AppText>
               </View>
 
+              {/* Fine-tune: ±0.5 s */}
               <View style={styles.trimButtonsRow}>
-                <TouchableOpacity style={styles.trimAdjBtn} onPress={() => setTrimStart(p => Math.max(0, p - 1))}>
-                  <AppText style={styles.trimBtnText}>– Start</AppText>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.trimAdjBtn} onPress={() => setTrimStart(p => Math.min(trimEnd - 1, p + 1))}>
-                  <AppText style={styles.trimBtnText}>+ Start</AppText>
-                </TouchableOpacity>
-                <View style={{ width: 16 }} />
-                <TouchableOpacity style={styles.trimAdjBtn} onPress={() => setTrimEnd(p => Math.max(trimStart + 1, p - 1))}>
-                  <AppText style={styles.trimBtnText}>– End</AppText>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.trimAdjBtn} onPress={() => setTrimEnd(p => Math.min(totalDuration, p + 1))}>
-                  <AppText style={styles.trimBtnText}>+ End</AppText>
-                </TouchableOpacity>
+                <View style={styles.nudgeGroup}>
+                  <TouchableOpacity style={styles.nudgeBtn} onPress={() => nudge('start', -0.5)} accessibilityLabel="Start earlier">
+                    <AppText style={styles.trimBtnText}>‹</AppText>
+                  </TouchableOpacity>
+                  <AppText style={styles.nudgeLabel}>Start</AppText>
+                  <TouchableOpacity style={styles.nudgeBtn} onPress={() => nudge('start', 0.5)} accessibilityLabel="Start later">
+                    <AppText style={styles.trimBtnText}>›</AppText>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.nudgeGroup}>
+                  <TouchableOpacity style={styles.nudgeBtn} onPress={() => nudge('end', -0.5)} accessibilityLabel="End earlier">
+                    <AppText style={styles.trimBtnText}>‹</AppText>
+                  </TouchableOpacity>
+                  <AppText style={styles.nudgeLabel}>End</AppText>
+                  <TouchableOpacity style={styles.nudgeBtn} onPress={() => nudge('end', 0.5)} accessibilityLabel="End later">
+                    <AppText style={styles.trimBtnText}>›</AppText>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           ) : (
@@ -862,38 +1095,113 @@ const createStyles = (theme: Theme) =>
       fontSize: 13,
       fontWeight: '600',
     },
-    trimTrack: {
-      height: 28,
-      backgroundColor: '#2A2A2A',
-      borderRadius: 6,
-      overflow: 'hidden',
-      position: 'relative',
+    trimmerTrack: {
+      height: TRIM_TRACK_H,
+      borderRadius: 10,
+      backgroundColor: '#1E1E1E',
+      overflow: 'visible',
+      justifyContent: 'center',
     },
-    trimSelectedRange: {
+    filmStrip: {
+      ...StyleSheet.absoluteFill,
+      flexDirection: 'row',
+      marginHorizontal: TRIM_HANDLE_W,
+      borderRadius: 4,
+      overflow: 'hidden',
+    },
+    filmFrame: {
+      flex: 1,
+      backgroundColor: '#3A3A3A',
+    },
+    filmFrameAlt: {
+      backgroundColor: '#454545',
+    },
+    trimDim: {
       position: 'absolute',
       top: 0,
       bottom: 0,
-      backgroundColor: theme.colors.primary,
-      opacity: 0.7,
-      borderLeftWidth: 3,
-      borderRightWidth: 3,
-      borderColor: '#FFFFFF',
+      backgroundColor: '#000000B3',
+    },
+    trimWindow: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      borderTopWidth: 3,
+      borderBottomWidth: 3,
+      borderColor: '#FFC107',
+    },
+    playhead: {
+      position: 'absolute',
+      top: 2,
+      bottom: 2,
+      width: 2,
+      borderRadius: 1,
+      backgroundColor: '#FFFFFF',
+    },
+    trimHandle: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      width: TRIM_HANDLE_W,
+      backgroundColor: '#FFC107',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    trimHandleStart: {
+      borderTopLeftRadius: 10,
+      borderBottomLeftRadius: 10,
+    },
+    trimHandleEnd: {
+      borderTopRightRadius: 10,
+      borderBottomRightRadius: 10,
+    },
+    trimGrip: {
+      width: 3,
+      height: 20,
+      borderRadius: 2,
+      backgroundColor: '#00000099',
+    },
+    trimTimesRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    trimTime: {
+      color: '#FFFFFF',
+      fontSize: 12,
+      fontVariant: ['tabular-nums'],
+    },
+    trimHint: {
+      color: '#888888',
+      fontSize: 11,
     },
     trimButtonsRow: {
       flexDirection: 'row',
-      justifyContent: 'center',
+      justifyContent: 'space-between',
       alignItems: 'center',
-      gap: 8,
     },
-    trimAdjBtn: {
+    nudgeGroup: {
+      flexDirection: 'row',
+      alignItems: 'center',
       backgroundColor: '#2A2A2A',
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 8,
+      borderRadius: 18,
+      paddingHorizontal: 4,
+    },
+    nudgeBtn: {
+      width: 32,
+      height: 32,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    nudgeLabel: {
+      color: '#BBBBBB',
+      fontSize: 12,
+      minWidth: 36,
+      textAlign: 'center',
     },
     trimBtnText: {
       color: '#FFFFFF',
-      fontSize: 12,
+      fontSize: 20,
       fontWeight: '500',
     },
   });

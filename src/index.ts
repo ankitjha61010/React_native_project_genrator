@@ -136,12 +136,14 @@ async function runFullstack(flags: CliFlags): Promise<void> {
     return;
   }
 
-  if (fs.existsSync(options.rootDir) && fs.readdirSync(options.rootDir).length > 0 && !flags.force) {
+  // --force, or "Yes" to "Delete it and create the project there?" in the app questions (same folder).
+  const replace = flags.force || options.frontend.overwrite;
+  if (fs.existsSync(options.rootDir) && fs.readdirSync(options.rootDir).length > 0 && !replace) {
     throw new GeneratorError(`The directory ${options.rootDir} already exists and is not empty.`, {
       tryHints: ['Choose another --name / --directory, or pass --force to replace it.'],
     });
   }
-  if (flags.force) fs.rmSync(options.rootDir, { recursive: true, force: true });
+  if (replace) fs.rmSync(options.rootDir, { recursive: true, force: true });
 
   log.newline();
   const { warnings } = await generateFullstack(options);
@@ -205,6 +207,10 @@ export async function run(argv: string[]): Promise<void> {
         inAppPurchase: options.inAppPurchase,
         paymentGateway: options.paymentGateway,
         installDependencies: options.installDependencies,
+        // Same AES key / IV as the app's .env – both must match the backend's API_ENCRYPTION_*.
+        encryption: options.apiEncryption
+          ? { key: options.apiEncryptionSecrets?.key ?? 'change-me-to-your-32-char-aeskey', iv: options.apiEncryptionSecrets?.iv ?? 'change-me-16char' }
+          : undefined,
       });
       const relAdmin = path.relative(process.cwd(), adminDir) || '.';
       log.success(chalk.bold(`Admin panel (${options.adminTechStack === 'next' ? 'Next.js' : 'React + Vite'}) ready at ${relAdmin}`));

@@ -13,6 +13,13 @@ coverage/
 keys/
 *.p8
 {{/if}}
+{{#if VOIP_PUSH}}
+{{#if !IAP_NATIVE}}
+# APNs auth key (iOS VoIP pushes)
+keys/
+*.p8
+{{/if}}
+{{/if}}
 {{#if UPLOADS}}
 # User uploads (UPLOAD_DIR)
 uploads/

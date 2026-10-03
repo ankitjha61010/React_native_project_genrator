@@ -52,6 +52,19 @@ describe('users API', () => {
     expect(missing.body.errors[0].field).toBe('avatar');
   });
 
+  it('POST / DELETE /users/:id/avatar – an admin changes a user\'s picture (permission users:write)', async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
+    await request(app.server).post(`${api}/users/${admin.id}/avatar`).set(bearer(user.token)).attach('avatar', jpeg, { filename: 'a.jpg', contentType: 'image/jpeg' }).expect(403);
+    const res = await request(app.server)
+      .post(`${api}/users/${user.id}/avatar`)
+      .set(bearer(admin.token))
+      .attach('avatar', jpeg, { filename: 'jane.jpg', contentType: 'image/jpeg' })
+      .expect(200);
+    expect(res.body.data).toMatchObject({ id: user.id, avatar: expect.stringMatching(/\/uploads\/avatars\//) });
+    const removed = await request(app.server).delete(`${api}/users/${user.id}/avatar`).set(bearer(admin.token)).expect(200);
+    expect(removed.body.data.avatar).toBeNull();
+  });
+
   it('GET /users/search lists other users (paginated), filtered by name', async () => {
     const all = await request(app.server).get(`${api}/users/search?page=1&limit=20`).set(bearer(user.token)).expect(200);
     expect(all.body.data).toEqual([{ id: admin.id, name: 'Ada Admin', avatar: null }]);

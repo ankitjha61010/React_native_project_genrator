@@ -156,6 +156,20 @@ AGORA_APP_ID={{#if !ENV_EXAMPLE}}{{AGORA_APP_ID_VALUE}}{{/if}}
 AGORA_APP_CERTIFICATE={{#if !ENV_EXAMPLE}}{{AGORA_APP_CERTIFICATE_VALUE}}{{/if}}
 # Ringing timeout in seconds before call is marked missed.
 CALL_TIMEOUT_SECONDS=60
+{{#if VOIP_PUSH}}
+
+# ── iOS VoIP push (PushKit through APNs – README "iOS VoIP push") ────────────
+# Rings CallKit when the iOS app was killed. Apple Developer → Keys → a key with "Apple Push Notifications
+# service (APNs)". Empty / REPLACE_ME: VoIP pushes are not sent (FCM still is).
+APNS_KEY_ID={{#if ENV_EXAMPLE}}REPLACE_ME{{/if}}
+APNS_TEAM_ID={{#if ENV_EXAMPLE}}REPLACE_ME{{/if}}
+# Path to the downloaded AuthKey_XXXX.p8 (keys/ is git-ignored) – or the PEM itself.
+APNS_KEY_PATH=./keys/AuthKey_REPLACE_ME.p8
+# The iOS bundle id – pushes go to the "<bundle id>.voip" topic.
+APNS_BUNDLE_ID={{APP_PACKAGE}}
+# false: api.sandbox.push.apple.com (builds run from Xcode). true: api.push.apple.com (TestFlight / App Store).
+APNS_PRODUCTION=false
+{{/if}}
 {{/if}}
 {{#if PAYMENTS}}
 

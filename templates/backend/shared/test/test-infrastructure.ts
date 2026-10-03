@@ -27,6 +27,9 @@ import {
 {{#if NOTIFICATIONS}}
   FakePushSender,
 {{/if}}
+{{#if VOIP_PUSH}}
+  FakeVoipPushSender,
+{{/if}}
 {{#if REALTIME}}
   FakeRealtime,
 {{/if}}
@@ -67,6 +70,9 @@ export function createTestInfrastructure() {
 {{/if}}
 {{#if NOTIFICATIONS}}
     pushSender: new FakePushSender(),
+{{/if}}
+{{#if VOIP_PUSH}}
+    voipPushSender: new FakeVoipPushSender(),
 {{/if}}
 {{#if REALTIME}}
     realtime: new FakeRealtime(),
@@ -115,6 +121,9 @@ export function createTestInfrastructure() {
 {{/if}}
 {{#if NOTIFICATIONS}}
     pushSender: fakes.pushSender,
+{{/if}}
+{{#if VOIP_PUSH}}
+    voipPushSender: fakes.voipPushSender,
 {{/if}}
 {{#if REALTIME}}
     realtime: fakes.realtime,

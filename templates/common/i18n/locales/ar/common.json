@@ -148,5 +148,14 @@
   "deleteAllNotificationsConfirm": "ستتم إزالة جميع الإشعارات. لا يمكن التراجع عن ذلك.",
   "notificationDeleted": "تم حذف الإشعار",
   "allNotificationsDeleted": "تم حذف جميع الإشعارات",
-  "deleteAllNotificationsFailed": "تعذر حذف الإشعارات. حاول مرة أخرى."
+  "deleteAllNotificationsFailed": "تعذر حذف الإشعارات. حاول مرة أخرى.",
+  "play": "تشغيل",
+  "pause": "إيقاف مؤقت",
+  "videoPlaybackFailed": "تعذّر تشغيل هذا الفيديو.",
+  "openDocument": "فتح المستند",
+  "documentOpenFailed": "تعذّر فتح هذا المستند.",
+  "downloadingDocument": "جارٍ فتح المستند…",
+  "noAppToOpenDocument": "لا يوجد تطبيق على هذا الجهاز يمكنه فتح هذا الملف.",
+  "searchChats": "ابحث في المحادثات…",
+  "noChatsFound": "لا توجد محادثات"
 }

@@ -4,11 +4,17 @@ import React, { useState } from 'react';
 import React from 'react';
 {{/if}}
 import { StyleSheet, View, TouchableOpacity{{#if HAS_SOCIAL_AUTH}}, ActivityIndicator{{/if}} } from 'react-native';
+{{#if EMAIL_LOGIN}}
 import { Controller, type Control } from 'react-hook-form';
+{{else}}
+import type { Control } from 'react-hook-form';
+{{/if}}
 import { useNavigation } from '@react-navigation/native';
 import type { LoginFormValues } from '{{IMPORT:auth.schema}}';
 import { AppButton } from '{{IMPORT:components.AppButton}}';
+{{#if EMAIL_LOGIN}}
 import { AppInput } from '{{IMPORT:components.AppInput}}';
+{{/if}}
 import { AppText } from '{{IMPORT:components.AppText}}';
 {{#if VECTOR_ICONS}}
 {{#if HAS_SOCIAL_AUTH}}
@@ -32,7 +38,9 @@ import {
 import { ApiError, errorMessage } from '{{IMPORT:api.errors}}';
 import { flash } from '{{IMPORT:utils.flashMessage}}';
 {{/if}}
+{{#if EMAIL_LOGIN}}
 import type { IntlKey } from '{{IMPORT:i18n.index}}';
+{{/if}}
 import type { Theme } from '{{IMPORT:theme.index}}';
 
 export interface LoginFormProps {
@@ -42,7 +50,12 @@ export interface LoginFormProps {
 }
 
 /** Presentational form – validation rules live in the zod schema. */
+{{#if EMAIL_LOGIN}}
 export function LoginForm({ control, onSubmit, submitting = false }: LoginFormProps): React.JSX.Element {
+{{else}}
+// No email sign-in: only the mobile / social buttons below – the form props stay for the same screen API.
+export function LoginForm(_props: LoginFormProps): React.JSX.Element {
+{{/if}}
   const navigation = useNavigation<any>();
   const styles = useStyles(createStyles);
 {{#if HAS_SOCIAL_AUTH}}
@@ -71,6 +84,7 @@ export function LoginForm({ control, onSubmit, submitting = false }: LoginFormPr
 
   return (
     <View style={styles.form}>
+{{#if EMAIL_LOGIN}}
       <Controller
         control={control}
         name="email"
@@ -117,6 +131,7 @@ export function LoginForm({ control, onSubmit, submitting = false }: LoginFormPr
           />
         )}
       />
+{{/if}}
 
 {{#if AUTH_EMAIL}}
       <View style={styles.forgotPasswordRow}>
@@ -126,7 +141,9 @@ export function LoginForm({ control, onSubmit, submitting = false }: LoginFormPr
       </View>
 {{/if}}
 
+{{#if EMAIL_LOGIN}}
       <AppButton intlType="auth" value="login" onPress={onSubmit} loading={submitting} testID="login-submit" />
+{{/if}}
 
 {{#if AUTH_MOBILE}}
       <AppButton

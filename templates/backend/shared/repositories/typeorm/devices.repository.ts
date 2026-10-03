@@ -1,5 +1,5 @@
 import { In, Not, IsNull, type DataSource, type Repository } from 'typeorm';
-import type { Device, DeviceInput } from '{{IMPORT:domain.device}}';
+import { DeviceType, type Device, type DeviceInput } from '{{IMPORT:domain.device}}';
 import type { DevicesRepository } from '{{IMPORT:contract.devices}}';
 import { DeviceOrmEntity } from '{{IMPORT:typeorm.device}}';
 
@@ -81,5 +81,13 @@ export class TypeOrmDevicesRepository implements DevicesRepository {
 
   async removeTokens(tokens: string[]): Promise<void> {
     await this.devices.delete({ fcmToken: In(tokens) });
+  }
+
+  async listWithVoipToken(userIds: string[]): Promise<Device[]> {
+    return userIds.length ? (await this.devices.findBy({ userId: In(userIds), deviceType: DeviceType.IOS, voipToken: Not(IsNull()) })).map(toDevice) : [];
+  }
+
+  async clearVoipTokens(tokens: string[]): Promise<void> {
+    await this.devices.update({ voipToken: In(tokens) }, { voipToken: null });
   }
 }

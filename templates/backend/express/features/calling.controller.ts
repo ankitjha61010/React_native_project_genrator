@@ -2,8 +2,13 @@
 
 import type { Request, Response } from 'express';
 import type { CallingService } from '{{IMPORT:app.callingService}}';
+{{#if VOIP_PUSH}}
+import type { DevicesService } from '{{IMPORT:app.devicesService}}';
+{{/if}}
 import { currentUser } from '{{IMPORT:ex.mw.auth}}';
 import { sendSuccess } from '{{IMPORT:ex.respond}}';
+import { parseBody } from '{{IMPORT:ex.validation}}';
+import { RegisterVoipTokenSchema } from '{{IMPORT:ex.calling.schemas}}';
 import { CALLING_MESSAGES } from '{{IMPORT:messages.calling}}';
 
 function getCallId(req: Request): string {
@@ -11,7 +16,28 @@ function getCallId(req: Request): string {
 }
 
 export class CallingController {
+{{#if VOIP_PUSH}}
+  constructor(
+    private readonly callingService: CallingService,
+    /** Where VoIP tokens are kept (one per iOS device). */
+    private readonly devices: DevicesService,
+  ) {}
+{{else}}
   constructor(private readonly callingService: CallingService) {}
+{{/if}}
+
+  // POST /calls/voip-token – the iOS app's PushKit token, kept on its device for incoming call VoIP pushes
+  registerVoipToken = async (req: Request, res: Response): Promise<void> => {
+{{#if VOIP_PUSH}}
+    const { voipToken, deviceId } = parseBody(RegisterVoipTokenSchema, req);
+    await this.devices.registerVoipToken(currentUser(req).id, voipToken, deviceId);
+    sendSuccess(res, CALLING_MESSAGES.voipTokenSaved, null);
+{{else}}
+    // Validated like everywhere, but there are no devices to keep it on (no push notifications module).
+    parseBody(RegisterVoipTokenSchema, req);
+    sendSuccess(res, CALLING_MESSAGES.voipTokenIgnored, null);
+{{/if}}
+  };
 
   // POST /calls – initiate one-to-one call
   initiateCall = async (req: Request, res: Response): Promise<void> => {

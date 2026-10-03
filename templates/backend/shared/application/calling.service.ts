@@ -4,7 +4,7 @@
 // Agora App Certificate is NEVER sent to mobile clients.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import agoraAccessTokenPkg from 'agora-access-token';
 const { RtcTokenBuilder, RtcRole } = (agoraAccessTokenPkg as any).default ?? agoraAccessTokenPkg;
 import { AppError, BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '{{IMPORT:core.errors}}';
@@ -27,6 +27,9 @@ import type { PushMessage } from '{{IMPORT:port.pushSender}}';
 {{else}}
 import { CallingMessages } from '{{IMPORT:messages.calling}}';
 {{/if}}
+{{#if VOIP_PUSH}}
+import type { VoipCallPayload } from '{{IMPORT:port.voipPushSender}}';
+{{/if}}
 
 // ─── Environment (never expose AGORA_APP_CERTIFICATE to client) ───────────────
 const AGORA_APP_ID = process.env['AGORA_APP_ID'] ?? '';
@@ -35,6 +38,25 @@ const AGORA_APP_CERTIFICATE = process.env['AGORA_APP_CERTIFICATE'] ?? '';
 const CALL_TIMEOUT_SECONDS = Number(process.env['CALL_TIMEOUT_SECONDS'] ?? 60);
 /** Agora token expiry in seconds. */
 const AGORA_TOKEN_EXPIRY = 3600;
+
+// ─── CallKit UUID ─────────────────────────────────────────────────────────────
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The UUID iOS CallKit knows this call by. It must be the same in every delivery of the call – the socket
+ * `call:incoming` event, the FCM push and the VoIP (PushKit) push – or the phone shows the call twice. So it is
+ * derived from the call id, never random: the call id itself when it is a UUID (lowercased), otherwise a
+ * name-based (version 5 style) UUID from sha1(callId).
+ */
+export function callKitUuid(callId: string): string {
+  if (UUID_RE.test(callId)) return callId.toLowerCase();
+  const bytes = createHash('sha1').update(callId).digest().subarray(0, 16);
+  bytes[6] = (bytes[6]! & 0x0f) | 0x50;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -104,6 +126,10 @@ export interface CallingServiceDeps {
 {{#if NOTIFICATIONS}}
   /** Pushes the incoming call to receivers without a live socket (NotificationsService.push). */
   push?: (userIds: string[], message: PushMessage) => Promise<void>;
+{{/if}}
+{{#if VOIP_PUSH}}
+  /** Rings the receivers' iOS devices through PushKit / CallKit, even when the app was killed (NotificationsService.pushVoip). */
+  voipPush?: (userIds: string[], payload: VoipCallPayload, ttlSeconds?: number) => Promise<void>;
 {{/if}}
   logger: Logger;
   /** Checks if either user has blocked the other. */
@@ -377,6 +403,8 @@ export class CallingService {
     const ringing = await this.callingRepo.updateCallStatus({ callId: call.id, status: 'ringing' });
     const caller = await this.deps.users.findById(call.callerId);
     const incoming = {
+      // The CallKit UUID – identical in the socket event, the FCM push and the VoIP push.
+      uuid: callKitUuid(call.id),
       callId: call.id,
       callerId: call.callerId,
       callerName: caller?.name ?? '',
@@ -401,6 +429,7 @@ export class CallingService {
           data: {
             // The Android IncomingCallFirebaseMessagingService shows the native call screen for this type.
             type: 'CALL_INCOMING',
+            uuid: incoming.uuid,
             callId: call.id,
             callerId: call.callerId,
             callerName: incoming.callerName,
@@ -411,6 +440,29 @@ export class CallingService {
           },
         })
         .catch((error) => this.deps.logger.warn({ err: error, callId: call.id }, 'Incoming call push failed'));
+    }
+{{/if}}
+{{#if VOIP_PUSH}}
+
+    // iOS: a PushKit push rings CallKit even when the app was killed. Sent in addition to the FCM push – the app
+    // dedupes by callId / uuid. Only here: every VoIP push must report a call, so "call ended" never goes this way.
+    if (receiverIds.length && this.deps.voipPush) {
+      this.deps
+        .voipPush(
+          receiverIds,
+          {
+            uuid: incoming.uuid,
+            callId: call.id,
+            callerId: call.callerId,
+            callerName: incoming.callerName,
+            callerAvatar: incoming.callerAvatar ?? '',
+            callType: call.callType,
+            channelName: call.channelName,
+            isGroupCall: call.isGroupCall,
+          },
+          CALL_TIMEOUT_SECONDS,
+        )
+        .catch((error) => this.deps.logger.warn({ err: error, callId: call.id }, 'Incoming call VoIP push failed'));
     }
 {{/if}}
 

@@ -197,3 +197,14 @@ describe('Backend Calling Generation', () => {
     expect(envExample!.content).toContain('FIREBASE_SERVICE_ACCOUNT=');
   });
 });
+
+describe('iOS PushKit handler', () => {
+  it('reports VoIP pushes to CallKit natively with the payload uuid', async () => {
+    const { getVoipPushHandlerSource } = await import('../src/generators/native/iosCalling.js');
+    const source = getVoipPushHandlerSource();
+    expect(source).toContain('PKPushRegistryDelegate');
+    expect(source).toContain('reportNewIncomingCall:uuid');
+    expect(source).toContain('fromPushKit:YES');
+    expect(source).toContain('data[@"uuid"]');
+  });
+});

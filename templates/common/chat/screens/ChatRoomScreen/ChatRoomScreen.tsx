@@ -18,10 +18,11 @@ import { translate } from '{{IMPORT:i18n.index}}';
 import type { MainStackParamList } from '{{IMPORT:navigation.types}}';
 import type { Theme } from '{{IMPORT:theme.index}}';
 import type { ChatMessage, ChatParticipant } from '{{IMPORT:chat.types}}';
-import { ChatBubble } from '../../components/ChatBubble/ChatBubble';
+import { ChatBubble, type BubbleLayout } from '../../components/ChatBubble/ChatBubble';
 import { ChatInputBar } from '../../components/ChatInputBar/ChatInputBar';
 import { ChatNotice } from '../../components/ChatNotice/ChatNotice';
 import { ChatMediaPreview } from '../../components/ChatMediaPreview/ChatMediaPreview';
+import { MessageActionsMenu, type MessageAction } from '../../components/MessageActionsMenu/MessageActionsMenu';
 import { TypingIndicator } from '../../components/TypingIndicator/TypingIndicator';
 import { useChatRoom } from '../../hooks/useChatRoom';
 import { {{#if HAS_CALLING}}callLog, {{/if}}withDateSeparators, type ChatListItem } from '../../utils/chatFormat';
@@ -64,6 +65,8 @@ export function ChatRoomScreen(): React.JSX.Element {
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  /** Long-pressed message + where it is on screen – the actions menu opens next to it. */
+  const [menu, setMenu] = useState<{ message: ChatMessage; layout: BubbleLayout } | null>(null);
   const listRef = useRef<FlatList<ChatListItem>>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(highlightTimer.current), []);
@@ -87,6 +90,18 @@ export function ChatRoomScreen(): React.JSX.Element {
   // with "Today" / "Yesterday" / "28 September 2026" above each day's messages.
   const data = useMemo(() => withDateSeparators([...room.messages].reverse()), [room.messages]);
 
+  // You just sent something (text, media, a reply to an old message, a retry) while scrolled up
+  // in older messages: jump back to the bottom so you see it. Inverted list → bottom is offset 0.
+  const newest = room.messages[room.messages.length - 1];
+  const newestId = newest?.id;
+  const newestIsMineSending = newest?.status === 'sending' && (newest.isMe ?? newest.senderId === room.myId);
+  useEffect(() => {
+    if (!newestId || !newestIsMineSending) return;
+    // Next frame: the new row is laid out first.
+    const frame = requestAnimationFrame(() => listRef.current?.scrollToOffset({ offset: 0, animated: true }));
+    return () => cancelAnimationFrame(frame);
+  }, [newestId, newestIsMineSending]);
+
   /** Tap on a reply's quote: scroll to the original and tint it for a moment. */
   const showOriginal = useCallback(
     (messageId: string) => {
@@ -101,24 +116,35 @@ export function ChatRoomScreen(): React.JSX.Element {
     [data],
   );
 
-  /** Long press on a message: actions menu (reply, edit, delete). */
-  const showActions = useCallback(
-    (message: ChatMessage) => {
-      const isMyMessage = message.isMe ?? (room.myId ? message.senderId === room.myId : false);
-      const deleteIt = () =>
-        Alert.alert(translate('common', 'deleteMessage'), translate('common', 'deleteMessageConfirm'), [
-          { text: translate('common', 'cancel'), style: 'cancel' },
-          { text: translate('common', 'delete'), style: 'destructive', onPress: () => room.deleteMessage(message.id) },
-        ]);
-      Alert.alert(translate('common', 'messageActions'), undefined, [
-        ...(message.status !== 'failed' ? [{ text: translate('common', 'reply'), onPress: () => setReplyingTo(message) }] : []),
-        ...(isMyMessage && message.type === 'text' && message.status !== 'failed' ? [{ text: translate('common', 'edit'), onPress: () => setEditingMessage(message) }] : []),
-        ...(isMyMessage && message.status !== 'failed' ? [{ text: translate('common', 'delete'), style: 'destructive' as const, onPress: deleteIt }] : []),
-        { text: translate('common', 'cancel'), style: 'cancel' },
-      ]);
-    },
-    [room],
-  );
+  /** Long press on a message: a small menu right below it (reply, edit, delete). */
+  const showActions = useCallback((message: ChatMessage, layout: BubbleLayout) => setMenu({ message, layout }), []);
+
+  const menuActions = useMemo((): MessageAction[] => {
+    if (!menu) return [];
+    const { message } = menu;
+    const isMyMessage = message.isMe ?? (room.myId ? message.senderId === room.myId : false);
+    if (message.status === 'failed') return [];
+    return [
+      { key: 'reply', label: translate('common', 'reply'), {{#if VECTOR_ICONS}}icon: 'reply', {{/if}}onPress: () => setReplyingTo(message) },
+      ...(isMyMessage && message.type === 'text'
+        ? [{ key: 'edit', label: translate('common', 'edit'), {{#if VECTOR_ICONS}}icon: 'pencil-outline' as const, {{/if}}onPress: () => setEditingMessage(message) }]
+        : []),
+      ...(isMyMessage
+        ? [
+            {
+              key: 'delete',
+              label: translate('common', 'delete'),
+{{#if VECTOR_ICONS}}
+              icon: 'delete-outline' as const,
+{{/if}}
+              destructive: true,
+              confirm: translate('common', 'deleteMessageConfirm'),
+              onPress: () => room.deleteMessage(message.id),
+            },
+          ]
+        : []),
+    ];
+  }, [menu, room]);
 
 {{#if HAS_CALLING}}
   // A call in the chat: call the other person back with the same kind of call.
@@ -309,6 +335,14 @@ export function ChatRoomScreen(): React.JSX.Element {
         </View>
 
         <ChatMediaPreview visible={Boolean(previewMedia)} message={previewMedia} onClose={() => setPreviewMedia(null)} />
+
+        <MessageActionsMenu
+          anchor={menuActions.length > 0 ? menu?.layout ?? null : null}
+          alignEnd={Boolean(menu && (menu.message.isMe ?? (room.myId ? menu.message.senderId === room.myId : false)))}
+          actions={menuActions}
+          onClose={() => setMenu(null)}>
+          {menu ? <ChatBubble message={menu.message} myId={room.myId}{{#if GROUP_CHAT}} showSender={isGroup}{{/if}} /> : null}
+        </MessageActionsMenu>
       </KeyboardAvoidingView>
     </View>
   );

@@ -130,6 +130,9 @@ All configuration lives in `.env` and is validated at startup by `env.ts` (confi
 {{/if}}
 | `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_ADMIN_NAME` | Administrator created by `npm run db:seed` |
 {{/if}}
+{{#if VOIP_PUSH}}
+| `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_PATH`, `APNS_BUNDLE_ID`, `APNS_PRODUCTION` | iOS VoIP pushes for incoming calls – see [iOS VoIP push (PushKit)](#ios-voip-push-pushkit) |
+{{/if}}
 {{#if SWAGGER}}
 | `SWAGGER_ENABLED`, `SWAGGER_PATH` | API docs at `/<API_PREFIX>/<SWAGGER_PATH>` |
 {{/if}}
@@ -314,6 +317,9 @@ Every response has the same shape:
 {{#if NOTIFICATIONS}}
 | Push (FCM) | `FIREBASE_SERVICE_ACCOUNT` – path to the service account JSON (Firebase console → Project settings → Service accounts) | pushes are written to the log |
 {{/if}}
+{{#if VOIP_PUSH}}
+| iOS VoIP push (APNs) | `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_PATH` (the .p8), `APNS_BUNDLE_ID` | not sent (logged once) – iOS still gets the FCM push, but a killed app doesn't ring |
+{{/if}}
 | Uploads | `UPLOAD_DIR`, `UPLOAD_MAX_MB` – files are served under `/uploads` | – (local disk; use S3 / GCS with several servers) |
 
 In production, missing email / SMS providers are logged as warnings – the codes are **not** written to the log there.
@@ -345,6 +351,38 @@ token is sent on its own (`PATCH /devices/:deviceId`). Use
 `NotificationsService.notify(userId, { type, title, body, data })` from any feature – it stores an inbox entry, emits
 `notification:new` and pushes to the user's devices. Admins send broadcasts with `POST /notifications/broadcast`.
 Tokens FCM rejects are deleted automatically.
+{{/if}}
+{{#if VOIP_PUSH}}
+
+## iOS VoIP push (PushKit)
+
+An incoming call is sent over Socket.IO, as an FCM push (Android shows its native call screen) and – on iPhones – as a
+**VoIP push** through APNs. Only a VoIP push wakes a killed iOS app and rings CallKit (the native call screen). The
+server talks to APNs directly over HTTP/2 with token-based auth (`voip-push-sender.ts`, Node built-ins only).
+
+1. **Create the key** – [Apple Developer](https://developer.apple.com/account) → Certificates, Identifiers & Profiles →
+   **Keys** → **+** → name it, tick **Apple Push Notifications service (APNs)** → Continue → Register →
+   **Download** the `AuthKey_XXXXXXXXXX.p8` (Apple lets you download it only once). One key works for every app of
+   the team, sandbox and production.
+2. **Enable the capability** – Identifiers → your App ID (`{{APP_PACKAGE}}`) → tick **Push Notifications**; in Xcode
+   add the *Push Notifications* capability and *Background Modes* → *Voice over IP*.
+3. **Put the key on the server** – copy it to `keys/` (git-ignored), e.g. `keys/AuthKey_XXXXXXXXXX.p8`. Never commit it.
+4. **Set `.env`**:
+
+| Variable | Value |
+| --- | --- |
+| `APNS_KEY_ID` | The key's 10-character Key ID (shown on the key's page / in the file name) |
+| `APNS_TEAM_ID` | Your Team ID (Apple Developer → Membership details) |
+| `APNS_KEY_PATH` | Path to the .p8, e.g. `./keys/AuthKey_XXXXXXXXXX.p8` (or the PEM text itself) |
+| `APNS_BUNDLE_ID` | The iOS bundle id (default `{{APP_PACKAGE}}`) – pushes go to the `<bundle id>.voip` topic |
+| `APNS_PRODUCTION` | `false` for builds run from Xcode (sandbox), `true` for TestFlight / App Store builds |
+
+The app sends its PushKit token with `POST /calls/voip-token` and `PATCH /devices/:deviceId/voip-token`; it is kept on
+the iOS device. While any value is empty or `REPLACE_ME`, VoIP pushes are skipped (logged once at the first call).
+Tokens APNs answers `410` / `BadDeviceToken` / `Unregistered` for are cleared – a sandbox token sent with
+`APNS_PRODUCTION=true` (or the other way round) is also `BadDeviceToken`, so match it to the build. The VoIP payload
+carries `uuid` (the CallKit UUID, the same in the socket event and the FCM push) and is sent only for a ringing call –
+iOS requires every VoIP push to report a call, so "call ended" goes over FCM / Socket.IO only.
 {{/if}}
 {{#if PAYMENTS}}
 

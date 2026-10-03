@@ -76,7 +76,23 @@ export const DEPENDENCY_REGISTRY = {
     socket: { dependencies: ['socket.io-client'], devDependencies: [] },
     // Voice messages need a recorder / player; "send a file" needs the system document picker.
     // react-native-nitro-sound runs on react-native-nitro-modules (already there for MMKV).
-    chat: { dependencies: ['react-native-nitro-sound', 'react-native-nitro-modules', '@react-native-documents/picker', '@likashefqet/react-native-image-zoom'], devDependencies: [] },
+    // Media viewer: native video player (react-native-video), in-app PDF (react-native-pdf + blob-util)
+    // and the system viewer for other documents (QuickLook on iOS) – no web views.
+    chat: {
+      dependencies: [
+        'react-native-nitro-sound',
+        'react-native-nitro-modules',
+        '@react-native-documents/picker',
+        '@react-native-documents/viewer',
+        '@likashefqet/react-native-image-zoom',
+        'react-native-video',
+        'react-native-pdf',
+        'react-native-blob-util',
+        // Video editor: cuts the selected part into a new file before sending (FFmpeg, on the device).
+        'react-native-video-trim',
+      ],
+      devDependencies: [],
+    },
     socialGoogle: { dependencies: ['@react-native-google-signin/google-signin'], devDependencies: [] },
     socialFacebook: { dependencies: ['react-native-fbsdk-next'], devDependencies: [] },
     socialApple: { dependencies: ['@invertase/react-native-apple-authentication'], devDependencies: [] },

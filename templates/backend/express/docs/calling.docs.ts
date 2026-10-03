@@ -12,6 +12,28 @@ export const callingDocs = {
   '/calls/group': {
     post: { tags: ['Calling'], summary: 'Initiate a group call', security: [{ bearerAuth: [] }] },
   },
+  '/calls/voip-token': {
+    post: {
+      tags: ['Calling'],
+      summary: "Save the iOS VoIP (PushKit) token – body { voipToken, deviceId? }; no deviceId: your most recently active iOS device",
+      security: [{ bearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['voipToken'],
+              properties: {
+                voipToken: { type: 'string', minLength: 10, maxLength: 512 },
+                deviceId: { type: 'string', minLength: 1, maxLength: 128 },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
   '/calls/history': {
     get: { tags: ['Calling'], summary: 'Get call history', security: [{ bearerAuth: [] }] },
     delete: {

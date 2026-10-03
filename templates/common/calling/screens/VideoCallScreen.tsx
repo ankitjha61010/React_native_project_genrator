@@ -2,21 +2,27 @@
 // Active video call UI with local preview, remote video tiles, camera/mute/end.
 // Supports minimize (picture-in-picture style), camera flip, and speaker.
 // Your own camera preview can be dragged anywhere and glides to the nearest side.
+// Like WhatsApp: nobody in yet → your camera full screen; one other person → them full screen, you in a draggable
+// window; three or more people → everyone (you included) in a grid of named tiles.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
+  Image,
+  ScrollView,
   StyleSheet,
   TouchableOpacity,
   AppState,
+  Platform,
+  useWindowDimensions,
   type AppStateStatus,
 } from 'react-native';
 import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Reanimated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { RtcSurfaceView, VideoSourceType } from 'react-native-agora';
+import { RtcSurfaceView, RtcTextureView, VideoSourceType } from 'react-native-agora';
 import { AppIcon, type AppIconName } from '{{IMPORT:components.AppIcon}}';
 import type { ActiveCallState } from '../types/calling.types';
 import { useFloatingDrag } from '../hooks/useFloatingDrag';
@@ -58,7 +64,7 @@ export function VideoCallScreen({
   });
 
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
+    const sub = AppState.addEventListener('change', (_next: AppStateStatus) => {
       // Agora holds the channel in the native layer – no action needed.
     });
     return () => sub.remove();
@@ -72,6 +78,14 @@ export function VideoCallScreen({
   }, [showControls]);
 
   const firstRemote = state.remoteUids[0];
+  const isGroup = Boolean(state.call?.isGroupCall) || state.remoteUids.length > 1;
+  const inCall = state.remoteUids.length + 1;
+  const useGrid = state.remoteUids.length >= 2;
+  const waitingText = isGroup
+    ? 'Waiting for others to join…'
+    : state.outgoing && state.status !== 'connected'
+      ? 'Calling…'
+      : 'Connecting…';
 
   return (
     // The call screen is a Modal – a separate native root that needs its own gesture root.
@@ -82,21 +96,41 @@ export function VideoCallScreen({
       onPress={() => setShowControls(c => !c)}
       accessible={false}
     >
-      {/* Remote video (full screen) */}
-      {firstRemote !== undefined ? (
-        <RtcSurfaceView
-          canvas={{ uid: firstRemote, sourceType: VideoSourceType.VideoSourceRemote }}
-          style={styles.remoteVideo}
-        />
+      {useGrid ? (
+        <GroupVideoGrid state={state} localUid={localUid} topInset={insets.top} bottomInset={insets.bottom} />
+      ) : firstRemote !== undefined ? (
+        state.remoteVideoOff?.includes(firstRemote) ? (
+          <View style={[styles.remoteVideo, styles.noRemotePlaceholder]}>
+            <Avatar name={state.remoteUsers?.[firstRemote]?.name ?? callerName} uri={state.remoteUsers?.[firstRemote]?.avatar} size={96} />
+            <Text style={styles.noRemoteText}>{state.remoteUsers?.[firstRemote]?.name ?? callerName}</Text>
+            <Text style={styles.connectingText}>Camera off</Text>
+          </View>
+        ) : (
+          <RtcSurfaceView
+            canvas={{ uid: firstRemote, sourceType: VideoSourceType.VideoSourceRemote }}
+            style={styles.remoteVideo}
+          />
+        )
       ) : (
-        <View style={[styles.remoteVideo, styles.noRemotePlaceholder]}>
-          <Text style={styles.noRemoteText}>{callerName}</Text>
-          <Text style={styles.connectingText}>{state.status === 'connected' ? 'Connecting video…' : 'Connecting…'}</Text>
-        </View>
+        // Nobody else yet: your own camera full screen while it rings.
+        <>
+          {state.isCameraOff ? (
+            <View style={[styles.remoteVideo, styles.noRemotePlaceholder]} />
+          ) : (
+            <RtcSurfaceView
+              canvas={{ uid: localUid, sourceType: VideoSourceType.VideoSourceCamera }}
+              style={styles.remoteVideo}
+            />
+          )}
+          <View style={styles.waitingOverlay} pointerEvents="none">
+            <Text style={styles.noRemoteText}>{callerName}</Text>
+            <Text style={styles.waitingText}>{waitingText}</Text>
+          </View>
+        </>
       )}
 
-      {/* Local preview (PiP) */}
-      {!state.isCameraOff && (
+      {/* Your camera in a small draggable window – only next to one other person's full-screen video */}
+      {!useGrid && firstRemote !== undefined && !state.isCameraOff && (
         <GestureDetector gesture={preview.gesture}>
           <Reanimated.View style={[styles.localPreviewWrapper, preview.style]} onLayout={preview.onLayout}>
             <RtcSurfaceView
@@ -120,7 +154,11 @@ export function VideoCallScreen({
             )}
             <View style={styles.topCenter}>
               <Text style={styles.topCallerName} numberOfLines={1}>{callerName}</Text>
-              {timer ? <Text style={styles.topTimer}>{timer}</Text> : null}
+              {timer || isGroup ? (
+                <Text style={styles.topTimer}>
+                  {[timer, isGroup ? `${inCall} in call` : null].filter(Boolean).join(' · ')}
+                </Text>
+              ) : null}
             </View>
             <TouchableOpacity onPress={onFlipCamera} accessibilityLabel="Flip camera">
               <AppIcon name="camera-flip-outline" size={26} tintColor="#fff" />
@@ -138,6 +176,110 @@ export function VideoCallScreen({
       )}
     </TouchableOpacity>
     </GestureHandlerRootView>
+  );
+}
+
+// ── Group grid ───────────────────────────────────────────────────────────────
+
+interface Tile {
+  key: string;
+  uid: number;
+  local: boolean;
+  name: string;
+  avatar?: string | null;
+  videoOff: boolean;
+}
+
+/**
+ * Rows of the grid, filling the screen: 1–2 people stacked, up to 6 two per row, more three per row. The first row
+ * takes the odd ones full width (3 people: one on top, two below) – no half-empty row.
+ */
+function gridRows<T>(tiles: T[]): T[][] {
+  const perRow = tiles.length <= 2 ? 1 : tiles.length <= 6 ? 2 : 3;
+  const firstRow = tiles.length - perRow * (Math.ceil(tiles.length / perRow) - 1);
+  const rows = [tiles.slice(0, firstRow)];
+  for (let i = firstRow; i < tiles.length; i += perRow) rows.push(tiles.slice(i, i + perRow));
+  return rows;
+}
+
+/** Most rows on screen at once – more scroll. */
+const MAX_VISIBLE_ROWS = 4;
+
+/**
+ * Android: TextureView – SurfaceViews are separate native layers that don't clip, scroll or stack inside a grid
+ * (tiles overlap or land in the wrong place). iOS renders either correctly.
+ */
+const GridVideoView = Platform.OS === 'android' ? RtcTextureView : RtcSurfaceView;
+
+function GroupVideoGrid({
+  state,
+  localUid,
+  topInset,
+  bottomInset,
+}: {
+  state: ActiveCallState;
+  localUid: number;
+  topInset: number;
+  bottomInset: number;
+}) {
+  const { height } = useWindowDimensions();
+  const tiles: Tile[] = [
+    { key: 'local', uid: localUid, local: true, name: 'You', videoOff: state.isCameraOff },
+    ...state.remoteUids.map(uid => ({
+      key: String(uid),
+      uid,
+      local: false,
+      name: state.remoteUsers?.[uid]?.name ?? 'Participant',
+      avatar: state.remoteUsers?.[uid]?.avatar,
+      videoOff: state.remoteVideoOff?.includes(uid) ?? false,
+    })),
+  ];
+  const rows = gridRows(tiles);
+  const rowHeight = Math.floor((height - topInset - bottomInset) / Math.min(rows.length, MAX_VISIBLE_ROWS));
+
+  return (
+    <ScrollView
+      style={StyleSheet.absoluteFill}
+      contentContainerStyle={{ paddingTop: topInset, paddingBottom: bottomInset }}
+      scrollEnabled={rows.length > MAX_VISIBLE_ROWS}
+      showsVerticalScrollIndicator={false}
+    >
+      {rows.map(row => (
+        <View key={row.map(tile => tile.key).join('-')} style={[styles.gridRow, { height: rowHeight }]}>
+          {row.map(tile => (
+            <View key={tile.key} style={styles.tile}>
+              <View style={styles.tileInner}>
+                {tile.videoOff ? (
+                  <View style={styles.tileAvatarWrap}>
+                    <Avatar name={tile.name} uri={tile.avatar} size={Math.min(88, rowHeight / 3)} />
+                  </View>
+                ) : (
+                  <GridVideoView
+                    canvas={{ uid: tile.uid, sourceType: tile.local ? VideoSourceType.VideoSourceCamera : VideoSourceType.VideoSourceRemote }}
+                    style={StyleSheet.absoluteFill}
+                  />
+                )}
+                <View style={styles.tileLabel}>
+                  {tile.local && state.isMuted ? <AppIcon name="microphone-off" size={14} tintColor="#fff" /> : null}
+                  <Text style={styles.tileName} numberOfLines={1}>{tile.name}</Text>
+                </View>
+              </View>
+            </View>
+          ))}
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+
+function Avatar({ name, uri, size }: { name: string; uri?: string | null; size: number }) {
+  const round = { width: size, height: size, borderRadius: size / 2 };
+  return uri ? (
+    <Image source={{ uri }} style={round} />
+  ) : (
+    <View style={[styles.avatarFallback, round]}>
+      <Text style={[styles.avatarInitial, { fontSize: size * 0.4 }]}>{name.charAt(0).toUpperCase()}</Text>
+    </View>
   );
 }
 
@@ -176,6 +318,21 @@ const styles = StyleSheet.create({
   },
   noRemoteText: { fontSize: 22, fontWeight: '700', color: '#fff' },
   connectingText: { fontSize: 14, color: 'rgba(255,255,255,0.5)' },
+  waitingOverlay: {
+    position: 'absolute',
+    top: '38%',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    gap: 6,
+    zIndex: 5,
+  },
+  waitingText: {
+    fontSize: 15,
+    color: '#fff',
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowRadius: 6,
+  },
   localPreviewWrapper: {
     width: 100,
     height: 150,
@@ -190,6 +347,31 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   localPreview: { flex: 1 },
+  gridRow: { flexDirection: 'row' },
+  tile: { flex: 1, padding: 2 },
+  tileInner: { flex: 1, borderRadius: 10, overflow: 'hidden', backgroundColor: '#1b2133' },
+  tileAvatarWrap: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: '#1b2133',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tileLabel: {
+    position: 'absolute',
+    left: 10,
+    bottom: 10,
+    maxWidth: '80%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  tileName: { fontSize: 12, fontWeight: '600', color: '#fff' },
+  avatarFallback: { backgroundColor: '#6366f1', alignItems: 'center', justifyContent: 'center' },
+  avatarInitial: { fontWeight: '700', color: '#fff' },
   topBar: {
     position: 'absolute',
     top: 0,

@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
   TouchableOpacity,
   Modal,
+  Platform,
   SafeAreaView,
   TouchableWithoutFeedback,
 } from 'react-native';
@@ -85,13 +86,34 @@ export function MediaPickerModal({
   onClose,
 }: MediaPickerModalProps): React.JSX.Element {
   const styles = useStyles(createStyles);
+  /**
+   * The option tapped – handed to onSelect only once the sheet has fully closed. Opening the camera / library (or
+   * the media editor after it) while this Modal is still sliding out makes iOS drop the next screen: the recorded
+   * video's trim editor never appeared.
+   */
+  const pending = useRef<MediaPickerOption | null>(null);
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+
+  const flushPending = useCallback(() => {
+    const option = pending.current;
+    pending.current = null;
+    if (option) onSelectRef.current(option);
+  }, []);
+
+  // Android: no reliable onDismiss – wait for the slide-out animation instead.
+  useEffect(() => {
+    if (visible || Platform.OS === 'ios' || !pending.current) return;
+    const timer = setTimeout(flushPending, 350);
+    return () => clearTimeout(timer);
+  }, [visible, flushPending]);
 {{#if RTL}}
   // A Modal is a separate native root – it needs the app's direction explicitly.
   const { directionStyle } = useDirection();
 {{/if}}
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} onDismiss={flushPending}>
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={ {{#if RTL}}[styles.backdrop, directionStyle]{{else}}styles.backdrop{{/if}} }>
           <TouchableWithoutFeedback>
@@ -109,8 +131,8 @@ export function MediaPickerModal({
                       style={styles.gridItem}
                       activeOpacity={0.7}
                       onPress={() => {
+                        pending.current = cfg.key;
                         onClose();
-                        onSelect(cfg.key);
                       }}>
                       <View style={[styles.iconCircle, { backgroundColor: cfg.color }]}>
 {{#if VECTOR_ICONS}}

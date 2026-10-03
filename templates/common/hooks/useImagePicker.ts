@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import {
   mediaPickerService,
+  CameraUnavailableError,
   MediaPermissionError,
   type ImagePickOptions,
   type VideoPickOptions,
@@ -55,6 +56,9 @@ export function useImagePicker() {
               permissionService.openSettings();
             },
           });
+        } else if (error instanceof CameraUnavailableError) {
+          // The iOS Simulator has no camera – recording / photos need a real device.
+          flash.warning({ message: 'No camera on this device. Use a real phone, or choose from the library.' });
         } else {
           logger.error('Media picker failed', error);
           flash.error({ intlType: 'common', value: 'genericError' });

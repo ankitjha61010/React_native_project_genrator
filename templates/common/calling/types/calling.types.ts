@@ -52,6 +52,9 @@ export interface CallParticipant {
   leftAt?: string;
   status: 'invited' | 'ringing' | 'joined' | 'left' | 'declined' | 'missed';
   role: 'host' | 'participant';
+  /** The Agora uid this user joins the channel with (remote video / audio arrives with it). */
+  uid?: number;
+  user?: CallUser | null;
 }
 
 export interface AgoraTokenResult {
@@ -86,6 +89,10 @@ export interface ActiveCallState {
   /** Whether the call is in speaker mode (audio). */
   isSpeaker: boolean;
   remoteUids: number[];
+  /** Who each remote Agora uid is (group call tiles) – filled from GET /calls/:callId/participants. */
+  remoteUsers?: Record<number, CallUser>;
+  /** Remote uids whose camera is off – their tile shows the avatar instead of video. */
+  remoteVideoOff?: number[];
   status: CallStatus;
   connectedAt?: number | null;
   /** You started this call (one-to-one): "Calling…" until the other side picks up. */

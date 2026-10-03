@@ -7,7 +7,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ImageZoom } from '@likashefqet/react-native-image-zoom';
 import Pdf from 'react-native-pdf';
 import { AppText } from '{{IMPORT:components.AppText}}';
@@ -33,6 +33,11 @@ export interface ChatMediaPreviewProps {
 
 export function ChatMediaPreview({ visible, message, onClose }: ChatMediaPreviewProps): React.JSX.Element | null {
   const styles = useStyles(createStyles);
+  /**
+   * The screen's safe area from the app root. A SafeAreaView inside a Modal can measure zero insets on iOS (the modal
+   * is not in the window yet) – the header then sat under the notch / Dynamic Island and its ✕ couldn't be tapped.
+   */
+  const insets = useSafeAreaInsets();
 {{#if RTL}}
   // A Modal is a separate native root – it needs the app's direction explicitly.
   const { directionStyle } = useDirection();
@@ -178,7 +183,7 @@ export function ChatMediaPreview({ visible, message, onClose }: ChatMediaPreview
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <GestureHandlerRootView style={styles.gestureRoot}>
-        <SafeAreaView style={ {{#if RTL}}[styles.backdrop, directionStyle]{{else}}styles.backdrop{{/if}} }>
+        <View style={[styles.backdrop, {{#if RTL}}directionStyle, {{/if}}{ paddingTop: insets.top, paddingBottom: insets.bottom }]}>
           {/* Header Bar */}
           <View style={styles.header}>
             <TouchableOpacity onPress={onClose} style={styles.headerButton}>
@@ -221,7 +226,7 @@ export function ChatMediaPreview({ visible, message, onClose }: ChatMediaPreview
               </View>
             )}
           </View>
-        </SafeAreaView>
+        </View>
       </GestureHandlerRootView>
     </Modal>
   );
@@ -237,6 +242,7 @@ const createStyles = (theme: Theme) =>
       backgroundColor: '#000000FA',
     },
     header: {
+      zIndex: 2,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
@@ -268,6 +274,8 @@ const createStyles = (theme: Theme) =>
     },
     content: {
       flex: 1,
+      // A zoomed photo / video stays inside its area – it covered the header and swallowed the ✕ taps.
+      overflow: 'hidden',
       justifyContent: 'center',
       alignItems: 'center',
     },

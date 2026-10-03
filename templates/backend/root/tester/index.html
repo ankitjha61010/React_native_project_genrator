@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{DISPLAY_NAME}} – Realtime tester</title>
+  <!-- Relative: works at /tester/ (served by the API) and when the file is opened from disk (it then redirects). -->
+  <link rel="stylesheet" href="tester.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <strong>{{DISPLAY_NAME}}</strong> realtime tester
+      <span class="muted">– open this page in two tabs (or a normal + a private window) and sign in as two users</span>
+    </div>
+    <div class="status">
+      <span id="socketDot" class="dot"></span>
+      <span id="socketState">socket: disconnected</span>
+    </div>
+  </header>
+
+  <main class="grid">
+    <!-- ── Session ─────────────────────────────────────────────────────────── -->
+    <section class="card" id="sessionCard">
+      <h2>1 · Sign in</h2>
+      <div id="signedOut">
+{{#if AUTH_EMAIL}}
+        <form id="loginForm" class="stack">
+          <input id="loginEmail" type="email" placeholder="Email" autocomplete="username" required />
+          <input id="loginPassword" type="password" placeholder="Password" autocomplete="current-password" required />
+          <button type="submit">Sign in</button>
+        </form>
+        <p class="muted small">No account yet? register with <code>POST /auth/register</code> (Swagger), then sign in here.</p>
+        <div class="divider">or</div>
+{{/if}}
+        <form id="tokenForm" class="stack">
+          <textarea id="tokenInput" rows="3" placeholder="Paste an access token (Bearer JWT)" required></textarea>
+          <button type="submit" class="secondary">Use token</button>
+        </form>
+      </div>
+      <div id="signedIn" hidden>
+        <p>Signed in as <strong id="meName">–</strong></p>
+        <p class="muted small">id: <code id="meId">–</code></p>
+        <div class="row">
+          <button id="reconnectBtn" class="secondary">Reconnect socket</button>
+          <button id="logoutBtn" class="danger">Sign out</button>
+        </div>
+      </div>
+
+      <h2>2 · Pick the other user</h2>
+{{#if USERS_API}}
+      <div class="row">
+        <input id="userSearch" placeholder="Search users by name / email" />
+        <button id="userSearchBtn" class="secondary">Search</button>
+      </div>
+      <ul id="userList" class="list"></ul>
+{{/if}}
+      <div class="row">
+        <input id="targetId" placeholder="…or paste a user id" />
+      </div>
+      <p class="small">Selected: <strong id="targetLabel">nobody</strong></p>
+    </section>
+
+{{#if CHAT}}
+    <!-- ── Chat ────────────────────────────────────────────────────────────── -->
+    <section class="card" id="chatCard">
+      <h2>Chat</h2>
+      <div class="row">
+        <button id="startChatBtn">Open chat with selected user</button>
+        <button id="refreshConversationsBtn" class="secondary">Reload conversations</button>
+      </div>
+      <ul id="conversationList" class="list"></ul>
+
+      <div id="chatBox" hidden>
+        <div class="chat-head">
+          <strong id="chatTitle">–</strong>
+          <span id="typingIndicator" class="muted small"></span>
+        </div>
+        <div id="messages" class="messages"></div>
+        <form id="sendForm" class="row">
+          <input id="messageInput" placeholder="Type a message" autocomplete="off" />
+          <button type="submit">Send</button>
+        </form>
+        <div class="row">
+          <button id="markReadBtn" class="secondary small-btn">Mark read</button>
+          <button id="olderBtn" class="secondary small-btn">Load older</button>
+        </div>
+      </div>
+    </section>
+{{/if}}
+
+{{#if CALLING}}
+    <!-- ── Calls ───────────────────────────────────────────────────────────── -->
+    <section class="card" id="callCard">
+      <h2>Calls</h2>
+      <div class="row">
+{{#if AUDIO_CALL}}
+        <button id="audioCallBtn">Audio call</button>
+{{/if}}
+{{#if VIDEO_CALL}}
+        <button id="videoCallBtn">Video call</button>
+{{/if}}
+      </div>
+      <details>
+        <summary class="small">Group call</summary>
+        <div class="stack">
+          <input id="groupIds" placeholder="User ids, comma separated" />
+          <div class="row">
+{{#if AUDIO_CALL}}
+            <button id="groupAudioBtn" class="secondary">Group audio call</button>
+{{/if}}
+{{#if VIDEO_CALL}}
+            <button id="groupVideoBtn" class="secondary">Group video call</button>
+{{/if}}
+          </div>
+        </div>
+      </details>
+
+      <div id="incoming" class="incoming" hidden>
+        <p><strong id="incomingFrom">–</strong> is calling (<span id="incomingType">–</span>)</p>
+        <div class="row">
+          <button id="acceptBtn" class="success">Accept</button>
+          <button id="rejectBtn" class="danger">Reject</button>
+        </div>
+      </div>
+
+      <div id="activeCall" hidden>
+        <p>Call <code id="callId">–</code> · <strong id="callStatus">–</strong> · <span id="callTimer">00:00</span></p>
+        <!-- One tile per remote user is added when they publish. -->
+        <div id="videos" class="videos">
+          <div class="video-tile"><div id="localVideo" class="video"></div><span>You</span></div>
+        </div>
+        <div class="row">
+          <button id="muteBtn" class="secondary">Mute</button>
+{{#if VIDEO_CALL}}
+          <button id="cameraBtn" class="secondary">Camera off</button>
+{{/if}}
+          <button id="cancelBtn" class="secondary">Cancel</button>
+          <button id="endBtn" class="danger">End</button>
+        </div>
+        <p id="mediaNote" class="muted small"></p>
+      </div>
+
+      <div class="row">
+        <button id="historyBtn" class="secondary small-btn">Call history</button>
+        <button id="activeBtn" class="secondary small-btn">Active call</button>
+      </div>
+      <ul id="historyList" class="list"></ul>
+    </section>
+{{/if}}
+
+    <!-- ── Log ─────────────────────────────────────────────────────────────── -->
+    <section class="card log-card">
+      <div class="row space">
+        <h2>Event log</h2>
+        <button id="clearLogBtn" class="secondary small-btn">Clear</button>
+      </div>
+      <div id="log" class="log"></div>
+    </section>
+  </main>
+
+  <script src="/socket.io/socket.io.min.js"></script>
+{{#if API_ENCRYPTION}}
+  <script src="https://cdn.jsdelivr.net/npm/crypto-js@4.2.0/crypto-js.min.js"></script>
+{{/if}}
+{{#if CALLING}}
+  <script src="https://cdn.jsdelivr.net/npm/agora-rtc-sdk-ng@4.24.8/AgoraRTC_N-production.js"></script>
+{{/if}}
+  <script src="tester.js"></script>
+</body>
+</html>

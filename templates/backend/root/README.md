@@ -28,6 +28,11 @@ npm run dev            # http://localhost:{{PORT}}/api/v1{{#if SWAGGER}} · docs
 You need {{DATABASE_LABEL}}{{#if REDIS}} and Redis{{/if}} running – set `DATABASE_URL`{{#if REDIS}} / `REDIS_URL`{{/if}} in `.env` (see [Database setup](#database-setup)).
 {{/if}}
 
+{{#if TESTER}}
+**Try {{#if CHAT}}chat{{/if}}{{#if CHAT}}{{#if CALLING}} and {{/if}}{{/if}}{{#if CALLING}}calls{{/if}} without the app:** open `http://localhost:{{PORT}}/tester` in two browser tabs and sign in as two
+users – see [Realtime tester](#realtime-tester-browser).
+
+{{/if}}
 **New to the code?** Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) – it follows one request through every file and
 shows how to add an endpoint.
 
@@ -44,7 +49,7 @@ shows how to add an endpoint.
 {{/if}}
 8. [Security](#security)
 9. [Logging](#logging)
-10. [Testing](#testing)
+10. [Testing](#testing){{#if TESTER}} · [Realtime tester](#realtime-tester-browser){{/if}}
 11. [Project structure](#project-structure)
 12. [Deployment](#deployment)
 13. [Troubleshooting](#troubleshooting)
@@ -491,6 +496,47 @@ npm run lint && npm run typecheck
 
 `test/support/in-memory-repositories.ts` implements the repository interfaces, so tests are fast and need no
 database; the fake mailer captures emails so reset / verification flows are tested end to end.
+{{#if TESTER}}
+
+### Realtime tester (browser)
+
+A small web page to test {{#if CHAT}}**chat**{{/if}}{{#if CHAT}}{{#if CALLING}} and {{/if}}{{/if}}{{#if CALLING}}**calls**{{/if}} end to end against this backend – the real REST API and
+Socket.IO server – without building the mobile app. It is served at **`http://localhost:{{PORT}}/tester`** whenever
+`NODE_ENV` is not `production` (the files are in `tester/`, served by `tester.page.ts`). Open it through the running
+server – opening `tester/index.html` from disk just redirects there.
+
+1. `npm run dev`, then create two users{{#if AUTH_EMAIL}} (`POST /api/v1/auth/register`{{#if SWAGGER}} in the Swagger UI{{/if}}){{/if}}.
+2. Open `http://localhost:{{PORT}}/tester` in **two tabs** (each tab keeps its own session – or use a normal and a
+   private window) and sign in as a different user in each{{#if AUTH_EMAIL}} (email + password){{/if}}, or paste an access token.
+   The green dot means the Socket.IO connection is up.
+3. Pick the other user ({{#if USERS_API}}search the list, or {{/if}}paste their id).
+{{#if CHAT}}
+4. **Chat:** *Open chat with selected user* creates / reuses the direct conversation. Send messages, watch them arrive
+   live in the other tab (`chat:receive_message`), the typing indicator (`presence:typing`) and read receipts
+   (`chat:message_read`). *Load older* pages back through the history.
+{{/if}}
+{{#if CALLING}}
+{{#if CHAT}}5{{else}}4{{/if}}. **Calls:** {{#if AUDIO_CALL}}*Audio call*{{/if}}{{#if AUDIO_CALL}}{{#if VIDEO_CALL}} / {{/if}}{{/if}}{{#if VIDEO_CALL}}*Video call*{{/if}} rings the other tab (`call:incoming`) – accept, reject, cancel or end it
+   and follow `call:accepted` / `call:rejected` / `call:cancelled` / `call:ended`. Once accepted, both tabs fetch an
+   Agora token (`POST /calls/:callId/agora-token`) and join the channel with the Agora Web SDK, so you hear{{#if VIDEO_CALL}} / see{{/if}} each
+   other. *Group call* takes comma separated user ids. *Call history* / *Active call* call the matching endpoints.
+   - Audio / video needs `AGORA_APP_ID` and `AGORA_APP_CERTIFICATE` in `.env`; without them the signaling still works
+     and the page says why media did not start.
+   - Browsers only allow the microphone / camera on `http://localhost` or HTTPS – not on `http://<LAN IP>`.
+{{/if}}
+
+The **Event log** shows every request (`→` status) and every socket event received, with its payload – handy to check
+what the app will get.{{#if API_ENCRYPTION}} Request / response bodies are encrypted exactly like the app does (the page reads
+`API_ENCRYPTION_KEY` / `API_ENCRYPTION_IV` from `/tester/config.json`, which exists only outside production).{{/if}}
+{{#if API_ENCRYPTION}}
+The page loads crypto-js{{#if CALLING}} and the Agora Web SDK{{/if}} from jsDelivr.
+{{else}}
+{{#if CALLING}}
+The page loads the Agora Web SDK from jsDelivr.
+{{/if}}
+{{/if}}
+Access tokens are short-lived – sign in again when requests answer 401.
+{{/if}}
 
 ## Project structure
 

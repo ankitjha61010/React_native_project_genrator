@@ -4,7 +4,7 @@ import plist from 'plist';
 import xcode from 'xcode';
 import type { SocialProviders, socialValues } from '../../config/socialAuth.js';
 import { GeneratorError } from '../../utils/errors.js';
-import { applyPatches } from '../../utils/nativePatch.js';
+import { applyPatch, applyPatches, hasPatch } from '../../utils/nativePatch.js';
 
 function iosPaths(projectDir: string, appName: string) {
   const ios = path.join(projectDir, 'ios');
@@ -163,9 +163,155 @@ export async function configurePodfile(
             ...(googleSignIn ? ["pod 'RecaptchaInterop', :modular_headers => true"] : []),
           ].join('\n'),
         },
+        {
+          // Many pods – and their privacy resource bundles (`GoogleUtilities-GoogleUtilities_Privacy`, …) –
+          // still declare iOS 9 / 11 / 12. Current Xcode refuses targets below its minimum (error 65), so every
+          // pod target is raised to the app's own `platform :ios` version (read here, never hard-coded); pods
+          // that require more keep their value.
+          id: 'pods-deployment-target',
+          anchor: /react_native_post_install\([\s\S]*?\n\s*\)/m,
+          position: 'after',
+          comment: '#',
+          content: [
+            'app_min_ios = installer.aggregate_targets.map { |t| t.platform.deployment_target }.compact.max',
+            'if app_min_ios',
+            '  pod_projects = installer.respond_to?(:generated_projects) ? installer.generated_projects : [installer.pods_project]',
+            '  pod_projects.each do |project|',
+            '    project.targets.each do |target|',
+            '      target.build_configurations.each do |build_config|',
+            "        current = build_config.build_settings['IPHONEOS_DEPLOYMENT_TARGET']",
+            '        if current.nil? || Gem::Version.new(current) < Gem::Version.new(app_min_ios.to_s)',
+            "          build_config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = app_min_ios.to_s",
+            '        end',
+            '      end',
+            '    end',
+            '  end',
+            'end',
+          ].join('\n'),
+        },
       ],
       'ios/Podfile',
     );
+  });
+}
+
+/** Info.plist: one window scene, created by `SceneDelegate` (in AppDelegate.swift). */
+const SCENE_MANIFEST = {
+  UIApplicationSupportsMultipleScenes: false,
+  UISceneConfigurations: {
+    UIWindowSceneSessionRoleApplication: [
+      { UISceneConfigurationName: 'Default Configuration', UISceneDelegateClassName: '$(PRODUCT_MODULE_NAME).SceneDelegate' },
+    ],
+  },
+};
+
+/** React Native template: AppDelegate creates the window itself and starts React Native in it. */
+const APP_WINDOW_START =
+  /\n([ \t]*)window = UIWindow\(frame: UIScreen\.main\.bounds\)\n\s*\n?[ \t]*factory\.startReactNative\(\s*withModuleName: "([^"]+)",\s*in: window,\s*launchOptions: launchOptions\s*\)\n/;
+
+function sceneDelegateSource(moduleName: string): string {
+  return `
+// rn-architecture-generator: scene-delegate
+/**
+ * The UIScene lifecycle – apps built with the iOS 27 SDK are terminated at launch without it
+ * (_UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption). The window and React Native start here;
+ * URLs and universal links arrive here instead of AppDelegate and are forwarded to it / React Native.
+ */
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+  var window: UIWindow?
+
+  func scene(
+    _ scene: UIScene,
+    willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions
+  ) {
+    guard let windowScene = scene as? UIWindowScene,
+          let appDelegate = UIApplication.shared.delegate as? AppDelegate,
+          let factory = appDelegate.reactNativeFactory else { return }
+
+    let window = UIWindow(windowScene: windowScene)
+    self.window = window
+    // Libraries that still read the window from the app delegate keep working.
+    appDelegate.window = window
+
+    // A link that cold-started the app: React Native's Linking.getInitialURL() reads it from the launch options.
+    var launchOptions = appDelegate.launchOptions ?? [:]
+    if let url = connectionOptions.urlContexts.first?.url {
+      launchOptions[.url] = url
+    }
+
+    factory.startReactNative(
+      withModuleName: "${moduleName}",
+      in: window,
+      launchOptions: launchOptions
+    )
+  }
+
+  // Deep links / OAuth redirects while the app runs: AppDelegate's handler (e.g. Facebook Login) first, then React Native.
+  func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+    let app = UIApplication.shared
+    for context in URLContexts {
+      var options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+      if let source = context.options.sourceApplication { options[.sourceApplication] = source }
+      if let annotation = context.options.annotation { options[.annotation] = annotation }
+      if app.delegate?.application?(app, open: context.url, options: options) == true { continue }
+      RCTLinkingManager.application(app, open: context.url, options: options)
+    }
+  }
+
+  // Universal links.
+  func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+    RCTLinkingManager.application(UIApplication.shared, continue: userActivity, restorationHandler: { _ in })
+  }
+}
+`;
+}
+
+/**
+ * Adopts the UIScene lifecycle (required from the iOS 27 SDK): Info.plist gets a scene manifest, AppDelegate keeps
+ * the React Native factory and launch options, and a `SceneDelegate` (appended to AppDelegate.swift, so no Xcode
+ * project change) creates the window and starts React Native. Idempotent.
+ */
+export async function configureIosSceneLifecycle(projectDir: string, appName: string): Promise<void> {
+  const { infoPlist, appDelegate } = iosPaths(projectDir, appName);
+
+  if (!(await fs.pathExists(infoPlist))) {
+    throw new GeneratorError(`Expected Info.plist at ${infoPlist}.`);
+  }
+  const data = plist.parse(await fs.readFile(infoPlist, 'utf8')) as Record<string, plist.PlistValue>;
+  if (!data.UIApplicationSceneManifest) {
+    data.UIApplicationSceneManifest = SCENE_MANIFEST;
+    await fs.writeFile(infoPlist, plist.build(data, { indent: '\t', pretty: true }) + '\n', 'utf8');
+  }
+
+  await edit(appDelegate, 'AppDelegate.swift', source => {
+    if (hasPatch(source, { id: 'scene-delegate' })) return source;
+    const start = APP_WINDOW_START.exec(source);
+    if (!start) {
+      throw new GeneratorError('Could not configure AppDelegate.swift (scene-lifecycle).', {
+        reason: `Expected to find ${APP_WINDOW_START} – the React Native template may have changed.`,
+        tryHints: ['Please report this issue; the generated project was rolled back.'],
+      });
+    }
+    const [, indent, moduleName] = start;
+    source = source.replace(
+      APP_WINDOW_START,
+      `\n${indent}// rn-architecture-generator: scene-lifecycle\n` +
+        `${indent}// The window is created by SceneDelegate (UIScene lifecycle, required from iOS 27).\n` +
+        `${indent}self.launchOptions = launchOptions\n`,
+    );
+    source = applyPatch(
+      source,
+      {
+        id: 'scene-launch-options',
+        anchor: /^[ \t]*var reactNativeFactory: RCTReactNativeFactory\?$/m,
+        position: 'after',
+        comment: '//',
+        content: 'var launchOptions: [UIApplication.LaunchOptionsKey: Any]?',
+      },
+      'AppDelegate.swift',
+    );
+    return `${source.replace(/\s*$/, '')}\n${sceneDelegateSource(moduleName!)}`;
   });
 }
 

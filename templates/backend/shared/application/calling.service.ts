@@ -92,6 +92,12 @@ export interface CallHistoryItem extends CallEntity {
   receiver: UserSummary | null;
 }
 
+/** A call participant with their Agora uid (the uid their video / audio arrives with) and name – for call tiles. */
+export interface CallParticipantView extends CallParticipantEntity {
+  uid: number;
+  user: UserSummary | null;
+}
+
 export interface CallHistoryQuery {
   userId: string;
   limit?: number;
@@ -392,8 +398,14 @@ export class CallingService {
     return this.findBusyCall(userId);
   }
 
-  async getCallParticipants(callId: string) {
-    return this.callingRepo.getCallParticipants(callId);
+  /** Everyone invited to the call, with the Agora uid each one joins with and their name (group call tiles). */
+  async getCallParticipants(callId: string): Promise<CallParticipantView[]> {
+    const participants = await this.callingRepo.getCallParticipants(callId);
+    const ids = [...new Set(participants.map((p) => p.userId))];
+    const users = new Map(
+      (ids.length ? await this.deps.users.findManyByIds(ids) : []).map((u) => [u.id, toUserSummary(u)]),
+    );
+    return participants.map((p) => ({ ...p, uid: this.uidFromUserId(p.userId), user: users.get(p.userId) ?? null }));
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────

@@ -1,12 +1,15 @@
 // ─── Audio Call Screen ────────────────────────────────────────────────────────
 // Active audio call UI with mute, speaker toggle, end call, and call timer.
 // The screen can be minimized – the call continues in background.
+// Group calls show everyone in the call (you included) as named avatars.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
+  Image,
+  ScrollView,
   StyleSheet,
   TouchableOpacity,
   AppState,
@@ -61,6 +64,17 @@ export function AudioCallScreen({ state, callerName, timer: propTimer, onHangUp,
     return () => sub.remove();
   }, []);
 
+  const isGroup = Boolean(state.call?.isGroupCall) || state.remoteUids.length > 1;
+  const people = [
+    { key: 'local', name: 'You', avatar: null as string | null | undefined, muted: state.isMuted },
+    ...state.remoteUids.map(uid => ({
+      key: String(uid),
+      name: state.remoteUsers?.[uid]?.name ?? 'Participant',
+      avatar: state.remoteUsers?.[uid]?.avatar,
+      muted: false,
+    })),
+  ];
+
   const statusLabel =
     state.status === 'initiating' ? 'Calling…'
     : state.status === 'ringing' ? 'Ringing…'
@@ -79,7 +93,34 @@ export function AudioCallScreen({ state, callerName, timer: propTimer, onHangUp,
         )}
       </View>
 
-      {/* Caller info */}
+      {isGroup ? (
+        <View style={styles.groupSection}>
+          <Text style={styles.callerName} numberOfLines={1}>{callerName}</Text>
+          <Text style={styles.statusText}>{statusLabel} · {people.length} in call</Text>
+          <ScrollView contentContainerStyle={styles.groupGrid} showsVerticalScrollIndicator={false}>
+            {people.map(person => (
+              <View key={person.key} style={styles.person}>
+                <View>
+                  {person.avatar ? (
+                    <Image source={{ uri: person.avatar }} style={styles.personAvatar} />
+                  ) : (
+                    <View style={[styles.personAvatar, styles.personAvatarFallback]}>
+                      <Text style={styles.personInitial}>{person.name.charAt(0).toUpperCase()}</Text>
+                    </View>
+                  )}
+                  {person.muted ? (
+                    <View style={styles.personMuted}>
+                      <AppIcon name="microphone-off" size={12} tintColor="#fff" />
+                    </View>
+                  ) : null}
+                </View>
+                <Text style={styles.personName} numberOfLines={1}>{person.name}</Text>
+              </View>
+            ))}
+            {people.length === 1 ? <Text style={styles.participantsText}>Waiting for others to join…</Text> : null}
+          </ScrollView>
+        </View>
+      ) : (
       <View style={styles.callerSection}>
         <View style={styles.avatarRing}>
           <View style={styles.avatarInner}>
@@ -88,10 +129,8 @@ export function AudioCallScreen({ state, callerName, timer: propTimer, onHangUp,
         </View>
         <Text style={styles.callerName}>{callerName}</Text>
         <Text style={styles.statusText}>{statusLabel}</Text>
-        {state.remoteUids.length > 1 && (
-          <Text style={styles.participantsText}>{state.remoteUids.length} participants</Text>
-        )}
       </View>
+      )}
 
       {/* Controls */}
       <View style={styles.controls}>
@@ -190,7 +229,25 @@ const styles = StyleSheet.create({
   avatarInitial: { fontSize: 52, fontWeight: '700', color: '#a5b4fc' },
   callerName: { fontSize: 26, fontWeight: '700', color: '#fff', letterSpacing: 0.2 },
   statusText: { fontSize: 15, color: 'rgba(255,255,255,0.5)', fontVariant: ['tabular-nums'] },
-  participantsText: { fontSize: 13, color: 'rgba(255,255,255,0.4)' },
+  participantsText: { fontSize: 13, color: 'rgba(255,255,255,0.4)', width: '100%', textAlign: 'center', marginTop: 8 },
+  groupSection: { flex: 1, alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingTop: 12 },
+  groupGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', paddingTop: 24, paddingBottom: 24 },
+  person: { width: '33.33%', alignItems: 'center', gap: 8, marginBottom: 20 },
+  personAvatar: { width: 76, height: 76, borderRadius: 38 },
+  personAvatarFallback: { backgroundColor: '#1e1b4b', borderWidth: 2, borderColor: '#6366f1', alignItems: 'center', justifyContent: 'center' },
+  personInitial: { fontSize: 30, fontWeight: '700', color: '#a5b4fc' },
+  personMuted: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#ef4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  personName: { fontSize: 13, color: '#fff', fontWeight: '600', maxWidth: 96 },
   controls: {
     flexDirection: 'row',
     justifyContent: 'center',

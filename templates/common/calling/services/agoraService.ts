@@ -8,6 +8,7 @@ import {
   createAgoraRtcEngine,
   ChannelProfileType,
   ClientRoleType,
+  ErrorCodeType,
   type IRtcEngine,
   type IRtcEngineEventHandler,
 } from 'react-native-agora';
@@ -57,7 +58,15 @@ export async function joinChannel(
     engine.startPreview();
   }
   engine.setClientRole(ClientRoleType.ClientRoleBroadcaster);
-  await engine.joinChannel(tokenResult.token, tokenResult.channelName, tokenResult.uid, {});
+  const join = () => engine!.joinChannel(tokenResult.token, tokenResult.channelName, tokenResult.uid, {});
+  let code = join();
+  // Still in an earlier call's channel (Agora allows one): leave it, then join this one. Before, the refusal was
+  // ignored – the app stayed alone in the old channel while everyone else was in the new one.
+  if (code === -ErrorCodeType.ErrJoinChannelRejected) {
+    engine.leaveChannel();
+    code = join();
+  }
+  if (code < 0) throw new Error(`Could not join the call (Agora error ${-code}).`);
   if (!systemManagedAudio) InCallManager.start({ media: enableVideo ? 'video' : 'audio' });
   InCallManager.setKeepScreenOn(true);
 }

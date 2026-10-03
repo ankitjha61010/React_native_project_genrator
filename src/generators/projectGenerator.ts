@@ -18,7 +18,7 @@ import { generateSocialAuth } from './socialAuthGenerator.js';
 import { configureAndroidCleartextTraffic, configureAndroidLayoutDirection, configureAndroidLocation, configureAndroidMicrophone, configureAndroidPdfViewer, configureAndroidScreensRestoration, installAndroidFonts } from './native/android.js';
 import { configureAndroidCalling } from './native/androidCalling.js';
 import { configureAndroidOTA } from './native/androidOTA.js';
-import { configureIosLocation, configureIosMicrophone, configureXcodeEnv, linkIosFonts, VECTOR_ICON_FONTS } from './native/ios.js';
+import { configureIosLocation, configureIosMicrophone, configureIosSceneLifecycle, configureXcodeEnv, linkIosFonts, VECTOR_ICON_FONTS } from './native/ios.js';
 import { configureIosCalling, configureIosCallingAppDelegate, configureIosCallingPodfile, configureIosVoipPushHandler } from './native/iosCalling.js';
 import { configureIosOTA } from './native/iosOTA.js';
 import { generateOTAKeys, writeOTAPrivateKey } from './native/otaKeys.js';
@@ -89,6 +89,7 @@ export async function generateProject(options: ProjectOptions, hooks: Generation
         await (hooks.initProject ?? initReactNativeProject)(projectDir, options, profile);
         await Promise.all(OBSOLETE_TEMPLATE_FILES.map(file => fs.remove(path.join(projectDir, file))));
         await configureXcodeEnv(projectDir, options.appName);
+        await configureIosSceneLifecycle(projectDir, options.appName);
         await configureAndroidLayoutDirection(projectDir, options.rtl);
         await configureAndroidCleartextTraffic(projectDir);
         await configureAndroidScreensRestoration(projectDir, options.packageName);

@@ -194,7 +194,11 @@ export const api = {
     const headers = { ...(config?.headers ?? {}) };
     headers['Content-Type'] = 'multipart/form-data';
     return apiClient
-      .post(url, form, { ...config, headers, timeout: 120_000, transformRequest: data => data{{#if API_ENCRYPTION}}, skipEncryption: true{{/if}} })
+{{#if API_ENCRYPTION}}
+      // The FormData body is sent as-is (the request interceptor never encrypts FormData), but the server still
+      // encrypts its JSON answer – it must be decrypted, or the uploaded file's url is lost ("Upload the file first").
+{{/if}}
+      .post(url, form, { ...config, headers, timeout: 120_000, transformRequest: data => data })
       .then(r => unwrap<T>(r.data));
   },
 };

@@ -47,6 +47,14 @@ export class MediaPermissionError extends Error {
 
 export const ImagePermissionError = MediaPermissionError;
 
+/** This device has no camera – the iOS Simulator (the picker answers `camera_unavailable`). */
+export class CameraUnavailableError extends Error {
+  constructor() {
+    super('camera unavailable');
+    this.name = 'CameraUnavailableError';
+  }
+}
+
 function toQuality(quality = 0.8): PhotoQuality {
   return (Math.round(Math.min(Math.max(quality, 0), 1) * 10) / 10) as PhotoQuality;
 }
@@ -85,6 +93,9 @@ function handle(
   }
   if (response.errorCode === 'permission') {
     throw new MediaPermissionError(permission);
+  }
+  if (response.errorCode === 'camera_unavailable') {
+    throw new CameraUnavailableError();
   }
   if (response.errorCode) {
     throw new Error(response.errorMessage ?? `Media picker failed (${response.errorCode})`);

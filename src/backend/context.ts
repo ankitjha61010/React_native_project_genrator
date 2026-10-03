@@ -171,6 +171,8 @@ export function prepareBackendContext(options: BackendOptions): BackendRenderCon
     REALTIME: chat || notifications || (hasAuth && (options.modules.audioCall || options.modules.videoCall)),
     /** This process hosts the Socket.IO server. */
     SOCKET_SERVER: (chat || notifications || (hasAuth && (options.modules.audioCall || options.modules.videoCall))) && role !== 'notifications',
+    /** Browser page at /tester (tester/) to try chat / calls without the app – development only. */
+    TESTER: (chat || (hasAuth && (options.modules.audioCall || options.modules.videoCall))) && role !== 'notifications',
     // ── microservices ──
     MICROSERVICE: role !== undefined,
     SVC_IDENTITY: role === 'identity',

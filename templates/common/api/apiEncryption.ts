@@ -10,7 +10,8 @@ import { appConfig } from '{{IMPORT:config.app}}';
  *   response body  { "data": "<base64 cipher text>" }  or the bare cipher string
  *
  * `apiClient` applies this automatically to every request. Opt out per request with
- * `api.post(url, body, { skipEncryption: true })`, e.g. for multipart uploads.
+ * `api.post(url, body, { skipEncryption: true })` – only for endpoints that answer plain JSON (multipart uploads
+ * don't need it: FormData bodies are never encrypted, and their encrypted answer is decrypted like any other).
  */
 
 const KEY_LENGTH = 32;

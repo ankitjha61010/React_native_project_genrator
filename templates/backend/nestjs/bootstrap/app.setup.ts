@@ -14,6 +14,9 @@ import { errorResponse } from '{{IMPORT:core.response}}';
 import { logger } from '{{IMPORT:core.logger}}';
 import type { Infrastructure, Services } from '{{IMPORT:app.container}}';
 import { attachSocketServer, SocketHub } from '{{IMPORT:realtime.server}}';
+{{#if TESTER}}
+import { testerPage } from '{{IMPORT:realtime.tester}}';
+{{/if}}
 import { INFRASTRUCTURE, SERVICES } from '{{IMPORT:nest.tokens}}';
 {{/if}}
 {{#if API_ENCRYPTION}}
@@ -87,6 +90,10 @@ export function configureApp(app: NestExpressApplication): void {
 {{#if UPLOADS}}
   // Uploaded files (avatars{{#if CHAT}}, chat media{{/if}}). Never executed, never listed.
   app.useStaticAssets(config.uploads.dir, { prefix: config.uploads.publicPath, index: false, dotfiles: 'deny', maxAge: '7d' });
+{{/if}}
+{{#if TESTER}}
+  // Development page to try chat / calls in two browser tabs: http://localhost:<PORT>/tester (README).
+  if (!config.isProduction) app.use('/tester', testerPage);
 {{/if}}
 {{#if GATEWAY_PAYPAL}}
   // PayPal sends the buyer back here (PAYPAL return / cancel URL); the app's web view stops at it.

@@ -9,13 +9,14 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { PermissionsAndroid, Platform } from 'react-native';
-import type { IRtcEngineEventHandler } from 'react-native-agora';
+import { ConnectionStateType, ErrorCodeType, RemoteVideoState, type IRtcEngineEventHandler } from 'react-native-agora';
+import { logger } from '{{IMPORT:utils.logger}}';
 
 import * as CallingApi from '../callingEndpoints';
 import * as Agora from '../services/agoraService';
 import * as CK from '../services/callKeepService';
 import { nativeCallService } from '../services/nativeCallService';
-import type { Call, ActiveCallState, IncomingCallData, CallType } from '../types/calling.types';
+import type { Call, ActiveCallState, IncomingCallData, CallType, CallUser } from '../types/calling.types';
 
 /** Microphone / camera access was refused – the message says what to allow. */
 export class CallPermissionError extends Error {}
@@ -36,6 +37,19 @@ async function ensureCallPermissions(video: boolean): Promise<void> {
     );
   }
 }
+
+/**
+ * Agora errors after which this device can't be in the channel. Every other onError (camera, codec, audio device…)
+ * is recoverable: the SDK keeps the call running, so it is only logged – ending the call on it dropped people out of
+ * group calls a few seconds after a third video appeared.
+ */
+const FATAL_AGORA_ERRORS = new Set<number>([
+  ErrorCodeType.ErrJoinChannelRejected,
+  ErrorCodeType.ErrInvalidAppId,
+  ErrorCodeType.ErrInvalidChannelName,
+  ErrorCodeType.ErrTokenExpired,
+  ErrorCodeType.ErrInvalidToken,
+]);
 
 const DEFAULT_STATE: ActiveCallState = {
   call: null,
@@ -65,7 +79,45 @@ export function useCall() {
    */
   const pendingCallKitActionRef = useRef<{ kind: 'answer' | 'end'; uuid: string } | null>(null);
   const answerCallRef = useRef<(callId: string, options?: { fromCallKit?: boolean }) => Promise<void>>(async () => {});
+  /** A call is being started – a second tap (or a second screen) must not start another one. */
+  const startingRef = useRef(false);
+  /** Leaves the call properly (the server and the others are told) – for Agora failures, which arrive outside React. */
+  const hangUpRef = useRef<() => Promise<void>>(async () => {});
   const declineCallRef = useRef<(callId: string) => Promise<void>>(async () => {});
+
+  // ── Who is who (group call tiles) ─────────────────────────────────────────
+
+  /** The call whose Agora channel we are in – its participants name the remote uids. */
+  const activeCallIdRef = useRef<string | null>(null);
+  const participantsRequestRef = useRef({ running: false, again: false });
+
+  /**
+   * Maps every remote Agora uid to its user (GET /calls/:callId/participants). Runs again when someone joins
+   * while a request is in flight. Names are cosmetic – errors are ignored.
+   */
+  const loadRemoteUsers = useRef(async (): Promise<void> => {
+    const request = participantsRequestRef.current;
+    if (request.running) {
+      request.again = true;
+      return;
+    }
+    request.running = true;
+    try {
+      do {
+        request.again = false;
+        const callId = activeCallIdRef.current;
+        if (!callId) return;
+        const { participants } = await CallingApi.getCallParticipants(callId);
+        const remoteUsers: Record<number, CallUser> = {};
+        for (const p of participants) if (p.uid !== undefined && p.user) remoteUsers[p.uid] = p.user;
+        if (activeCallIdRef.current === callId) setState(s => ({ ...s, remoteUsers }));
+      } while (request.again);
+    } catch {
+      // Tiles fall back to "Participant".
+    } finally {
+      request.running = false;
+    }
+  }).current;
 
   // ── Agora event handler ───────────────────────────────────────────────────
 
@@ -79,26 +131,53 @@ export function useCall() {
         connectedAt: s.connectedAt ?? Date.now(),
         remoteUids: [...s.remoteUids.filter(u => u !== uid), uid],
       }));
+      if (!stateRef.current.remoteUsers?.[uid]) loadRemoteUsers().catch(() => undefined);
     },
     onUserOffline: (_conn, uid) => {
-      setState(s => ({ ...s, remoteUids: s.remoteUids.filter(u => u !== uid) }));
+      setState(s => ({
+        ...s,
+        remoteUids: s.remoteUids.filter(u => u !== uid),
+        remoteVideoOff: (s.remoteVideoOff ?? []).filter(u => u !== uid),
+      }));
+    },
+    // Someone turned their camera off / on – their tile shows the avatar instead of a frozen picture.
+    onRemoteVideoStateChanged: (_conn, uid, videoState) => {
+      if (videoState === RemoteVideoState.RemoteVideoStateStopped) {
+        setState(s => ({ ...s, remoteVideoOff: [...(s.remoteVideoOff ?? []).filter(u => u !== uid), uid] }));
+      } else if (videoState === RemoteVideoState.RemoteVideoStateStarting || videoState === RemoteVideoState.RemoteVideoStateDecoding) {
+        setState(s => ({ ...s, remoteVideoOff: (s.remoteVideoOff ?? []).filter(u => u !== uid) }));
+      }
     },
     onJoinChannelSuccess: () => {
       if (callUUIDRef.current) CK.setCurrentCallActive(callUUIDRef.current);
     },
-    onConnectionStateChanged: (_conn, state: number) => {
-      // state 4 = RECONNECTING
-      if (state === 4) setState(s => ({ ...s, status: 'reconnecting' }));
+    onConnectionStateChanged: (_conn, connectionState, reason) => {
+      if (connectionState === ConnectionStateType.ConnectionStateReconnecting) {
+        setState(s => ({ ...s, status: 'reconnecting' }));
+      } else if (connectionState === ConnectionStateType.ConnectionStateConnected) {
+        // Back after a network drop.
+        setState(s => (s.status === 'reconnecting' ? { ...s, status: 'connected' } : s));
+      } else if (connectionState === ConnectionStateType.ConnectionStateFailed) {
+        logger.warn('[agora] connection failed', reason);
+        setState(s => ({ ...s, status: 'failed' }));
+        hangUpRef.current().catch(() => undefined);
+      }
     },
-    onError: (_err: number, _msg: string) => {
+    onError: (err, msg) => {
+      if (!FATAL_AGORA_ERRORS.has(err)) {
+        logger.warn('[agora] error (call continues)', err, msg);
+        return;
+      }
+      logger.warn('[agora] fatal error', err, msg);
       setState(s => ({ ...s, status: 'failed' }));
-      _cleanup();
+      hangUpRef.current().catch(() => undefined);
     },
   }).current;
 
   // ── Private helpers ───────────────────────────────────────────────────────
 
   const _cleanup = useCallback(async () => {
+    activeCallIdRef.current = null;
     answeredCallIdRef.current = null;
     incomingCallIdRef.current = null;
     nativeCallService.setCallActive(false);
@@ -119,6 +198,7 @@ export function useCall() {
   const _joinAgora = useCallback(
     async (call: Call, callId: string) => {
       const data = await CallingApi.getAgoraToken(callId);
+      activeCallIdRef.current = callId;
       setState(s => ({ ...s, agoraToken: data, status: 'connecting' }));
       const engine = Agora.getEngine();
       if (!engine) {
@@ -130,19 +210,24 @@ export function useCall() {
       await Agora.joinChannel(data, isVideoRef.current, eventHandler, { systemManagedAudio: callKitCall });
       nativeCallService.setCallActive(true);
       setState(s => ({ ...s, call, status: 'connecting' }));
+      // Names for the people already in the channel (a group call joined late).
+      loadRemoteUsers().catch(() => undefined);
     },
-    [eventHandler],
+    [eventHandler, loadRemoteUsers],
   );
 
   // ── Outgoing call ─────────────────────────────────────────────────────────
 
   const startCall = useCallback(
-    async (receiverId: string, callType: CallType) => {
-      await ensureCallPermissions(callType === 'video');
-      isVideoRef.current = callType === 'video';
-      setState(s => ({ ...s, status: 'initiating', outgoing: true }));
+    async (receiverId: string, callType: CallType): Promise<Call | null> => {
+      // Already starting or in a call: ignored – a double tap started two calls and left this phone in the wrong one.
+      if (startingRef.current || stateRef.current.call) return null;
+      startingRef.current = true;
       let call: Call | null = null;
       try {
+        await ensureCallPermissions(callType === 'video');
+        isVideoRef.current = callType === 'video';
+        setState(s => ({ ...s, status: 'initiating', outgoing: true }));
         call = await CallingApi.initiateCall(receiverId, callType);
         setState(s => ({ ...s, call, status: 'ringing' }));
         Agora.startRingback();
@@ -153,18 +238,22 @@ export function useCall() {
         if (call) await CallingApi.cancelCall(call.id).catch(() => undefined);
         await _cleanup();
         throw error;
+      } finally {
+        startingRef.current = false;
       }
     },
     [_joinAgora, _cleanup],
   );
 
   const startGroupCall = useCallback(
-    async (participantIds: string[], callType: CallType) => {
-      await ensureCallPermissions(callType === 'video');
-      isVideoRef.current = callType === 'video';
-      setState(s => ({ ...s, status: 'initiating' }));
+    async (participantIds: string[], callType: CallType): Promise<Call | null> => {
+      if (startingRef.current || stateRef.current.call) return null;
+      startingRef.current = true;
       let call: Call | null = null;
       try {
+        await ensureCallPermissions(callType === 'video');
+        isVideoRef.current = callType === 'video';
+        setState(s => ({ ...s, status: 'initiating' }));
         call = await CallingApi.initiateGroupCall(participantIds, callType);
         setState(s => ({ ...s, call, status: 'connecting' }));
         await _joinAgora(call, call.id);
@@ -173,6 +262,8 @@ export function useCall() {
         if (call) await CallingApi.endCall(call.id).catch(() => undefined);
         await _cleanup();
         throw error;
+      } finally {
+        startingRef.current = false;
       }
     },
     [_joinAgora, _cleanup],
@@ -350,6 +441,7 @@ export function useCall() {
 
   answerCallRef.current = answerCall;
   declineCallRef.current = declineCall;
+  hangUpRef.current = hangUp;
 
   // ── Audio / Video controls ────────────────────────────────────────────────
 

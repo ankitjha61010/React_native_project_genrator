@@ -4,6 +4,9 @@ import { config } from '{{IMPORT:config.env}}';
 {{#if AUTH_API}}
 import { authDocs } from '{{IMPORT:ex.auth.docs}}';
 {{/if}}
+{{#if CALLING}}
+import { callingDocs } from '{{IMPORT:ex.calling.docs}}';
+{{/if}}
 {{#if CHAT}}
 import { chatDocs } from '{{IMPORT:ex.chat.docs}}';
 {{/if}}
@@ -29,7 +32,7 @@ import { usersDocs } from '{{IMPORT:ex.users.docs}}';
 {{/if}}
 
 /** Every documented feature – add a new feature's docs here. */
-const groups: ApiDocGroup[] = [healthDocs{{#if AUTH_API}}, authDocs{{/if}}{{#if USERS_API}}, usersDocs{{/if}}{{#if CHAT}}, chatDocs{{/if}}{{#if DEVICES}}, devicesDocs{{/if}}{{#if NOTIFICATIONS}}, notificationsDocs{{/if}}{{#if LEGAL}}, legalDocs{{/if}}{{#if OTA}}, otaDocs{{/if}}{{#if PAYMENTS}}, paymentsDocs{{/if}}];
+const groups: ApiDocGroup[] = [healthDocs{{#if AUTH_API}}, authDocs{{/if}}{{#if USERS_API}}, usersDocs{{/if}}{{#if CHAT}}, chatDocs{{/if}}{{#if CALLING}}, callingDocs{{/if}}{{#if DEVICES}}, devicesDocs{{/if}}{{#if NOTIFICATIONS}}, notificationsDocs{{/if}}{{#if LEGAL}}, legalDocs{{/if}}{{#if OTA}}, otaDocs{{/if}}{{#if PAYMENTS}}, paymentsDocs{{/if}}];
 
 /** Builds the OpenAPI 3.1 document shown by Swagger UI. */
 export function buildOpenApiDocument() {

@@ -117,9 +117,11 @@ export function ChatInputBar({ onSend, onTyping, replyTo, onCancelReply, editing
 
   // ── photos / videos (edited in MediaEditorModal first) ───────────────────────
   const pickMedia = async (option: Exclude<MediaPickerOption, 'document'>) => {
-    const picked = await pick(option);
-    if (!picked?.path) return;
     const isVideo = option === 'camera_video' || option === 'gallery_video';
+    // Chat videos are recorded at medium quality (iPhone: ~1 MB per 10 s instead of 10–20 MB) so they stay under the
+    // server's upload limit (UPLOAD_MAX_MB). Android's camera only knows low / high – it keeps high.
+    const picked = await pick(option, option === 'camera_video' ? { videoQuality: 'medium', durationLimit: 60 } : undefined);
+    if (!picked?.path) return;
     const fallbackExt = isVideo ? '.mp4' : '.jpg';
     let safeName = picked.filename || picked.path.split('/').pop() || (isVideo ? 'video' : 'photo');
     if (!/\.[a-z0-9]{2,6}$/i.test(safeName)) {

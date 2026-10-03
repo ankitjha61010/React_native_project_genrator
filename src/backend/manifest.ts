@@ -89,6 +89,8 @@ const chatPush: Condition = ctx => notifications(ctx) || (chat(ctx) && replica(c
 /** Avatars (identity) and chat media – the notifications service stores no files. */
 const uploads: Condition = ctx => auth(ctx) && ctx.options.service !== 'notifications';
 const socketServer: Condition = ctx => realtime(ctx) && ctx.options.service !== 'notifications';
+/** Browser page at /tester to try chat / calls without the app (only what is generated: chat, calls or both). */
+const tester: Condition = ctx => socketServer(ctx) && (chat(ctx) || calling(ctx));
 const all =
   (...conditions: Condition[]): Condition =>
   ctx =>
@@ -200,6 +202,11 @@ export const BACKEND_MANIFEST: BackendManifestEntry[] = [
   { id: 'impl.voipPushSender', template: 'shared/adapters/voip-push-sender.ts', layer: 'adapters', file: 'voip-push-sender.ts', when: voipPush },
   { id: 'impl.fileStorage', template: 'shared/adapters/local-file-storage.ts', layer: 'adapters', file: 'local-file-storage.ts', when: uploads },
   { id: 'realtime.server', template: 'shared/realtime/socket.server.ts', layer: 'realtime', file: 'socket.server.ts', when: socketServer },
+  // Chat / call tester: tester/*.html|js|css served at /tester (development only) by tester.page.ts.
+  { id: 'realtime.tester', template: 'shared/realtime/tester.page.ts', layer: 'realtime', file: 'tester.page.ts', when: tester },
+  { id: 'root.testerHtml', template: 'root/tester/index.html', file: 'tester/index.html', when: tester },
+  { id: 'root.testerJs', template: 'root/tester/tester.js', file: 'tester/tester.js', when: tester },
+  { id: 'root.testerCss', template: 'root/tester/tester.css', file: 'tester/tester.css', when: tester },
   // Microservices: events between the services (Redis).
   { id: 'port.eventBus', template: 'shared/ports/event-bus.ts', layer: 'ports', file: 'event-bus.ts', when: events, mergeInto: ['impl.eventBus'] },
   { id: 'impl.eventBus', template: 'shared/adapters/event-bus.ts', layer: 'adapters', file: 'event-bus.ts', when: events },

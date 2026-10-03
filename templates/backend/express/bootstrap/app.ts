@@ -15,6 +15,9 @@ import { globalRateLimit } from '{{IMPORT:ex.mw.rateLimit}}';
 import { requestLogger } from '{{IMPORT:ex.mw.requestLogger}}';
 import { applySecurity } from '{{IMPORT:ex.mw.security}}';
 import { apiRoutes } from '{{IMPORT:ex.routes}}';
+{{#if TESTER}}
+import { testerPage } from '{{IMPORT:realtime.tester}}';
+{{/if}}
 {{#if GATEWAY_PAYPAL}}
 import { PAYMENTS_MESSAGES } from '{{IMPORT:messages.payments}}';
 {{/if}}
@@ -34,6 +37,10 @@ export function createApp(services: Services): Express {
 {{#if UPLOADS}}
   // Uploaded files (avatars, chat media). Never executed, never listed.
   app.use(config.uploads.publicPath, express.static(config.uploads.dir, { index: false, dotfiles: 'deny', maxAge: '7d' }));
+{{/if}}
+{{#if TESTER}}
+  // Development page to try chat / calls in two browser tabs: http://localhost:<PORT>/tester (README).
+  if (!config.isProduction) app.use('/tester', testerPage);
 {{/if}}
 {{#if GATEWAY_PAYPAL}}
   // PayPal sends the buyer back here (PAYPAL return / cancel URL); the app's web view stops at it.

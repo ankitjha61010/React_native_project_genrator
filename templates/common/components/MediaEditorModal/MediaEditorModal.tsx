@@ -5,7 +5,6 @@ import {
   Image,
   TouchableOpacity,
   Modal,
-  SafeAreaView,
   ScrollView,
   Dimensions,
   PanResponder,
@@ -13,6 +12,7 @@ import {
   type GestureResponderEvent,
   type PanResponderGestureState,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ImageEditor from '@react-native-community/image-editor';
 import {
   Canvas,
@@ -348,6 +348,8 @@ export function MediaEditorModal({
   onSend,
 }: MediaEditorModalProps): React.JSX.Element | null {
   const styles = useStyles(createStyles);
+  // React Native's SafeAreaView pads on iOS only – Android (edge-to-edge) drew the header under the status bar.
+  const insets = useSafeAreaInsets();
 {{#if RTL}}
   // A Modal is a separate native root – it needs the app's direction explicitly.
   const { directionStyle } = useDirection();
@@ -439,6 +441,8 @@ export function MediaEditorModal({
             ...trimmed,
             uri: toFileUri(result.outputPath),
             fileName: `video_${Date.now()}.mp4`,
+            // The cut file is smaller – the upload reports its real size.
+            fileSize: undefined,
             // The file now holds only the selected part.
             trimStart: 0,
             trimEnd: Math.max(MIN_TRIM, result.duration / 1000),
@@ -609,7 +613,7 @@ export function MediaEditorModal({
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={handleClose}>
-      <SafeAreaView style={ {{#if RTL}}[styles.container, directionStyle]{{else}}styles.container{{/if}} }>
+      <View style={[styles.container, {{#if RTL}}directionStyle, {{/if}}{ paddingTop: insets.top, paddingBottom: insets.bottom }]}>
 
         {/* ── Top Header ─────────────────────────────────────────────── */}
         <View style={styles.header}>
@@ -903,7 +907,7 @@ export function MediaEditorModal({
             </ScrollView>
           )}
         </View>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 }
